@@ -1,0 +1,1 @@
+# application/service — UseCase 구현체. 트랜잭션 경계와 흐름 조립을 담당한다.

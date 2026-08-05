@@ -1,0 +1,1 @@
+# settings/annotation — 도메인 전용 커스텀 어노테이션을 둔다.

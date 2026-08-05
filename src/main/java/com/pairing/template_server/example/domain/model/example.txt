@@ -1,0 +1,1 @@
+# domain/model — 순수 도메인 엔티티/값 객체. JPA·Spring 어노테이션을 붙이지 않는다.

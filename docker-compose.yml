@@ -1,0 +1,44 @@
+services:
+  # 로컬에 PostgreSQL을 직접 설치해 쓰는 경우에는 이 서비스를 띄우지 않는다.
+  # (5432 포트가 충돌한다. 이미 설치된 PostgreSQL을 쓰려면 redis만 띄울 것)
+  #   docker compose up -d redis
+  postgres:
+    image: postgres:16-alpine
+    container_name: pairing-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: pairing
+      POSTGRES_PASSWORD: pairing
+      POSTGRES_DB: pairing
+      # 컨테이너가 처음 초기화될 때 UTF8 인코딩으로 데이터베이스를 만든다.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      TZ: Asia/Seoul
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pairing -d pairing"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: pairing-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+
+# 파일 저장소는 실제 AWS S3를 사용한다. 로컬 대체 컨테이너를 두지 않는다.
+# 로컬 개발용 버킷을 따로 만들고 S3_BUCKET으로 지정해서 쓴다.
+
+volumes:
+  postgres-data:
+  redis-data:

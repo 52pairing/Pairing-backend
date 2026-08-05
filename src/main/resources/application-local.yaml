@@ -1,0 +1,48 @@
+# 로컬 개발 전용 설정.
+#
+# 실행: ./gradlew bootRun --args='--spring.profiles.active=local'
+#
+# 목적: PostgreSQL·Redis·S3 없이도 서버를 띄워 Swagger로 API 계약을 확인할 수 있게 한다.
+# 현재 컨트롤러는 모두 고정 응답(stub)이라 실제 DB가 필요하지 않다.
+#
+# 주의
+#   - 이 파일의 값은 local 프로파일을 명시적으로 활성화할 때만 적용된다.
+#     프로파일 없이 실행하면 application.yaml이 적용되고 JWT_SECRET_KEY / S3_BUCKET이 없으면 기동에 실패한다.
+#   - 아래 jwt.secret-key는 개발 편의용 더미 값이다. 운영에서는 절대 사용하지 말 것.
+#     (운영은 시크릿 저장소에서 JWT_SECRET_KEY를 주입한다)
+
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    # MODE=PostgreSQL 로 두면 실제 DB와의 문법 차이로 인한 오류를 줄일 수 있다.
+    # DATABASE_TO_LOWER=TRUE 는 PostgreSQL이 따옴표 없는 식별자를 소문자로 접는 동작을 흉내낸다.
+    url: jdbc:h2:mem:local;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+
+# H2 웹 콘솔은 활성화하지 않았다. 켜려면 spring.h2.console.enabled=true 와 함께
+# GlobalSecurityConfig에 /h2-console/** 허용과 frameOptions 비활성화를 추가해야 한다.
+
+jwt:
+  # 개발 전용 더미 키 (32바이트 이상). 운영에서는 환경변수로 주입한다.
+  secret-key: local-development-only-dummy-key-do-not-use-in-production
+  cookie-secure: false
+
+cloud:
+  aws:
+    s3:
+      # 실제 버킷이 아니다. 업로드를 시도하면 [S3 Upload Error] 로그와 함께 실패한다.
+      # 업로드까지 테스트하려면 실제 버킷명과 자격증명을 환경변수로 주입한다.
+      bucket: local-dev-placeholder
+
+logging:
+  level:
+    org.hibernate.SQL: debug

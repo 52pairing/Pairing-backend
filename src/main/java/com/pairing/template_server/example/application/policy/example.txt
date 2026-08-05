@@ -1,0 +1,1 @@
+# application/policy — 여러 도메인 객체에 걸친 정책/규칙 객체를 둔다.

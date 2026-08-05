@@ -1,0 +1,1 @@
+# application/command — Service로 전달되는 입력 DTO(Command). Presentation 기술(HTTP)에 의존하지 않는다.

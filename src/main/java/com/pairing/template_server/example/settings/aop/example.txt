@@ -1,0 +1,1 @@
+# settings/aop — 도메인 전용 AOP(Aspect)를 둔다.

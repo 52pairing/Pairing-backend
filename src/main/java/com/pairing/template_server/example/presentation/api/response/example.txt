@@ -1,0 +1,1 @@
+# presentation/api/response — 응답 DTO를 둔다.

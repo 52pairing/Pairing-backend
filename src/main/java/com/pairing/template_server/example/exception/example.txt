@@ -1,0 +1,1 @@
+# exception — 도메인 에러코드(BaseErrorCode 구현 Enum)를 둔다.

@@ -1,0 +1,1 @@
+# infrastructure/mapper — Domain <-> JPA Entity 변환(MapStruct)을 둔다.

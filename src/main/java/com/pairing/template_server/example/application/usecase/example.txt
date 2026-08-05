@@ -1,0 +1,1 @@
+# application/usecase — Controller가 바라보는 입력 포트 인터페이스를 둔다.

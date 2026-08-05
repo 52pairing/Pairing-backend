@@ -1,0 +1,43 @@
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    # 운영은 PostgreSQL이므로 H2도 PostgreSQL 호환 모드로 둔다.
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+
+jwt:
+  secret-key: test-secret-key-for-unit-test-please-change-me-32bytes+
+  access-token-expiration: 1800000
+  refresh-token-expiration: 604800000
+  cookie-domain: ""
+  cookie-secure: false
+
+app:
+  cors:
+    allowed-origins: http://localhost:3000
+  websocket:
+    endpoint: /ws
+
+# Lettuce는 지연 연결이므로 실제 Redis 없이도 컨텍스트는 기동된다.
+# Redis를 실제로 쓰는 테스트는 로컬 Redis(또는 Testcontainers)를 띄워야 한다.
+spring.data.redis:
+  host: localhost
+  port: 6379
+
+cloud:
+  aws:
+    s3:
+      bucket: test-bucket
+    credentials:
+      access-key: test
+      secret-key: test
+    region:
+      static: ap-northeast-2

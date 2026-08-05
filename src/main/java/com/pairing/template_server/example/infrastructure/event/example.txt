@@ -1,0 +1,1 @@
+# infrastructure/event — 이벤트 발행/구독 어댑터를 둔다.

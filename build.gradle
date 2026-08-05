@@ -1,0 +1,84 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.14'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+description = 'template_server'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // 웹 / 검증 / 영속성
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    // 인증 / 인가
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // WebSocket (STOMP over WebSocket — 실시간 push)
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // Redis (RedisTemplate — 토큰 저장, 인증코드, 캐시성 데이터 등)
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+    // S3 호환 오브젝트 스토리지 (AWS S3 / MinIO)
+    implementation 'software.amazon.awssdk:s3:2.25.11'
+
+    // AOP (공통 로깅)
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+
+    // 헬스체크 / 기본 메트릭 (GlobalExceptionHandler의 MeterRegistry 주입에 필요)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // API 문서 (Swagger UI)
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
+
+    // JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
+    // Domain <-> JPA Entity 매핑
+    implementation 'org.mapstruct:mapstruct:1.5.5.Final'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
+
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    // local 프로파일에서 인메모리 DB로 띄우기 위한 의존성.
+    // developmentOnly라서 bootRun에는 포함되고 배포 jar에는 들어가지 않는다.
+    developmentOnly 'com.h2database:h2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'com.h2database:h2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+// 소스에 한글 주석·문자열이 들어가므로 인코딩을 명시한다.
+// Java 17은 플랫폼 기본 인코딩을 쓰기 때문에, 지정하지 않으면 개발자 OS 설정에 따라
+// 다른 장비에서 컴파일할 때 한글이 깨질 수 있다.
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

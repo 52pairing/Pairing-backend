@@ -1,0 +1,1 @@
+# presentation/api/request — 요청 DTO(@Valid 검증 포함)를 둔다.
