@@ -1,6 +1,6 @@
 spring:
   application:
-    name: template_server
+    name: pairing
 
   data:
     redis:
@@ -32,6 +32,24 @@ spring:
         show_sql: false
         jdbc:
           time_zone: Asia/Seoul
+
+  mail:
+    # 인증 메일 발송용 SMTP. 값은 환경변수로만 주입한다.
+    # host 기본값을 두는 이유는 JavaMailSender 빈이 항상 생성되게 하기 위함이다.
+    # (프로퍼티가 없으면 자동설정이 빈을 만들지 않아 메일 어댑터 주입이 실패한다)
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:true}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
   servlet:
     multipart:
@@ -71,6 +89,43 @@ jwt:
   cookie-secure: ${COOKIE_SECURE:false}
 
 app:
+  auth:
+    # 발신자 주소. SMTP 계정과 다르면 메일 서버가 거부할 수 있다.
+    from-address: ${MAIL_FROM:no-reply@pairing.local}
+    # 비밀번호 재설정 링크를 조립할 프론트엔드 주소
+    front-base-url: ${APP_FRONT_BASE_URL:http://localhost:3000}
+    # 아래 기준값은 요구사항 R13/R14에서 온다. 코드에도 같은 기본값이 있으니 함께 바꾼다.
+    email-code-ttl: 3m           # 인증코드 유효시간
+    email-code-max-attempt: 5    # 코드 입력 시도 상한(초과 시 폐기)
+    email-send-limit: 15         # 이메일 발송 상한
+    email-send-window: 1h        # 발송 상한 집계 구간
+    verified-marker-ttl: 30m     # 인증 완료 후 가입 제출까지 유효한 시간
+    login-fail-max: 5            # 비밀번호 연속 실패 잠금 기준
+    ip-fail-max: 20              # IP 기준 로그인 실패 상한
+    ip-fail-window: 1h           # IP 실패 집계 구간
+    ip-block-duration: 2h        # IP 차단 유지 시간
+    password-reset-ttl: 3m       # 비밀번호 재설정 링크 유효시간
+    signup-ticket-ttl: 30m       # 소셜 가입 티켓 유효시간
+    oauth-state-ttl: 5m          # 소셜 인가 state 유효시간
+    rejoin-restriction-days: 30  # 탈퇴 후 재가입 제한
+    minimum-age: 18              # 가입 가능 최소 연령(만)
+
+  oauth:
+    # 소셜 로그인은 프리랜서 전용이다. 값은 환경변수로만 주입한다.
+    kakao:
+      client-id: ${KAKAO_CLIENT_ID:}
+      client-secret: ${KAKAO_CLIENT_SECRET:}
+      redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:3000/oauth/callback/kakao}
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
+      redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:3000/oauth/callback/google}
+
+  crypto:
+    # 카드번호·계좌번호 AES-256-GCM 키(Base64, 32바이트). jwt.secret-key와 같은 이유로 기본값을 두지 않는다.
+    # 생성: openssl rand -base64 32
+    data-key: ${DATA_ENCRYPTION_KEY:}
+
   cors:
     # 프론트엔드 도메인을 명시한다. (와일드카드 * 는 credentials와 함께 사용할 수 없음)
     # WebSocket 핸드셰이크 허용 오리진도 이 값을 함께 사용한다.
@@ -105,3 +160,9 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    mail:
+      # SMTP 헬스체크를 끈다. 켜두면 메일 계정이 주입되지 않았거나 메일 서버가 잠깐 흔들릴 때
+      # /actuator/health 가 통째로 DOWN(503)이 되고, 오케스트레이터가 멀쩡한 컨테이너를 재시작한다.
+      # 메일은 인증 흐름의 부가 기능이지 요청을 못 받을 이유가 아니다.
+      enabled: false

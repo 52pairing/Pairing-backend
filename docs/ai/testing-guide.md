@@ -28,7 +28,7 @@ Windows PowerShell:
 
 - Java: `17`
 - Spring Boot: `3.5.14`
-- 프로젝트명: `template_server`
+- 프로젝트명: `pairing`
 - 서버 포트: `8080`
 - 운영 DB: PostgreSQL (`org.postgresql:postgresql`), 로컬 DB명 `pairing`
 - 테스트 DB: H2 인메모리, PostgreSQL 호환 모드 (`src/test/resources/application.yaml`)

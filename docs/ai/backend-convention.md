@@ -34,7 +34,7 @@
 ## 베이스 패키지
 
 ```text
-com.pairing.template_server
+com.pairing
 ```
 
 각 도메인은 베이스 패키지 아래 독립 패키지로 둡니다. 공용 기능은 `global` 아래에 둡니다.

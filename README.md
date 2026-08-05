@@ -1,4 +1,4 @@
-# template_server
+# pairing
 
 Spring Boot 3.5 + Java 17 기반 **헥사고날(포트-어댑터) 아키텍처 백엔드**입니다.
 
@@ -103,8 +103,8 @@ AWS 자격증명은 주입하지 않으면 기본 자격증명 체인(`~/.aws`, 
 ## 패키지 구조
 
 ```
-com.pairing.template_server
-├── TemplateServerApplication.java
+com.pairing
+├── PairingApplication.java
 ├── global/                        # 도메인에 종속되지 않는 전역 공통 기능
 │   ├── annotation/swagger/        # @ApiErrorCodeExample — 에러 응답 예시 자동 문서화
 │   ├── aop/                       # ApiLoggingAop — Controller/Service 공통 로깅
@@ -117,6 +117,9 @@ com.pairing.template_server
 │   ├── security/                  # JWT 발급/검증 필터, SecurityConfig, 401/403 핸들러
 │   ├── type/                      # FileType
 │   └── util/                      # RedisKeys, FileTypeDetector
+├── auth/                          # 인증(회원가입·로그인·소셜·이메일 인증·계정 복구)
+├── account/                       # 계정·프로필·결제수단 애그리거트
+├── terms/                         # 약관 조회와 동의 이력
 └── example/                       # 새 도메인을 만들 때 복사해서 쓰는 레퍼런스 도메인
     ├── application/
     │   ├── command/               # 입력 DTO (HTTP 기술에 의존하지 않음)
@@ -180,14 +183,14 @@ redisTemplate.opsForValue().set(RedisKeys.AUTH_CODE_PREFIX + email, code, 5, Tim
 
 ## 프로젝트 이름 바꾸기
 
-기본값은 `com.pairing.template_server` / `template_server`입니다. 변경하려면:
+현재는 `com.pairing` / `pairing` 입니다. 다시 바꾸려면:
 
 1. `settings.gradle`의 `rootProject.name`
 2. `build.gradle`의 `group`, `description`
-3. `src/main/java/com/example/template_server` 디렉터리명과 모든 파일의 `package` / `import` 경로
+3. `src/main/java/com/pairing` 디렉터리명과 모든 파일의 `package` / `import` 경로
    (IDE의 Refactor → Rename 사용 권장)
 4. `ApiLoggingAop`의 Pointcut 표현식에 박혀있는 베이스 패키지 문자열
 5. `application.yaml`의 `spring.application.name`, `logback-spring.xml`의 `LOG_FILE_NAME`
-6. `TemplateServerApplication`, `TemplateServerApplicationTests` 클래스명
+6. `PairingApplication`, `PairingApplicationTests` 클래스명
 7. `docker-compose.yml`의 컨테이너명·`POSTGRES_*` 값, `application.yaml`의 `DB_URL` 기본값
 8. `docs/ai/backend-convention.md`의 베이스 패키지 표기

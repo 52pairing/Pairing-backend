@@ -64,7 +64,12 @@ S3에 부여할 최소 권한은 `s3:PutObject`, `s3:DeleteObject`, `s3:ListBuck
 | 토큰 만료 | 401 `GLOBAL_009` | `GlobalJwtAuthenticationFilter` |
 | 토큰 위조/형식 오류 | 401 `GLOBAL_010` | `GlobalJwtAuthenticationFilter` |
 | 권한 부족 (경로 규칙) | 403 `GLOBAL_005` | `CustomAccessDeniedHandler` |
-| 권한 부족 (`@PreAuthorize`) | 403 `GLOBAL_005` | `CommonExceptionAdvice` |
+| 권한 부족 (`@PreAuthorize`, 로그인 상태) | 403 `GLOBAL_005` | `CommonExceptionAdvice` |
+| 비로그인 상태로 `@PreAuthorize` 거부 | 401 `GLOBAL_006` | `CommonExceptionAdvice` |
+| 다른 기기 로그인으로 세션 종료 | 401 `GLOBAL_011` | `GlobalJwtAuthenticationFilter` |
+
+`permitAll` 경로 안에 `@PreAuthorize` 메서드를 두면 비로그인 요청도 컨트롤러까지 도달합니다.
+이때 403을 주면 "로그인은 됐는데 권한이 없다"로 읽혀 프론트가 재로그인을 유도하지 못하므로, 익명 주체는 401로 구분합니다.
 
 만료(`GLOBAL_009`)와 위조(`GLOBAL_010`)를 구분하는 것이 중요합니다. 만료는 재발급으로 복구되지만 위조는 재로그인이 필요합니다.
 필터에서 `parseClaims()` 대신 `validateToken()`(boolean)을 쓰면 이 구분이 사라지고 전부 `GLOBAL_006`으로 뭉개집니다.

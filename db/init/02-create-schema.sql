@@ -16,6 +16,13 @@
 -- application.yaml 의 spring.jpa.hibernate.ddl-auto 는 validate 로 두었다.
 -- 엔티티와 테이블이 어긋나면 애플리케이션이 시작에 실패한다. 스키마 변경은 이 파일로만 한다.
 --
+-- [v12 이후 수정 - 2026-08-05: 계정 유니크를 역할별로 분리]
+--   한 사람이 클라이언트와 프리랜서로 각각 가입할 수 있다. 이메일/휴대폰을 전역 유니크로 두면
+--   같은 사람이 두 역할을 가질 수 없으므로 role 을 포함한 복합 유니크로 바꾼다.
+--    - uk_account_email -> uk_account_email_role (email, role)
+--    - uk_account_phone -> uk_account_phone_role (phone, role)
+--   같은 역할 안에서는 여전히 소셜↔일반 이메일 중복도 불가하다.
+--
 -- [v12 이후 수정 - 2026-08-05: 챗봇/1:1 문의 분리]
 --   1:1 문의와 챗봇 질의는 서로 독립된 창구이며 사용자가 선택한다.
 --   챗봇 미해결을 전제로 한 에스컬레이션 구조를 걷어냈다.
@@ -809,8 +816,9 @@ CREATE TABLE "ai_agent_log" (
 -- =====================================================================
 
 ALTER TABLE "terms" ADD CONSTRAINT "uk_terms_code_version" UNIQUE ("code", "version");
-ALTER TABLE "account" ADD CONSTRAINT "uk_account_email" UNIQUE ("email");
-ALTER TABLE "account" ADD CONSTRAINT "uk_account_phone" UNIQUE ("phone");
+-- 역할이 다르면 같은 이메일/휴대폰으로 각각 가입할 수 있다. (클라이언트 계정 + 프리랜서 계정)
+ALTER TABLE "account" ADD CONSTRAINT "uk_account_email_role" UNIQUE ("email", "role");
+ALTER TABLE "account" ADD CONSTRAINT "uk_account_phone_role" UNIQUE ("phone", "role");
 ALTER TABLE "social_account" ADD CONSTRAINT "uk_social_provider_uid" UNIQUE ("provider", "provider_uid");
 ALTER TABLE "client_profile" ADD CONSTRAINT "uk_client_account" UNIQUE ("account_id");
 ALTER TABLE "client_profile" ADD CONSTRAINT "uk_client_business_no" UNIQUE ("business_no");
@@ -939,8 +947,9 @@ CREATE INDEX "idx_terms_target" ON "terms" ("target_role", "is_required");
 CREATE INDEX "idx_account_role_status" ON "account" ("role", "status");
 CREATE INDEX "idx_account_name_phone" ON "account" ("name", "phone");
 CREATE INDEX "idx_account_created" ON "account" ("created_at");
-CREATE INDEX "idx_account_rejoin_email" ON "account" ("email_hash", "rejoin_available_at");
-CREATE INDEX "idx_account_rejoin_phone" ON "account" ("phone_hash", "rejoin_available_at");
+-- 재가입 제한도 역할별로 판정하므로 role 을 인덱스에 포함한다.
+CREATE INDEX "idx_account_rejoin_email" ON "account" ("email_hash", "role", "rejoin_available_at");
+CREATE INDEX "idx_account_rejoin_phone" ON "account" ("phone_hash", "role", "rejoin_available_at");
 CREATE INDEX "idx_social_account" ON "social_account" ("account_id");
 CREATE INDEX "idx_client_logo" ON "client_profile" ("logo_file_id");
 CREATE INDEX "idx_client_grade" ON "client_profile" ("grade");
@@ -1105,11 +1114,11 @@ COMMENT ON COLUMN "terms"."target_role" IS 'CLIENT / FREELANCER / NULL(공통)';
 COMMENT ON COLUMN "terms"."effective_at" IS '시행일';
 
 COMMENT ON COLUMN "account"."id" IS 'PK';
-COMMENT ON COLUMN "account"."email" IS '로그인 아이디(소문자 정규화 저장)';
+COMMENT ON COLUMN "account"."email" IS '로그인 아이디(소문자 정규화 저장). role 과 묶어서 유니크';
 COMMENT ON COLUMN "account"."password_hash" IS 'BCrypt 해시. 소셜 전용 계정은 NULL';
 COMMENT ON COLUMN "account"."role" IS 'CLIENT / FREELANCER / ADMIN';
 COMMENT ON COLUMN "account"."name" IS '이름(클라=대표자명). 수정 불가';
-COMMENT ON COLUMN "account"."phone" IS '휴대폰번호(숫자만 정규화 저장)';
+COMMENT ON COLUMN "account"."phone" IS '휴대폰번호(숫자만 정규화 저장). role 과 묶어서 유니크';
 COMMENT ON COLUMN "account"."signup_type" IS 'EMAIL / SOCIAL';
 COMMENT ON COLUMN "account"."status" IS 'PENDING / ACTIVE / LOCKED / WITHDRAWN. 정지 상태는 Redis 에서 관리';
 COMMENT ON COLUMN "account"."email_verified" IS '이메일 인증 완료 여부';

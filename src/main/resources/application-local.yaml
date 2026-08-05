@@ -31,6 +31,11 @@ spring:
 # H2 웹 콘솔은 활성화하지 않았다. 켜려면 spring.h2.console.enabled=true 와 함께
 # GlobalSecurityConfig에 /h2-console/** 허용과 frameOptions 비활성화를 추가해야 한다.
 
+app:
+  crypto:
+    # 개발 전용 더미 키(32바이트 Base64). 운영에서는 DATA_ENCRYPTION_KEY로 주입한다.
+    data-key: dGVzdC1kYXRhLWVuY3J5cHRpb24ta2V5LTMyYnl0ZXM=
+
 jwt:
   # 개발 전용 더미 키 (32바이트 이상). 운영에서는 환경변수로 주입한다.
   secret-key: local-development-only-dummy-key-do-not-use-in-production

@@ -1,0 +1,71 @@
+package com.pairing.account.infrastructure.persistence;
+
+import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.Role;
+import com.pairing.account.domain.repository.AccountRepository;
+import com.pairing.account.infrastructure.mapper.AccountMapper;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+@RequiredArgsConstructor
+public class AccountRepositoryAdapter implements AccountRepository {
+
+    private final SpringDataAccountRepository springDataRepository;
+    private final AccountMapper accountMapper;
+
+    @Override
+    public Account save(Account account) {
+        AccountJpaEntity saved = springDataRepository.save(accountMapper.toJpaEntity(account));
+        return accountMapper.toDomain(saved);
+    }
+
+    @Override
+    public Optional<Account> findById(Long id) {
+        return springDataRepository.findById(id).map(accountMapper::toDomain);
+    }
+
+    @Override
+    public Optional<Account> findByEmailAndRole(String email, Role role) {
+        return springDataRepository.findByEmailAndRoleAndDeletedAtIsNull(email, role)
+                .map(accountMapper::toDomain);
+    }
+
+    @Override
+    public boolean existsByEmailAndRole(String email, Role role) {
+        return springDataRepository.existsByEmailAndRole(email, role);
+    }
+
+    @Override
+    public boolean existsByPhoneAndRole(String phone, Role role) {
+        return springDataRepository.existsByPhoneAndRole(phone, role);
+    }
+
+    @Override
+    public List<Account> findAllByNameAndPhone(String name, String phone) {
+        return springDataRepository.findAllByNameAndPhoneAndDeletedAtIsNull(name, phone).stream()
+                .map(accountMapper::toDomain)
+                .toList();
+    }
+
+    @Override
+    public Optional<Account> findByEmailAndRoleAndNameAndPhone(String email, Role role, String name, String phone) {
+        return springDataRepository
+                .findByEmailAndRoleAndNameAndPhoneAndDeletedAtIsNull(email, role, name, phone)
+                .map(accountMapper::toDomain);
+    }
+
+    @Override
+    public boolean existsRejoinRestrictedByEmailHash(String emailHash, Role role, LocalDateTime now) {
+        return springDataRepository.existsByEmailHashAndRoleAndRejoinAvailableAtAfter(emailHash, role, now);
+    }
+
+    @Override
+    public boolean existsRejoinRestrictedByPhoneHash(String phoneHash, Role role, LocalDateTime now) {
+        return springDataRepository.existsByPhoneHashAndRoleAndRejoinAvailableAtAfter(phoneHash, role, now);
+    }
+}
