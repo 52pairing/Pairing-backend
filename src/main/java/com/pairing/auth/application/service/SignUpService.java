@@ -13,6 +13,7 @@ import com.pairing.auth.application.command.SocialSignUpCommand;
 import com.pairing.auth.application.policy.AgePolicy;
 import com.pairing.auth.application.policy.ContactPolicy;
 import com.pairing.auth.application.policy.PasswordPolicy;
+import com.pairing.auth.application.policy.PaymentPolicy;
 import com.pairing.auth.application.port.SignUpTicket;
 import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
@@ -86,7 +87,9 @@ public class SignUpService implements SignUpUseCase {
                 command.companyName(),
                 command.businessNo(),
                 command.businessField(),
-                command.employeeCount()
+                command.employeeCount(),
+                PaymentPolicy.normalize(command.card()),
+                PaymentPolicy.normalize(command.bankAccount())
         ));
 
         agreeTerms(accountId, Role.CLIENT, command.agreements(), command.userAgent());
@@ -114,7 +117,9 @@ public class SignUpService implements SignUpUseCase {
                 passwordEncoder.encode(command.password()),
                 command.name(),
                 phone,
-                command.birthDate()
+                command.birthDate(),
+                PaymentPolicy.normalize(command.card()),
+                PaymentPolicy.normalize(command.bankAccount())
         ));
 
         agreeTerms(accountId, Role.FREELANCER, command.agreements(), command.userAgent());
@@ -151,7 +156,9 @@ public class SignUpService implements SignUpUseCase {
                         ticket.provider(),
                         ticket.providerUid(),
                         ticket.email(),
-                        ticket.emailVerified()
+                        ticket.emailVerified(),
+                        PaymentPolicy.normalize(command.card()),
+                        PaymentPolicy.normalize(command.bankAccount())
                 ));
 
         agreeTerms(accountId, Role.FREELANCER, command.agreements(), command.userAgent());

@@ -1,5 +1,7 @@
 package com.pairing.auth.application.service;
 
+import com.pairing.account.application.command.BankAccountCommand;
+import com.pairing.account.application.command.CardCommand;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.BusinessField;
@@ -76,6 +78,14 @@ class SignUpServiceTest {
                 passwordEncoder, new AuthSettings());
     }
 
+    private CardCommand card() {
+        return new CardCommand("1234-5678-1234-5678", "신한카드");
+    }
+
+    private BankAccountCommand bankAccount() {
+        return new BankAccountCommand("088", "110-123-456789", "홍길동");
+    }
+
     private List<AgreeTermsCommand> agreements() {
         return List.of(new AgreeTermsCommand(1L, true));
     }
@@ -83,12 +93,12 @@ class SignUpServiceTest {
     private ClientSignUpCommand clientCommand() {
         return new ClientSignUpCommand(EMAIL, PASSWORD, PASSWORD, "홍길동", PHONE_INPUT,
                 "주식회사 페어링", BUSINESS_NO, BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_10_49,
-                agreements(), "JUnit");
+                card(), bankAccount(), agreements(), "JUnit");
     }
 
     private FreelancerSignUpCommand freelancerCommand(LocalDate birthDate) {
         return new FreelancerSignUpCommand(EMAIL, PASSWORD, PASSWORD, "홍길동", PHONE_INPUT, birthDate,
-                agreements(), "JUnit");
+                card(), bankAccount(), agreements(), "JUnit");
     }
 
     @Test
@@ -105,6 +115,11 @@ class SignUpServiceTest {
                 command.email().equals(EMAIL)
                         && command.phone().equals(PHONE_STORED)
                         && command.passwordHash().equals("$2a$10$hash")));
+        // 하이픈이 섞여 들어와도 숫자만 저장되도록 정규화한다.
+        verify(accountCommandUseCase).createClientAccount(org.mockito.ArgumentMatchers.argThat(command ->
+                command.card().cardNumber().equals("1234567812345678")
+                        && command.bankAccount().accountNo().equals("110123456789")
+                        && command.bankAccount().bankCode().equals("088")));
         verify(termsAgreementCommandUseCase).agreeAll(eq(1L), eq("CLIENT"), any(), eq("JUnit"));
         // 재사용을 막기 위해 인증 마커는 가입 직후 지운다.
         verify(verifiedMarkerPort).clear(EMAIL, VerificationPurpose.SIGNUP);
@@ -192,7 +207,7 @@ class SignUpServiceTest {
     void passwordConfirmMismatch() {
         ClientSignUpCommand command = new ClientSignUpCommand(EMAIL, PASSWORD, "Different1!", "홍길동",
                 PHONE_INPUT, "주식회사 페어링", BUSINESS_NO, BusinessField.IT_CONTENTS_AI,
-                EmployeeCount.SIZE_10_49, agreements(), "JUnit");
+                EmployeeCount.SIZE_10_49, card(), bankAccount(), agreements(), "JUnit");
 
         assertThatThrownBy(() -> signUpService.signUpClient(command))
                 .isInstanceOf(BusinessException.class)
@@ -208,7 +223,7 @@ class SignUpServiceTest {
         assertThatThrownBy(() -> signUpService.signUpFreelancerBySocial(
                 new com.pairing.auth.application.command.SocialSignUpCommand(
                         "expired-ticket", "홍길동", PHONE_INPUT, LocalDate.of(1995, 3, 1),
-                        agreements(), "JUnit")))
+                        card(), bankAccount(), agreements(), "JUnit")))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(AuthErrorCode.SIGNUP_TICKET_EXPIRED);

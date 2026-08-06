@@ -33,10 +33,15 @@
 | GET | `/api/v1/auth/exists/phone?phone=&role=` | X | 휴대폰 중복(역할별) |
 | GET | `/api/v1/auth/exists/business-no?businessNo=` | X | 사업자등록번호 중복 |
 
-공통 body 항목: `agreements[]`(`{termsId, agreed}`).
-소셜 가입 body에는 email이 없다. 티켓에 담긴 공급자 이메일을 사용한다.
+공통 body 항목(세 경로 모두 필수):
 
-**가입에서 결제수단(카드/계좌)은 받지 않는다.** 로그인 후 마이페이지에서 등록·수정한다.
+- `card`: `{cardNumber, cardBrand}` — 수수료 결제용
+- `bankAccount`: `{bankCode, accountNo, accountHolder}` — 용역비 수령용
+- `agreements[]`: `{termsId, agreed}`
+
+소셜 가입 body에는 email이 없다. 티켓에 담긴 공급자 이메일을 사용한다.
+카드번호·계좌번호는 하이픈을 넣어도 되며 서버가 숫자만 남겨 AES로 암호화 저장한다. 조회 시에는 카드 끝 4자리만 나간다.
+`bankCode`는 `GET /api/v1/meta/banks` 의 코드를 쓴다. 목록에 없는 코드는 `AC_006`.
 
 **이메일·휴대폰은 역할별로 유니크하다.** 같은 사람이 클라이언트 계정과 프리랜서 계정을 각각 가질 수 있고,
 같은 역할 안에서는 소셜↔일반을 포함해 중복이 불가하다.
@@ -86,6 +91,7 @@
 | --- | --- | --- | --- |
 | GET | `/api/v1/meta/business-fields` | X | 사업 분야 코드 목록 |
 | GET | `/api/v1/meta/employee-counts` | X | 직원수 구간 코드 목록 |
+| GET | `/api/v1/meta/banks` | X | 은행 코드 목록(금융결제원 기관코드) |
 
 ## 03. Terms
 
@@ -123,4 +129,5 @@
 | AU_026 | 500 | 메일 발송 실패 |
 | AU_027 / AU_028 | 400 | 재설정 링크 무효 / 기존 비밀번호와 동일 |
 | AC_001 ~ AC_005 | - | 계정 조회/상태 오류 |
+| AC_006 | 400 | 지원하지 않는 은행 코드 |
 | TM_002 / TM_003 | 400 | 필수 약관 미동의 / 알 수 없는 약관 포함 |

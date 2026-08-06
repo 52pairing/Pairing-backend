@@ -16,7 +16,7 @@
 
 | 도메인 | 소유 테이블 | 책임 |
 | --- | --- | --- |
-| `account` | account, social_account, client_profile, freelancer_profile, payment_method | 계정 애그리거트. 계정 생성·상태 전이(PENDING/ACTIVE/LOCKED/WITHDRAWN)·비밀번호 해시 보관·중복 판정·프로필 보관. `payment_method` 는 매핑만 두고 등록 유스케이스는 마이페이지 소관 |
+| `account` | account, social_account, client_profile, freelancer_profile, payment_method | 계정 애그리거트. 계정 생성·상태 전이(PENDING/ACTIVE/LOCKED/WITHDRAWN)·비밀번호 해시 보관·중복 판정·프로필/결제수단 보관 |
 | `auth` | email_verification | 인증 흐름. 회원가입 오케스트레이션, 로그인/로그아웃/재발급, 이메일 인증, 아이디·비밀번호 찾기, 소셜 연동 |
 | `terms` | terms, terms_agreement | 약관 버전 조회, 동의 이력 기록 |
 
@@ -240,7 +240,7 @@ MINING(광산업)                    MEDICAL_HEALTHCARE(의료/헬스케어)
 | POST | `/api/v1/auth/signup/freelancer` | 프리랜서 일반 |
 | POST | `/api/v1/auth/signup/freelancer/social` | 프리랜서 소셜(티켓 필요) |
 
-가입 요청에는 결제수단이 없다. 카드·계좌 등록은 로그인 후 마이페이지에서 한다. (2026-08-05 결정)
+결제수단은 카드와 계좌를 각각 받는다. 수수료는 카드로 결제하고 용역비는 계좌로 받으므로 세 가입 경로 모두 둘 다 필수다.
 
 `POST /api/v1/auth/signup/client` 요청:
 
@@ -255,13 +255,15 @@ MINING(광산업)                    MEDICAL_HEALTHCARE(의료/헬스케어)
   "phone": "01012345678",
   "password": "Passw0rd!",
   "passwordConfirm": "Passw0rd!",
+  "card":        { "cardNumber": "1234-5678-1234-5678", "cardBrand": "신한카드" },
+  "bankAccount": { "bankCode": "088", "accountNo": "110-123-456789", "accountHolder": "홍길동" },
   "agreements": [ { "termsId": 1, "agreed": true }, { "termsId": 2, "agreed": true } ]
 }
 ```
 
-`POST /api/v1/auth/signup/freelancer` 요청: `name, phone, email, password, passwordConfirm, birthDate, agreements`.
+`POST /api/v1/auth/signup/freelancer` 요청: `name, phone, email, password, passwordConfirm, birthDate, card, bankAccount, agreements`.
 
-`POST /api/v1/auth/signup/freelancer/social` 요청: `signUpTicket, name, phone, birthDate, agreements` (email은 티켓에서 꺼내며 요청 본문으로 받지 않는다 = 수정 불가 보장).
+`POST /api/v1/auth/signup/freelancer/social` 요청: `signUpTicket, name, phone, birthDate, card, bankAccount, agreements` (email은 티켓에서 꺼내며 요청 본문으로 받지 않는다 = 수정 불가 보장).
 
 응답: 일반 가입은 `201 { accountId, role }`, 소셜 가입은 `201 { accountId, role }` + 로그인 쿠키 동시 발급.
 
@@ -333,6 +335,7 @@ FE                          AuthController            SignUpService             
                                                         | 6. @Transactional 단일 트랜잭션:
                                                         |    account(ACTIVE, EMAIL, email_verified=true)
                                                         |    client_profile
+                                                        |    payment_method x2 (CARD, BANK_ACCOUNT)
                                                         |    terms_agreement x N
                                                         | 7. AUTH_SUCCESS 마커 삭제
                                                         |<- 201 {accountId, role}
@@ -354,13 +357,14 @@ FE -> POST /auth/social/kakao/callback {code, state}
         4. 같은 email 의 account 존재? -> 예: 409 AU_007 (소셜↔일반 중복 불가)
         5. signupTicket 발급(Redis 30분: provider, providerUid, email, emailVerified)
            -> {status: SIGNUP_REQUIRED, signupTicket, prefill}
-FE -> 추가 정보 입력(이름/전화/생년월일) + 약관 동의
+FE -> 추가 정보 입력(이름/전화/생년월일/카드/계좌) + 약관 동의
 FE -> POST /auth/signup/freelancer/social {signupTicket, ...}
         6. 티켓 검증 -> 단일 트랜잭션:
              account(signup_type=SOCIAL, password_hash=NULL,
                      email_verified=공급자 인증값, status=ACTIVE)
              social_account
              freelancer_profile
+             payment_method x2 (CARD, BANK_ACCOUNT)
              terms_agreement x N
         7. 티켓 삭제 -> 로그인 토큰 발급(쿠키) -> 201
 ```
@@ -465,6 +469,8 @@ Access 30분·Refresh 7일은 `application.yaml` 에 이미 설정되어 있어 
 | 전화번호 | `^01[016789]\d{7,8}$` (하이픈 제거 후). **역할별 유니크** | 숫자만 |
 | 사업자등록번호 | `^\d{10}$` + 국세청 체크섬 | CHAR(10) 숫자만 |
 | 생년월일 | 만 18세 이상 (`birthDate <= today.minusYears(18)`) | DATE |
+| 카드번호/계좌번호 | 하이픈 허용, 저장 전 숫자만 남김 | AES-256-GCM → BYTEA, 카드 끝 4자리만 평문 |
+| 은행 코드 | `BankCode` enum(금융결제원 기관코드)에 있는 값만 | CHAR 아님, VARCHAR(10) 숫자 코드 |
 | 약관 | `is_required=true` 인 최신 버전 전부 `agreed=true` | terms_agreement |
 
 - 형식 검증은 request record의 `jakarta.validation`(1차) + `application/policy`(2차, 도메인 규칙)로 이중화한다. 소셜 가입은 request가 달라도 policy는 공유된다.
@@ -595,9 +601,10 @@ Swagger는 컨트롤러 메서드마다 `@ApiErrorCodeExample(domain = AuthError
 1. ~~이메일·휴대폰 유니크 범위~~ — **확정(2026-08-05)**: 한 사람이 클라이언트와 프리랜서로 각각 가입할 수 있다. 유니크를 `(email, role)`, `(phone, role)` 복합으로 바꿨고, 조회·중복 판정·재가입 제한이 모두 역할별로 동작한다. 같은 역할 안에서는 소셜↔일반 중복도 여전히 불가하다. 그 결과 로그인/비밀번호 재설정/잠금 해제 요청에 `role` 이 필수가 되었고, 아이디 찾기 응답은 역할을 함께 내려준다.
 2. ~~연령 기준~~ — **확정(2026-08-05)**: 만 18세 계산 방식이 맞다. `AgePolicy` 가 생일까지 반영해 판정한다.
 3. **잠금 후 복구 경로** — R14 본문은 "이메일 인증 후 임시비밀번호 발급", 제약사항은 "이메일 인증 후 로그인"이다. **제약사항 쪽(인증 후 잠금 해제, 임시 비밀번호는 비밀번호 찾기 전용)으로 설계했다.**
-4. ~~결제수단 필수 개수~~ — **확정(2026-08-05)**: 가입에서는 결제수단을 받지 않는다. 요구사항 R13의 "카드번호/계좌번호" 항목은 로그인 후 마이페이지로 옮긴다.
-   `payment_method` 테이블 매핑(도메인 모델·JPA 엔티티·리포지토리)과 AES 암호화는 남겨 두었고 등록 유스케이스만 없앴다.
-   마이페이지 도메인이 그 매핑을 그대로 쓰면 된다. `PaymentMethodPersistenceTest` 가 매핑과 암호화 왕복을 검증한다.
+4. ~~결제수단 필수 개수~~ — **확정(2026-08-05)**: 가입에서 카드 1건 + 계좌 1건을 **둘 다 필수**로 받는다.
+   요청 형태는 배열이 아니라 `card` / `bankAccount` 두 객체다. 한 항목에 카드와 계좌 필드를 섞어 보내
+   한쪽이 조용히 누락되는 사고를 막기 위해서다. 은행은 `BankCode` enum으로 검증하고
+   화면 목록은 `GET /api/v1/meta/banks` 가 내려준다. 변경(재등록)은 마이페이지 소관이다.
 5. **`account.status = PENDING` 의 용도** — 현재 설계는 가입 완료 즉시 `ACTIVE`다. 사업자등록번호 진위확인 API가 붙으면 확인 전 상태로 `PENDING` 을 쓸 수 있는데, 지금 도입할지 확인이 필요하다.
 6. **소셜 이메일이 기존 일반 계정과 같을 때** — 요구사항의 "소셜 ↔ 일반 이메일 중복 불가"에 따라 **자동 연동 없이 409로 차단**하도록 설계했다.
 7. **관리자(ADMIN) 계정 생성 경로** — R16에 역할만 있고 생성 방법이 없다. 초기 시드 INSERT로 처리할지, 관리자 화면에서 생성할지 미정이다.

@@ -4,7 +4,7 @@ import com.pairing.account.domain.model.SocialProvider;
 
 import java.time.LocalDate;
 
-/** 프리랜서 소셜 계정 + 소셜 연동 + 프로필. 비밀번호가 없다. */
+/** 프리랜서 소셜 계정 + 소셜 연동 + 프로필 + 결제수단(카드·계좌). 비밀번호가 없다. */
 public record CreateSocialFreelancerAccountCommand(
         String email,
         String name,
@@ -13,6 +13,8 @@ public record CreateSocialFreelancerAccountCommand(
         SocialProvider provider,
         String providerUid,
         String providerEmail,
-        boolean providerEmailVerified
+        boolean providerEmailVerified,
+        CardCommand card,
+        BankAccountCommand bankAccount
 ) {
 }

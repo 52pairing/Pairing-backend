@@ -1,5 +1,6 @@
 package com.pairing.account.presentation.api;
 
+import com.pairing.account.domain.model.BankCode;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.presentation.api.response.CodeLabelResponse;
@@ -32,6 +33,16 @@ public class MetaController {
                 .toList();
 
         return ResponseEntity.ok(ApiResponse.success("BUSINESS_FIELDS_FOUND", "조회에 성공했습니다.", responseData));
+    }
+
+    @GetMapping("/banks")
+    @Operation(summary = "은행 목록", description = "계좌 등록에 쓰는 은행 코드 목록입니다. code(금융결제원 기관코드)를 그대로 보냅니다.")
+    public ResponseEntity<ApiResponse<List<CodeLabelResponse>>> getBanks() {
+        List<CodeLabelResponse> responseData = Arrays.stream(BankCode.values())
+                .map(bank -> new CodeLabelResponse(bank.getCode(), bank.getLabel()))
+                .toList();
+
+        return ResponseEntity.ok(ApiResponse.success("BANKS_FOUND", "조회에 성공했습니다.", responseData));
     }
 
     @GetMapping("/employee-counts")

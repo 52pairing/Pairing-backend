@@ -5,7 +5,9 @@ import com.pairing.account.infrastructure.persistence.SpringDataAccountRepositor
 import com.pairing.account.infrastructure.persistence.SpringDataClientProfileRepository;
 import com.pairing.account.infrastructure.persistence.SpringDataFreelancerProfileRepository;
 import com.pairing.account.infrastructure.persistence.SpringDataPaymentMethodRepository;
+import com.pairing.account.domain.model.PaymentMethodType;
 import com.pairing.account.infrastructure.persistence.SpringDataSocialAccountRepository;
+import com.pairing.global.port.out.DataEncryptionPort;
 import com.pairing.auth.application.port.AccountSuspensionPort;
 import com.pairing.auth.application.port.EmailSendLimitPort;
 import com.pairing.auth.application.port.LoginAttemptPort;
@@ -77,6 +79,8 @@ class AuthFlowIntegrationTest {
     private SpringDataPaymentMethodRepository paymentMethodRepository;
     @Autowired
     private SpringDataSocialAccountRepository socialAccountRepository;
+    @Autowired
+    private DataEncryptionPort dataEncryptionPort;
 
     // Redis / SMTP 의존 포트
     @MockitoBean
@@ -131,17 +135,29 @@ class AuthFlowIntegrationTest {
         )).getId();
     }
 
+    private Map<String, Object> card() {
+        return Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "신한카드");
+    }
+
+    private Map<String, Object> bankAccount() {
+        return Map.of("bankCode", "088", "accountNo", "110-123-456789", "accountHolder", "홍길동");
+    }
+
     private Map<String, Object> clientSignUpBody() {
-        return Map.of(
-                "companyName", "주식회사 페어링",
-                "businessNo", "1234567890",
-                "businessField", "IT_CONTENTS_AI",
-                "employeeCount", "SIZE_10_49",
-                "email", EMAIL,
-                "name", "홍길동",
-                "phone", "010-1234-5678",
-                "password", PASSWORD,
-                "passwordConfirm", PASSWORD);
+        // Map.of 는 10쌍까지만 받아서 항목이 늘면 컴파일이 깨진다.
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("companyName", "주식회사 페어링");
+        body.put("businessNo", "1234567890");
+        body.put("businessField", "IT_CONTENTS_AI");
+        body.put("employeeCount", "SIZE_10_49");
+        body.put("email", EMAIL);
+        body.put("name", "홍길동");
+        body.put("phone", "010-1234-5678");
+        body.put("password", PASSWORD);
+        body.put("passwordConfirm", PASSWORD);
+        body.put("card", card());
+        body.put("bankAccount", bankAccount());
+        return body;
     }
 
     private String clientSignUpJson(List<Map<String, Object>> agreements) throws Exception {
@@ -201,6 +217,69 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
+    @DisplayName("가입하면 카드와 계좌가 암호화되어 함께 저장된다")
+    void signUpStoresPaymentMethods() throws Exception {
+        signUpClient();
+
+        Long accountId = accountRepository.findAll().get(0).getId();
+        var methods = paymentMethodRepository.findAllByAccountIdAndDeletedAtIsNull(accountId);
+        assertThat(methods).hasSize(2);
+
+        var card = methods.stream()
+                .filter(m -> m.getMethodType() == PaymentMethodType.CARD).findFirst().orElseThrow();
+        var bank = methods.stream()
+                .filter(m -> m.getMethodType() == PaymentMethodType.BANK_ACCOUNT).findFirst().orElseThrow();
+
+        // 하이픈은 제거되고, 평문은 저장되지 않으며, 카드 끝 4자리만 따로 남는다.
+        assertThat(dataEncryptionPort.decrypt(card.getCardNumberEnc())).isEqualTo("1234567812345678");
+        assertThat(card.getCardLast4()).isEqualTo("5678");
+        assertThat(card.getCardBrand()).isEqualTo("신한카드");
+
+        assertThat(bank.getBankCode()).isEqualTo("088");
+        assertThat(dataEncryptionPort.decrypt(bank.getAccountNoEnc())).isEqualTo("110123456789");
+        assertThat(bank.getAccountHolder()).isEqualTo("홍길동");
+    }
+
+    @Test
+    @DisplayName("등록되지 않은 은행 코드는 AC_006으로 막고 계정도 남기지 않는다")
+    void signUpWithUnknownBankCode() throws Exception {
+        Map<String, Object> body = new java.util.HashMap<>(clientSignUpBody());
+        body.put("bankAccount", Map.of(
+                "bankCode", "999", "accountNo", "110123456789", "accountHolder", "홍길동"));
+        body.put("agreements", clientAgreements());
+
+        mockMvc.perform(post("/api/v1/auth/signup/client")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("AC_006"));
+
+        assertThat(accountRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("카드 정보가 빠지면 400으로 막는다")
+    void signUpWithoutCard() throws Exception {
+        Map<String, Object> body = new java.util.HashMap<>(clientSignUpBody());
+        body.remove("card");
+        body.put("agreements", clientAgreements());
+
+        mockMvc.perform(post("/api/v1/auth/signup/client")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
+    }
+
+    @Test
+    @DisplayName("은행 목록을 코드와 이름으로 내려준다")
+    void findBanks() throws Exception {
+        mockMvc.perform(get("/api/v1/meta/banks"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.code == '088')].label").value("신한은행"));
+    }
+
+    @Test
     @DisplayName("같은 이메일·휴대폰이라도 역할이 다르면 가입할 수 있다")
     void sameContactDifferentRoleIsAllowed() throws Exception {
         signUpClient();
@@ -211,7 +290,9 @@ class AuthFlowIntegrationTest {
                 "email", EMAIL,
                 "password", PASSWORD,
                 "passwordConfirm", PASSWORD,
-                "birthDate", "1995-03-01"));
+                "birthDate", "1995-03-01",
+                "card", card(),
+                "bankAccount", bankAccount()));
         freelancer.put("agreements", List.of(
                 Map.of("termsId", freelancerTermsId, "agreed", true),
                 Map.of("termsId", privacyTermsId, "agreed", true),

@@ -3,7 +3,7 @@ package com.pairing.account.application.command;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.EmployeeCount;
 
-/** 클라이언트 계정 + 기업 프로필을 한 번에 만든다. (결제수단 등록은 마이페이지 소관) */
+/** 클라이언트 계정 + 기업 프로필 + 결제수단(카드·계좌)을 한 번에 만든다. */
 public record CreateClientAccountCommand(
         String email,
         String passwordHash,
@@ -12,6 +12,8 @@ public record CreateClientAccountCommand(
         String companyName,
         String businessNo,
         BusinessField businessField,
-        EmployeeCount employeeCount
+        EmployeeCount employeeCount,
+        CardCommand card,
+        BankAccountCommand bankAccount
 ) {
 }

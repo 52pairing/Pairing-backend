@@ -45,6 +45,16 @@ public record FreelancerSignUpRequest(
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate birthDate,
 
+        @Schema(description = "수수료 결제용 카드")
+        @NotNull(message = "카드 정보는 필수입니다.")
+        @Valid
+        CardRequest card,
+
+        @Schema(description = "용역비 수령용 계좌")
+        @NotNull(message = "계좌 정보는 필수입니다.")
+        @Valid
+        BankAccountRequest bankAccount,
+
         @Schema(description = "약관 동의 목록")
         @NotEmpty(message = "약관 동의는 필수입니다.")
         @Valid
@@ -59,6 +69,8 @@ public record FreelancerSignUpRequest(
                 name,
                 phone,
                 birthDate,
+                card.toCommand(),
+                bankAccount.toCommand(),
                 agreements.stream().map(TermsAgreementRequest::toCommand).toList(),
                 userAgent
         );

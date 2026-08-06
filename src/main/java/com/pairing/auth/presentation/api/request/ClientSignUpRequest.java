@@ -57,6 +57,16 @@ public record ClientSignUpRequest(
         @NotBlank(message = "비밀번호 확인은 필수입니다.")
         String passwordConfirm,
 
+        @Schema(description = "수수료 결제용 카드")
+        @NotNull(message = "카드 정보는 필수입니다.")
+        @Valid
+        CardRequest card,
+
+        @Schema(description = "용역비 수령용 계좌")
+        @NotNull(message = "계좌 정보는 필수입니다.")
+        @Valid
+        BankAccountRequest bankAccount,
+
         @Schema(description = "약관 동의 목록")
         @NotEmpty(message = "약관 동의는 필수입니다.")
         @Valid
@@ -74,6 +84,8 @@ public record ClientSignUpRequest(
                 businessNo,
                 businessField,
                 employeeCount,
+                card.toCommand(),
+                bankAccount.toCommand(),
                 agreements.stream().map(TermsAgreementRequest::toCommand).toList(),
                 userAgent
         );

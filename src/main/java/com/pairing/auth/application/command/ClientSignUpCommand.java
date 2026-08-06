@@ -2,6 +2,8 @@ package com.pairing.auth.application.command;
 
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.EmployeeCount;
+import com.pairing.account.application.command.BankAccountCommand;
+import com.pairing.account.application.command.CardCommand;
 import com.pairing.terms.application.command.AgreeTermsCommand;
 
 import java.util.List;
@@ -17,6 +19,8 @@ public record ClientSignUpCommand(
         String businessNo,
         BusinessField businessField,
         EmployeeCount employeeCount,
+        CardCommand card,
+        BankAccountCommand bankAccount,
         List<AgreeTermsCommand> agreements,
         String userAgent
 ) {

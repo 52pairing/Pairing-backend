@@ -125,6 +125,7 @@ export async function apiCall<T>(path: string, init: RequestInit = {}, retry = t
 [가입 폼 진입]
   GET  /api/v1/meta/business-fields        사업 분야 셀렉트
   GET  /api/v1/meta/employee-counts        직원수 셀렉트
+  GET  /api/v1/meta/banks                  은행 셀렉트
   GET  /api/v1/terms?role=CLIENT           약관 목록
 
 [입력 중 - blur 시점]
@@ -140,7 +141,7 @@ export async function apiCall<T>(path: string, init: RequestInit = {}, retry = t
   POST /api/v1/auth/signup/client   -> 201, 로그인 페이지로
 ```
 
-> 결제수단(카드/계좌)은 가입 폼에서 받지 않습니다. 로그인 후 마이페이지에서 등록합니다.
+> 카드와 계좌는 가입 폼에서 함께 받습니다. 수수료는 카드로 결제하고 용역비는 계좌로 받기 때문에 둘 다 필수입니다.
 
 ### 1-2. 프리랜서 일반 회원가입
 
@@ -170,7 +171,7 @@ POST /api/v1/auth/signup/freelancer          -> 201
 
        data.status === 'SIGNUP_REQUIRED'
          -> data.signUpTicket 보관, data.email(수정 불가) / data.name(수정 가능) 프리필
-         -> 추가 정보 입력(이름/전화번호/생년월일) + 약관 동의
+         -> 추가 정보 입력(이름/전화번호/생년월일/카드/계좌) + 약관 동의
   POST /api/v1/auth/signup/freelancer/social  -> 201, 쿠키까지 함께 발급됨(바로 로그인 상태)
 ```
 
@@ -231,6 +232,15 @@ POST /api/v1/auth/login  { email, password, role }
 #### `GET /api/v1/meta/employee-counts` (X)
 
 `SIZE_1_4`(1~4명) / `SIZE_5_9` / `SIZE_10_49` / `SIZE_50_299` / `SIZE_300_OVER`(300명 이상)
+
+#### `GET /api/v1/meta/banks` (X)
+
+```json
+{ "code": "BANKS_FOUND",
+  "data": [ { "code": "004", "label": "KB국민은행" }, { "code": "088", "label": "신한은행" } ] }
+```
+
+계좌 등록 셀렉트에 씁니다. `code`(금융결제원 기관코드)를 `bankAccount.bankCode`로 그대로 보냅니다.
 
 #### `GET /api/v1/terms?role=CLIENT` (X)
 
@@ -309,6 +319,8 @@ POST /api/v1/auth/login  { email, password, role }
   "phone": "010-1234-5678",
   "password": "Passw0rd!",
   "passwordConfirm": "Passw0rd!",
+  "card": { "cardNumber": "1234-5678-1234-5678", "cardBrand": "신한카드" },
+  "bankAccount": { "bankCode": "088", "accountNo": "110-123-456789", "accountHolder": "홍길동" },
   "agreements": [
     { "termsId": 1, "agreed": true },
     { "termsId": 3, "agreed": true },
@@ -331,6 +343,8 @@ POST /api/v1/auth/login  { email, password, role }
   "password": "Passw0rd!",
   "passwordConfirm": "Passw0rd!",
   "birthDate": "1995-03-01",
+  "card": { /* 위와 동일 */ },
+  "bankAccount": { /* 위와 동일 */ },
   "agreements": [ /* 위와 동일 */ ]
 }
 ```
@@ -345,6 +359,8 @@ POST /api/v1/auth/login  { email, password, role }
   "name": "홍길동",
   "phone": "010-1234-5678",
   "birthDate": "1995-03-01",
+  "card": { /* 동일 */ },
+  "bankAccount": { /* 동일 */ },
   "agreements": [ /* 동일 */ ]
 }
 ```
@@ -358,7 +374,8 @@ POST /api/v1/auth/login  { email, password, role }
 
 **공통 규칙**
 
-- 결제수단은 가입 요청에 포함하지 않습니다. 마이페이지 API가 준비되면 그쪽에서 등록합니다.
+- `card`와 `bankAccount`는 세 가입 경로 모두 **필수**입니다. 카드번호·계좌번호는 하이픈을 넣어도 되고, 서버가 숫자만 남겨 암호화 저장합니다. 조회 시에는 카드 끝 4자리만 나갑니다.
+- `bankCode`는 `GET /api/v1/meta/banks` 응답의 `code`를 그대로 보냅니다. 목록에 없는 값이면 `AC_006`입니다.
 - `phone`은 하이픈이 있어도 없어도 됩니다. 서버가 숫자만 남겨 저장합니다.
 - `businessNo`는 하이픈 없이 숫자 10자리만 허용합니다. (국세청 진위확인은 아직 연동 전이라 형식·중복만 봅니다)
 
@@ -498,6 +515,9 @@ Redis의 토큰·세션을 지우고 쿠키를 만료시킵니다. 만료된 토
 | 전화번호 | `01[016789]` 로 시작. 하이픈 있어도 없어도 됨 | `GLOBAL_002` |
 | 사업자등록번호 | 하이픈 없이 숫자 10자리 | `GLOBAL_002` |
 | 생년월일 | `YYYY-MM-DD`, 만 18세 이상 | `AU_025` |
+| 카드번호 | 숫자 11~25자, 하이픈 허용 | `GLOBAL_002` |
+| 계좌번호 | 숫자 6~26자, 하이픈 허용 | `GLOBAL_002` |
+| 은행 코드 | `/meta/banks` 목록의 code | `AC_006` |
 | 약관 | 필수 항목 전부 동의 | `TM_002` |
 
 **화면 요구사항으로 프론트가 처리할 것** (서버 관여 없음)
@@ -585,7 +605,7 @@ Redis의 토큰·세션을 지우고 쿠키를 만료시킵니다. 만료된 토
 
 이 문서 범위 밖(미구현)입니다. 연동 계획에 참고하세요.
 
-- 마이페이지 조회/수정(**결제수단 등록·수정 포함**), 회원 탈퇴
+- 마이페이지 조회/수정(결제수단 변경 포함), 회원 탈퇴
 - 사업자등록번호 국세청 진위확인 (지금은 형식·중복만 확인)
 - 관리자(ADMIN) 계정 생성 경로
 - 프로필 이미지 업로드 (파일 API는 `global`에 있으나 계정 도메인에 아직 연결되지 않음)
