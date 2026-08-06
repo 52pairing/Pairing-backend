@@ -1,6 +1,5 @@
 package com.pairing.auth.application.command;
 
-import com.pairing.account.application.command.PaymentMethodCommand;
 import com.pairing.terms.application.command.AgreeTermsCommand;
 
 import java.time.LocalDate;
@@ -14,7 +13,6 @@ public record FreelancerSignUpCommand(
         String name,
         String phone,
         LocalDate birthDate,
-        List<PaymentMethodCommand> paymentMethods,
         List<AgreeTermsCommand> agreements,
         String userAgent
 ) {

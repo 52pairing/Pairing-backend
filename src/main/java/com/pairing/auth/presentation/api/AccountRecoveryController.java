@@ -13,6 +13,7 @@ import com.pairing.auth.presentation.api.response.FindEmailResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.exception.GlobalErrorCode;
+import com.pairing.global.security.CurrentAccountId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -20,7 +21,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -89,11 +89,9 @@ public class AccountRecoveryController {
             "LOGIN_FAILED", "INVALID_PASSWORD_FORMAT", "PASSWORD_CONFIRM_MISMATCH", "SAME_AS_CURRENT_PASSWORD"})
     public ResponseEntity<ApiResponse<Void>> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
-            Authentication authentication,
+            @CurrentAccountId Long accountId,
             HttpServletResponse response
     ) {
-        Long accountId = AuthenticatedAccount.idOf(authentication);
-
         accountRecoveryUseCase.changePassword(new ChangePasswordCommand(
                 accountId,
                 request.currentPassword(),

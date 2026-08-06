@@ -170,6 +170,7 @@ infrastructure  --------+
 | 비즈니스 예외, 에러코드 계약, 공통 예외 처리 | `global/exception` |
 | Swagger 에러코드 문서화 | `global/annotation/swagger` + `global/config/SwaggerConfig` |
 | JWT 발급/검증, 시큐리티 설정, 401/403 응답 | `global/security` |
+| 로그인한 계정 ID 주입 | `global/security/CurrentAccountId` |
 | 파일 업로드/삭제 | `global/port/out/FileStoragePort` (구현: `global/infrastructure/s3`) |
 | 파일 URL 자동 변환 | `global/infrastructure/s3/CdnMappable` |
 | Redis 접근 | `global/config/RedisConfig` + `global/util/RedisKeys` |
@@ -178,6 +179,60 @@ infrastructure  --------+
 | 공통 로깅 | `global/aop/ApiLoggingAop` |
 | 비동기 실행 | `global/config/AsyncConfig` |
 | 파일 종류 판별 | `global/util/FileTypeDetector` + `global/type/FileType` |
+
+## 다른 도메인에서 로그인 사용자 다루기
+
+새 도메인(프로젝트, 매칭, 이력서 등)이 "지금 요청한 사람"을 알아야 할 때 쓰는 방법이다.
+
+### 1. 계정 ID: `@CurrentAccountId`
+
+```java
+@PostMapping
+@PreAuthorize("hasRole('CLIENT')")
+public ResponseEntity<ApiResponse<ProjectResponse>> create(
+        @CurrentAccountId Long accountId,
+        @Valid @RequestBody CreateProjectRequest request
+) {
+    Long projectId = projectCommandUseCase.create(request.toCommand(accountId));
+    ...
+}
+```
+
+- 비로그인 요청은 리졸버가 401(`GLOBAL_006`)로 끊으므로 컨트롤러에서 null 검사를 하지 않는다.
+- `Authentication` 을 직접 받아 `Long.valueOf(getName())` 하지 않는다. 형식이 어긋나면 500이 난다.
+
+### 2. 역할(권한) 확인: `@PreAuthorize`
+
+토큰의 role 클레임이 `ROLE_CLIENT` / `ROLE_FREELANCER` / `ROLE_ADMIN` 권한으로 변환되어 있다.
+
+```java
+@PreAuthorize("hasRole('FREELANCER')")
+@PreAuthorize("hasAnyRole('CLIENT', 'ADMIN')")
+```
+
+경로 단위 규칙은 `GlobalSecurityConfig`, 메서드 단위는 `@PreAuthorize`가 담당한다.
+
+### 3. 계정 상세 정보: `AccountQueryUseCase`
+
+이름·이메일·역할·상태가 필요하면 account 도메인의 인바운드 포트를 주입한다.
+
+```java
+private final AccountQueryUseCase accountQueryUseCase;
+
+Account account = accountQueryUseCase.getById(accountId);   // 없으면 AC_001
+account.getName(); account.getEmail(); account.getRole();
+```
+
+- `AccountRepository`, `AccountJpaEntity`, `SpringDataAccountRepository` 를 직접 주입하지 않는다.
+  다른 도메인의 인프라를 참조하는 순간 도메인 경계가 사라진다.
+- 반환 타입은 도메인 모델(`Account`)이다. JPA 엔티티는 도메인 밖으로 내보내지 않는다.
+- 프로필(기업 정보, 생년월일)이 필요하면 account 도메인에 조회 메서드를 추가해서 쓴다.
+  다른 도메인이 `client_profile` 테이블을 직접 읽지 않는다.
+
+### 4. 계정 정보를 복사해 두지 않는다
+
+프로젝트/이력서 테이블에 이름·이메일을 중복 저장하지 않는다. `account_id`(FK)만 들고,
+표시할 때 조회한다. 사용자가 이름을 바꾸면 복사본은 즉시 낡은 값이 된다.
 
 ## 새 기능 체크리스트
 

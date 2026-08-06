@@ -1,6 +1,5 @@
 package com.pairing.auth.application.command;
 
-import com.pairing.account.application.command.PaymentMethodCommand;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.terms.application.command.AgreeTermsCommand;
@@ -18,7 +17,6 @@ public record ClientSignUpCommand(
         String businessNo,
         BusinessField businessField,
         EmployeeCount employeeCount,
-        List<PaymentMethodCommand> paymentMethods,
         List<AgreeTermsCommand> agreements,
         String userAgent
 ) {

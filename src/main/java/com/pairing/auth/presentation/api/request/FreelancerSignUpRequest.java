@@ -45,11 +45,6 @@ public record FreelancerSignUpRequest(
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate birthDate,
 
-        @Schema(description = "결제/정산 수단(카드, 계좌)")
-        @NotEmpty(message = "결제 수단은 필수입니다.")
-        @Valid
-        List<PaymentMethodRequest> paymentMethods,
-
         @Schema(description = "약관 동의 목록")
         @NotEmpty(message = "약관 동의는 필수입니다.")
         @Valid
@@ -64,7 +59,6 @@ public record FreelancerSignUpRequest(
                 name,
                 phone,
                 birthDate,
-                paymentMethods.stream().map(PaymentMethodRequest::toCommand).toList(),
                 agreements.stream().map(TermsAgreementRequest::toCommand).toList(),
                 userAgent
         );

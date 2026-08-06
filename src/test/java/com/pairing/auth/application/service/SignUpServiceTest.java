@@ -1,6 +1,5 @@
 package com.pairing.auth.application.service;
 
-import com.pairing.account.application.command.PaymentMethodCommand;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.BusinessField;
@@ -77,12 +76,6 @@ class SignUpServiceTest {
                 passwordEncoder, new AuthSettings());
     }
 
-    private List<PaymentMethodCommand> payments() {
-        return List.of(
-                PaymentMethodCommand.card("1234567812345678", "신한카드"),
-                PaymentMethodCommand.bankAccount("088", "11012345678901", "홍길동"));
-    }
-
     private List<AgreeTermsCommand> agreements() {
         return List.of(new AgreeTermsCommand(1L, true));
     }
@@ -90,12 +83,12 @@ class SignUpServiceTest {
     private ClientSignUpCommand clientCommand() {
         return new ClientSignUpCommand(EMAIL, PASSWORD, PASSWORD, "홍길동", PHONE_INPUT,
                 "주식회사 페어링", BUSINESS_NO, BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_10_49,
-                payments(), agreements(), "JUnit");
+                agreements(), "JUnit");
     }
 
     private FreelancerSignUpCommand freelancerCommand(LocalDate birthDate) {
         return new FreelancerSignUpCommand(EMAIL, PASSWORD, PASSWORD, "홍길동", PHONE_INPUT, birthDate,
-                payments(), agreements(), "JUnit");
+                agreements(), "JUnit");
     }
 
     @Test
@@ -199,7 +192,7 @@ class SignUpServiceTest {
     void passwordConfirmMismatch() {
         ClientSignUpCommand command = new ClientSignUpCommand(EMAIL, PASSWORD, "Different1!", "홍길동",
                 PHONE_INPUT, "주식회사 페어링", BUSINESS_NO, BusinessField.IT_CONTENTS_AI,
-                EmployeeCount.SIZE_10_49, payments(), agreements(), "JUnit");
+                EmployeeCount.SIZE_10_49, agreements(), "JUnit");
 
         assertThatThrownBy(() -> signUpService.signUpClient(command))
                 .isInstanceOf(BusinessException.class)
@@ -215,7 +208,7 @@ class SignUpServiceTest {
         assertThatThrownBy(() -> signUpService.signUpFreelancerBySocial(
                 new com.pairing.auth.application.command.SocialSignUpCommand(
                         "expired-ticket", "홍길동", PHONE_INPUT, LocalDate.of(1995, 3, 1),
-                        payments(), agreements(), "JUnit")))
+                        agreements(), "JUnit")))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(AuthErrorCode.SIGNUP_TICKET_EXPIRED);

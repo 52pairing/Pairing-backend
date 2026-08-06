@@ -131,13 +131,6 @@ class AuthFlowIntegrationTest {
         )).getId();
     }
 
-    private List<Map<String, Object>> payments() {
-        return List.of(
-                Map.of("methodType", "CARD", "cardNumber", "1234567812345678", "cardBrand", "신한카드"),
-                Map.of("methodType", "BANK_ACCOUNT", "bankCode", "088",
-                        "accountNo", "11012345678901", "accountHolder", "홍길동"));
-    }
-
     private Map<String, Object> clientSignUpBody() {
         return Map.of(
                 "companyName", "주식회사 페어링",
@@ -148,8 +141,7 @@ class AuthFlowIntegrationTest {
                 "name", "홍길동",
                 "phone", "010-1234-5678",
                 "password", PASSWORD,
-                "passwordConfirm", PASSWORD,
-                "paymentMethods", payments());
+                "passwordConfirm", PASSWORD);
     }
 
     private String clientSignUpJson(List<Map<String, Object>> agreements) throws Exception {
@@ -219,8 +211,7 @@ class AuthFlowIntegrationTest {
                 "email", EMAIL,
                 "password", PASSWORD,
                 "passwordConfirm", PASSWORD,
-                "birthDate", "1995-03-01",
-                "paymentMethods", payments()));
+                "birthDate", "1995-03-01"));
         freelancer.put("agreements", List.of(
                 Map.of("termsId", freelancerTermsId, "agreed", true),
                 Map.of("termsId", privacyTermsId, "agreed", true),

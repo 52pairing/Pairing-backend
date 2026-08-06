@@ -3,7 +3,6 @@ package com.pairing.auth.application.service;
 import com.pairing.account.application.command.CreateClientAccountCommand;
 import com.pairing.account.application.command.CreateFreelancerAccountCommand;
 import com.pairing.account.application.command.CreateSocialFreelancerAccountCommand;
-import com.pairing.account.application.command.PaymentMethodCommand;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.Account;
@@ -87,8 +86,7 @@ public class SignUpService implements SignUpUseCase {
                 command.companyName(),
                 command.businessNo(),
                 command.businessField(),
-                command.employeeCount(),
-                command.paymentMethods()
+                command.employeeCount()
         ));
 
         agreeTerms(accountId, Role.CLIENT, command.agreements(), command.userAgent());
@@ -116,8 +114,7 @@ public class SignUpService implements SignUpUseCase {
                 passwordEncoder.encode(command.password()),
                 command.name(),
                 phone,
-                command.birthDate(),
-                command.paymentMethods()
+                command.birthDate()
         ));
 
         agreeTerms(accountId, Role.FREELANCER, command.agreements(), command.userAgent());
@@ -154,8 +151,7 @@ public class SignUpService implements SignUpUseCase {
                         ticket.provider(),
                         ticket.providerUid(),
                         ticket.email(),
-                        ticket.emailVerified(),
-                        command.paymentMethods()
+                        ticket.emailVerified()
                 ));
 
         agreeTerms(accountId, Role.FREELANCER, command.agreements(), command.userAgent());

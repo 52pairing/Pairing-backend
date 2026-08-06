@@ -12,6 +12,7 @@ import com.pairing.auth.presentation.api.response.MeResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.exception.GlobalErrorCode;
+import com.pairing.global.security.CurrentAccountId;
 import com.pairing.global.security.GlobalJwtProvider;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,7 +23,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -111,9 +111,7 @@ public class AuthController {
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "현재 로그인 사용자 조회")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED", "TOKEN_EXPIRED"})
-    public ResponseEntity<ApiResponse<MeResponse>> me(Authentication authentication) {
-        Long accountId = AuthenticatedAccount.idOf(authentication);
-
+    public ResponseEntity<ApiResponse<MeResponse>> me(@CurrentAccountId Long accountId) {
         return ResponseEntity.ok(ApiResponse.success("ME_FOUND", "조회에 성공했습니다.",
                 MeResponse.from(accountQueryUseCase.getById(accountId))));
     }

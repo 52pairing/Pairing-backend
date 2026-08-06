@@ -27,6 +27,36 @@
 - `COOKIE_SECURE`: https 배포 시 `true`. `true`일 때만 `SameSite=None`(크로스 도메인 전송)이 유효합니다.
 - `CORS_ALLOWED_ORIGINS`: 허용 오리진 목록(쉼표 구분). credentials를 쓰므로 와일드카드 `*`는 사용할 수 없습니다.
 
+전체 키 목록과 채우는 요령은 `.env.example`에 정리되어 있습니다. 새 환경변수를 추가하면 그 파일도 함께 갱신하십시오.
+
+### 데이터 암호화
+
+- `DATA_ENCRYPTION_KEY`: 카드번호·계좌번호 AES-256-GCM 키. **필수입니다. 주입하지 않으면 기동에 실패합니다.**
+  Base64로 인코딩한 정확히 32바이트여야 합니다. (생성: `openssl rand -base64 32`)
+  키를 교체하면 기존 암호문을 복호화할 수 없으므로 재암호화 절차가 필요합니다.
+
+### 메일 (이메일 인증코드 · 비밀번호 재설정 · 임시 비밀번호)
+
+- `MAIL_HOST` / `MAIL_PORT`: SMTP 서버와 포트 (587 STARTTLS 기준)
+- `MAIL_USERNAME` / `MAIL_PASSWORD`: 발송 계정. Gmail·네이버는 계정 비밀번호가 아니라 **앱 비밀번호**가 필요합니다.
+- `MAIL_FROM`: 발신자 표시 주소. `MAIL_USERNAME`과 다르면 메일 서버가 거부할 수 있습니다.
+- `MAIL_SMTP_AUTH` / `MAIL_SMTP_STARTTLS`: 기본값 `true`
+
+미설정이어도 기동은 됩니다. 발송 시점에 `AU_026`으로 실패합니다.
+메일 헬스체크(`management.health.mail.enabled`)는 꺼져 있습니다. 켜면 SMTP가 흔들릴 때
+`/actuator/health`가 통째로 503이 되어 오케스트레이터가 멀쩡한 컨테이너를 재시작합니다.
+
+### 소셜 로그인 (프리랜서 전용)
+
+- `KAKAO_CLIENT_ID` / `KAKAO_CLIENT_SECRET` / `KAKAO_REDIRECT_URI`
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI`
+
+redirect-uri는 공급자 콘솔 등록값과 정확히 일치해야 합니다. 미설정이면 호출 시점에 `AU_018`로 실패합니다.
+
+### 프론트엔드 연동
+
+- `APP_FRONT_BASE_URL`: 비밀번호 재설정 메일에 넣을 링크의 기준 주소
+
 ### AWS S3
 
 - `S3_BUCKET`: 버킷명. **필수입니다. 없으면 기동에 실패합니다.**

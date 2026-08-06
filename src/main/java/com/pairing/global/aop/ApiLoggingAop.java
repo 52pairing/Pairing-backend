@@ -11,10 +11,29 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import java.util.Arrays;
+import java.util.regex.Pattern;
+
 @Slf4j
 @Aspect
 @Component
 public class ApiLoggingAop {
+
+    /**
+     * 로그에 남으면 안 되는 값들.
+     *
+     * <p>Command/Request는 record라 toString()에 모든 필드가 그대로 찍힌다. 그대로 두면
+     * 비밀번호 평문, 카드번호, 계좌번호, 인증코드, 토큰이 로그 파일에 쌓인다.
+     * 필드 이름 기준으로 값을 지운 뒤 출력한다.
+     *
+     * <p>새 도메인에서 민감한 필드명을 추가하면 이 목록에도 넣는다.
+     */
+    private static final Pattern SENSITIVE_FIELD_PATTERN = Pattern.compile(
+            "(?i)(password|passwordConfirm|passwordHash|newPassword|currentPassword"
+                    + "|cardNumber|accountNo|code|token|ticket|secret|refreshToken|accessToken)"
+                    + "=([^,\\]]*)");
+
+    private static final String MASK = "***";
 
     // ==========================================
     // 1. Pointcut 정의
@@ -75,7 +94,8 @@ public class ApiLoggingAop {
         Object[] args = joinPoint.getArgs();
 
         // 서비스는 HTTP URI가 없으므로 클래스.메서드명과 파라미터만 찍는다.
-        log.info("[Service Start] {}.{}() | Args: {}", serviceName, methodName, args);
+        // 비밀번호·카드번호 같은 값은 마스킹한 뒤 남긴다.
+        log.info("[Service Start] {}.{}() | Args: {}", serviceName, methodName, maskSensitive(args));
 
         long startTime = System.currentTimeMillis();
         try {
@@ -95,5 +115,26 @@ public class ApiLoggingAop {
                     serviceName, methodName, executionTime, e.getClass().getSimpleName(), e.getMessage());
             throw e;
         }
+    }
+
+
+    // ==========================================
+    // 4. 민감 정보 마스킹
+    // ==========================================
+    // 테스트에서 직접 검증할 수 있도록 package-private 으로 둔다.
+    static String maskSensitive(Object[] args) {
+        if (args == null || args.length == 0) {
+            return "[]";
+        }
+
+        String rendered;
+        try {
+            rendered = Arrays.deepToString(args);
+        } catch (RuntimeException e) {
+            // toString()에서 터진 것 때문에 요청까지 실패시키지 않는다.
+            return "[unprintable]";
+        }
+
+        return SENSITIVE_FIELD_PATTERN.matcher(rendered).replaceAll("$1=" + MASK);
     }
 }
