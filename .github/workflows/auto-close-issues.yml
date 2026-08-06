@@ -1,0 +1,37 @@
+name: Auto Close Linked Issues on Merge
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  close-issues:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    
+    permissions:
+      issues: write
+      pull-requests: read
+      
+    steps:
+      - name: Extract and close issues from PR body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "PR 본문에서 연결된 이슈를 탐색합니다..."
+          
+          ISSUE_NUMBERS=$(echo "$PR_BODY" | grep -oEi "(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s*#([0-9]+)" | grep -oE "[0-9]+" || true)
+          
+          if [ -z "$ISSUE_NUMBERS" ]; then
+            echo "본문에 연결된 이슈 번호가 없습니다."
+            exit 0
+          fi
+          
+          UNIQUE_ISSUES=$(echo "$ISSUE_NUMBERS" | sort -u)
+          
+          for ISSUE in $UNIQUE_ISSUES; do
+            echo "이슈 #$ISSUE 를 닫습니다..."
+            gh issue close "$ISSUE" -R ${{ github.repository }} -c "PR #$PR_NUMBER 가 머지되어 자동으로 이슈가 닫혔습니다." || echo "이슈 #$ISSUE 닫기 실패 (이미 닫혔거나 권한 오류)"
+          done
