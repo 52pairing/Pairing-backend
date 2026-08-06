@@ -1,0 +1,42 @@
+title: "[NOTICE] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 공지사항 (Notice)
+        팀원들에게 공유할 주요 안내 사항이나 변경 내역을 명확하게 작성해 주세요.
+        ---
+
+  - type: input
+    id: topic
+    attributes:
+      label: 공지 주제
+      placeholder: 예) 주간 회의 일정 변경, 새로운 브랜치 전략 안내 등
+    validations:
+      required: true
+
+  - type: textarea
+    id: content
+    attributes:
+      label: 세부 내용
+      placeholder: |
+        - 공지 목적: 
+        - 상세 내용: 
+    validations:
+      required: true
+
+  - type: textarea
+    id: action_items
+    attributes:
+      label: 팀원 확인 및 요청 사항
+      value: "- [ ] "
+    validations:
+      required: false
+
+  - type: input
+    id: references
+    attributes:
+      label: 참고 자료 및 관련 링크
+      placeholder: 관련 이슈 번호(#), PR 번호 또는 문서 링크를 입력해 주세요.
+    validations:
+      required: false
