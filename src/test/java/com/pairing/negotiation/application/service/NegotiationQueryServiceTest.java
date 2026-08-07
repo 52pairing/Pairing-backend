@@ -25,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -135,7 +136,8 @@ class NegotiationQueryServiceTest {
     @Test
     @DisplayName("프리랜서 목록(projectId 없음)은 FREELANCER 관점 + 회사명·프리 이름이 채워진다")
     void findMineAsFreelancer() {
-        List<NegotiationView> result = queryUseCase.findMine(freelancerAccountId, null, null);
+        List<NegotiationView> result = queryUseCase.findMine(
+                freelancerAccountId, null, null, PageRequest.of(0, 10)).getContent();
         assertThat(result).hasSize(1);
         NegotiationView view = result.get(0);
         assertThat(view.viewerRole()).isEqualTo(PartyRole.FREELANCER);
@@ -147,7 +149,8 @@ class NegotiationQueryServiceTest {
     @Test
     @DisplayName("클라 협상 탭(projectId 있음)은 프로젝트 소유자만 조회 가능")
     void findMineAsProjectOwner() {
-        List<NegotiationView> result = queryUseCase.findMine(CLIENT_ACCOUNT_ID, PROJECT_ID, null);
+        List<NegotiationView> result = queryUseCase.findMine(
+                CLIENT_ACCOUNT_ID, PROJECT_ID, null, PageRequest.of(0, 10)).getContent();
         assertThat(result).hasSize(1);
         assertThat(result.get(0).viewerRole()).isEqualTo(PartyRole.CLIENT);
     }
@@ -155,7 +158,8 @@ class NegotiationQueryServiceTest {
     @Test
     @DisplayName("남의 프로젝트 협상 탭을 조회하면 NG_002 (권한 구멍 차단)")
     void findMineOfOthersProjectThrows() {
-        assertThatThrownBy(() -> queryUseCase.findMine(STRANGER_ACCOUNT_ID, PROJECT_ID, null))
+        assertThatThrownBy(() -> queryUseCase.findMine(
+                STRANGER_ACCOUNT_ID, PROJECT_ID, null, PageRequest.of(0, 10)))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(NegotiationErrorCode.NOT_PARTICIPANT);

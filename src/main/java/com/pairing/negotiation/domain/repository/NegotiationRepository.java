@@ -1,20 +1,25 @@
 package com.pairing.negotiation.domain.repository;
 
 import com.pairing.negotiation.domain.model.Negotiation;
+import com.pairing.negotiation.domain.model.NegotiationStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
-import java.util.List;
 import java.util.Optional;
 
-/** 협상 애그리거트 리포지토리 포트. 조건(자식)까지 함께 저장/조회한다. */
+/** 협상 애그리거트 리포지토리 포트. 상세는 조건(자식)까지, 목록은 DB 페이징으로 조회한다. */
 public interface NegotiationRepository {
 
     Negotiation save(Negotiation negotiation);
 
     Optional<Negotiation> findById(Long id);
 
-    /** 내가 프리랜서인 협상 목록. 인자는 account.id 가 아니라 freelancer_profile.id 다. */
-    List<Negotiation> findByFreelancerId(Long freelancerProfileId);
+    /**
+     * 내가 프리랜서인 협상 목록(DB 페이징). 인자는 account.id 가 아니라 freelancer_profile.id 다.
+     * 목록은 조건(자식)을 로드하지 않는 요약이다. status 가 있으면 해당 상태로 필터한다.
+     */
+    Page<Negotiation> findByFreelancerId(Long freelancerProfileId, NegotiationStatus status, Pageable pageable);
 
-    /** 특정 프로젝트의 협상 목록(클라 협상 탭). 소유 검증은 서비스 계층에서 수행한다. */
-    List<Negotiation> findByProjectId(Long projectId);
+    /** 특정 프로젝트의 협상 목록(클라 협상 탭, DB 페이징). 소유 검증은 서비스 계층에서 수행한다. */
+    Page<Negotiation> findByProjectId(Long projectId, NegotiationStatus status, Pageable pageable);
 }

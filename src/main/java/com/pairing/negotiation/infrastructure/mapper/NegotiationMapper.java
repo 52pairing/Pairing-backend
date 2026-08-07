@@ -35,6 +35,21 @@ public class NegotiationMapper {
         for (NegotiationConditionJpaEntity c : e.getConditions()) {
             conds.add(toConditionDomain(c, e.getId()));
         }
+        return reconstitute(e, conds);
+    }
+
+    /**
+     * 목록(요약)용 매핑. 조건(자식)을 건드리지 않는다 — 목록 쿼리는 조건을 로드하지 않으므로
+     * 여기서 getConditions() 를 접근하면 지연 로딩(N+1)이 발생한다.
+     */
+    public Negotiation toDomainSummary(NegotiationJpaEntity e) {
+        if (e == null) {
+            return null;
+        }
+        return reconstitute(e, List.of());
+    }
+
+    private Negotiation reconstitute(NegotiationJpaEntity e, List<NegotiationCondition> conds) {
         return Negotiation.reconstitute(
                 e.getId(), e.getRequestId(), e.getProjectId(), e.getPositionId(), e.getFreelancerId(),
                 e.getStatus(), e.getTotalRound(), e.getAgreedAmount(), e.getBudgetCap(), e.getFloorAmount(),
