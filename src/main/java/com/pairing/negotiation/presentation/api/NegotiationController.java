@@ -20,6 +20,7 @@ import com.pairing.negotiation.presentation.api.response.NegotiationAdminSummary
 import com.pairing.negotiation.presentation.api.response.NegotiationMessageResponse;
 import com.pairing.negotiation.presentation.api.response.NegotiationResponse;
 import com.pairing.negotiation.presentation.api.response.NegotiationSummaryResponse;
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -51,14 +52,17 @@ import java.util.List;
 public class NegotiationController {
 
     @GetMapping("/mine")
-    @Operation(summary = "내 협상 목록", description = "클라이언트·프리랜서 모두 자기 기준으로 조회합니다.")
+    @Operation(summary = "내 협상 목록",
+            description = "클라이언트·프리랜서 모두 자기 기준으로 조회합니다. projectId 를 주면 해당 프로젝트의 협상만"
+                    + " 반환합니다(클라이언트 협상 탭). 카드에 라운드 X/15·lastProposalBy·lastProposalAt 를 표시합니다.")
     public ResponseEntity<ApiResponse<PageResponse<NegotiationSummaryResponse>>> findMine(
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) NegotiationStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 내가 당사자인 협상 조회
+        // TODO: 내가 당사자인 협상 조회 (projectId 있으면 해당 프로젝트로 필터)
         return ResponseEntity.ok(ApiResponse.success("NEGOTIATIONS_FOUND", "조회에 성공했습니다.",
                 new PageResponse<>(List.of(sampleSummary()), page, size, 1, 1, true, true)));
     }
@@ -112,9 +116,12 @@ public class NegotiationController {
         return ResponseEntity.ok(ApiResponse.success("ANSWER_SUBMITTED", "응답을 제출했습니다.", sampleDetail()));
     }
 
+    @Hidden
+    @Deprecated
     @PostMapping("/{negotiationId}/final-approval")
-    @Operation(summary = "최종 승인/거부",
-            description = "라운드 상한 소진 후 마지막 조건에 대해 승인 또는 거부합니다. 양측 모두 승인해야 계약으로 넘어갑니다.")
+    @Operation(summary = "[미사용] 최종 승인/거부",
+            description = "[미사용] 15회 소진 시 자동 결렬(NEGOTIATION_FAILED) 채택으로 폐기. 양측 최종 승인 단계와"
+                    + " negotiation_approval 테이블은 쓰지 않는다. 제거 예정.")
     public ResponseEntity<ApiResponse<NegotiationResponse>> finalApprove(
             @PathVariable Long negotiationId,
             @Valid @RequestBody NegotiationFinalApprovalRequest request,
@@ -214,13 +221,14 @@ public class NegotiationController {
     private NegotiationSummaryResponse sampleSummary() {
         return new NegotiationSummaryResponse(300L, "NEG-2026-001", 1L, "페어링 웹 리뉴얼",
                 "홍길동", "삼성전자", "김프리", NegotiationStatus.IN_PROGRESS, 3, true,
+                SenderType.FREELANCER_AGENT, LocalDateTime.now().minusMinutes(30),
                 LocalDateTime.now().minusDays(1), null);
     }
 
     private NegotiationResponse sampleDetail() {
         NegotiationResponse.Condition condition = new NegotiationResponse.Condition(
                 401L, ConditionType.AMOUNT, "20000000", "25000000", "22000000",
-                "프리랜서 경력이 요구 수준을 넘어 중간값을 제안합니다.", null, ConditionStatus.PENDING, 2);
+                "프리랜서 경력이 요구 수준을 넘어 중간값을 제안합니다.", null, ConditionStatus.PENDING, 2, "3500000");
 
         return new NegotiationResponse(300L, 1L, "페어링 웹 리뉴얼", 10L, "홍길동",
                 NegotiationStatus.IN_PROGRESS, 3, 15, null, 500L, null, false, List.of(condition));
