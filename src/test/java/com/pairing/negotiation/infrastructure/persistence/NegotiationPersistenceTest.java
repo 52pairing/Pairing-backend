@@ -77,15 +77,15 @@ class NegotiationPersistenceTest {
     }
 
     @Test
-    @DisplayName("findMine: projectId 없으면 프리랜서 기준, 있으면 프로젝트 기준으로 조회")
-    void findMine() {
-        Long id = negotiationRepository.save(newNegotiation()).getId();
+    @DisplayName("findByFreelancerId/findByProjectId: 명함 ID 기준으로 협상을 조회한다")
+    void findByFreelancerIdAndProjectId() {
+        Long id = negotiationRepository.save(newNegotiation()).getId();  // freelancer_profile.id=51, project.id=1
 
-        assertThat(negotiationRepository.findMine(51L, null))
+        assertThat(negotiationRepository.findByFreelancerId(51L))
                 .extracting(Negotiation::getId).contains(id);
-        assertThat(negotiationRepository.findMine(999L, 1L))
+        assertThat(negotiationRepository.findByProjectId(1L))
                 .extracting(Negotiation::getId).contains(id);
-        assertThat(negotiationRepository.findMine(999L, null))
+        assertThat(negotiationRepository.findByFreelancerId(999L))
                 .extracting(Negotiation::getId).doesNotContain(id);
     }
 }

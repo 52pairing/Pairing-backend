@@ -5,11 +5,14 @@ import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
+import com.pairing.negotiation.application.result.NegotiationView;
+import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.NegotiationMessageType;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.SenderType;
+import com.pairing.negotiation.presentation.api.support.NegotiationResponseFactory;
 import com.pairing.negotiation.presentation.api.request.NegotiationAnswerRequest;
 import com.pairing.negotiation.presentation.api.request.NegotiationFinalApprovalRequest;
 import com.pairing.negotiation.presentation.api.request.NegotiationGiveUpRequest;
@@ -51,6 +54,8 @@ import java.util.List;
 @Tag(name = "12. Negotiation", description = "A2A 협상 API")
 public class NegotiationController {
 
+    private final NegotiationQueryUseCase negotiationQueryUseCase;
+
     @GetMapping("/mine")
     @Operation(summary = "내 협상 목록",
             description = "클라이언트·프리랜서 모두 자기 기준으로 조회합니다. projectId 를 주면 해당 프로젝트의 협상만"
@@ -62,9 +67,12 @@ public class NegotiationController {
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 내가 당사자인 협상 조회 (projectId 있으면 해당 프로젝트로 필터)
+        List<NegotiationSummaryResponse> all = negotiationQueryUseCase.findMine(accountId, projectId, status)
+                .stream()
+                .map(NegotiationResponseFactory::summary)
+                .toList();
         return ResponseEntity.ok(ApiResponse.success("NEGOTIATIONS_FOUND", "조회에 성공했습니다.",
-                new PageResponse<>(List.of(sampleSummary()), page, size, 1, 1, true, true)));
+                paginate(all, page, size)));
     }
 
     @GetMapping("/{negotiationId}")
@@ -74,8 +82,9 @@ public class NegotiationController {
             @PathVariable Long negotiationId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 당사자만 열람
-        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_FOUND", "조회에 성공했습니다.", sampleDetail()));
+        NegotiationView view = negotiationQueryUseCase.getDetail(negotiationId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_FOUND", "조회에 성공했습니다.",
+                NegotiationResponseFactory.detail(view)));
     }
 
     @GetMapping("/{negotiationId}/messages")
@@ -199,6 +208,18 @@ public class NegotiationController {
     ) {
         // TODO: 관리자용 전체 로그 조회
         return ResponseEntity.ok(ApiResponse.success("MESSAGES_FOUND", "조회에 성공했습니다.", List.of(sampleMessage())));
+    }
+
+    /** 조회 결과 in-memory 페이징(당사자별 협상 수가 적음). 규모가 커지면 DB 페이징으로 전환. */
+    private static <T> PageResponse<T> paginate(List<T> all, int page, int size) {
+        if (size <= 0) {
+            return new PageResponse<>(List.of(), page, size, all.size(), 0, true, true);
+        }
+        int from = Math.min(page * size, all.size());
+        int to = Math.min(from + size, all.size());
+        int totalPages = (int) Math.ceil((double) all.size() / size);
+        return new PageResponse<>(all.subList(from, to), page, size, all.size(), totalPages,
+                page == 0, to >= all.size());
     }
 
     // ==========================================
