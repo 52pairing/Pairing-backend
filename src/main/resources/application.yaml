@@ -96,7 +96,7 @@ app:
     # 발신자 주소. SMTP 계정과 다르면 메일 서버가 거부할 수 있다.
     from-address: ${MAIL_FROM:no-reply@pairing.local}
     # 비밀번호 재설정 링크를 조립할 프론트엔드 주소
-    front-base-url: ${APP_FRONT_BASE_URL:http://localhost:3000}
+    front-base-url: ${APP_FRONT_BASE_URL:http://localhost:17000}
     # 아래 기준값은 요구사항 R13/R14에서 온다. 코드에도 같은 기본값이 있으니 함께 바꾼다.
     email-code-ttl: 3m           # 인증코드 유효시간
     email-code-max-attempt: 5    # 코드 입력 시도 상한(초과 시 폐기)
@@ -118,11 +118,11 @@ app:
     kakao:
       client-id: ${KAKAO_CLIENT_ID:}
       client-secret: ${KAKAO_CLIENT_SECRET:}
-      redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:3000/oauth/callback/kakao}
+      redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:17000/oauth/callback/kakao}
     google:
       client-id: ${GOOGLE_CLIENT_ID:}
       client-secret: ${GOOGLE_CLIENT_SECRET:}
-      redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:3000/oauth/callback/google}
+      redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:17000/oauth/callback/google}
 
   crypto:
     # 카드번호·계좌번호 AES-256-GCM 키(Base64, 32바이트). jwt.secret-key와 같은 이유로 기본값을 두지 않는다.
@@ -132,7 +132,7 @@ app:
   cors:
     # 프론트엔드 도메인을 명시한다. (와일드카드 * 는 credentials와 함께 사용할 수 없음)
     # WebSocket 핸드셰이크 허용 오리진도 이 값을 함께 사용한다.
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:17000,http://127.0.0.1:17000}
 
   websocket:
     # STOMP 핸드셰이크 경로. 바꾸면 GlobalSecurityConfig의 permitAll 경로도 함께 맞춰야 한다.
