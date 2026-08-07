@@ -47,4 +47,10 @@ public class NegotiationMessageRepositoryAdapter implements NegotiationMessageRe
         return springDataRepository.findFirstByNegotiationIdOrderByIdDesc(negotiationId)
                 .map(NegotiationMessageJpaEntity::getContentHash);
     }
+
+    @Override
+    public int countProposalsInRound(Long negotiationId, int roundNo) {
+        return (int) springDataRepository.countByNegotiationIdAndMessageTypeAndRoundNo(
+                negotiationId, NegotiationMessageType.PROPOSAL, roundNo);
+    }
 }

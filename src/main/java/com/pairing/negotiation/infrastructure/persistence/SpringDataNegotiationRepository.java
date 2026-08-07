@@ -15,6 +15,9 @@ public interface SpringDataNegotiationRepository extends JpaRepository<Negotiati
     @EntityGraph(attributePaths = "conditions")
     Optional<NegotiationJpaEntity> findWithConditionsById(Long id);
 
+    /** 매칭 요청(request_id, UNIQUE) 기준 조회. 진행조회 연동용(조건 미로드). */
+    Optional<NegotiationJpaEntity> findByRequestId(Long requestId);
+
     /**
      * 내가 프리랜서인 협상(freelancer_profile.id 기준) 페이징. 목록은 조건을 로드하지 않는다
      * (요약 화면엔 조건이 필요 없고, 컬렉션 fetch 는 DB 페이징을 인메모리로 떨어뜨리므로).

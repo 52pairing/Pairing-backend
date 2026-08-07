@@ -15,4 +15,8 @@ public interface SpringDataNegotiationMessageRepository extends JpaRepository<Ne
 
     /** 체인 머리(가장 최근 로그). id 순으로 append 되므로 최대 id 가 머리다. */
     Optional<NegotiationMessageJpaEntity> findFirstByNegotiationIdOrderByIdDesc(Long negotiationId);
+
+    /** 특정 라운드의 제안 개수(진행조회 "새 제안 개수"). */
+    long countByNegotiationIdAndMessageTypeAndRoundNo(Long negotiationId, NegotiationMessageType messageType,
+                                                      int roundNo);
 }
