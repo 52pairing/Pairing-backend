@@ -29,8 +29,15 @@ public class NegotiationRepositoryAdapter implements NegotiationRepository {
     }
 
     @Override
-    public List<Negotiation> findMine(Long accountId, Long projectId) {
-        return springDataRepository.findMine(accountId, projectId).stream()
+    public List<Negotiation> findByFreelancerId(Long freelancerProfileId) {
+        return springDataRepository.findByFreelancerId(freelancerProfileId).stream()
+                .map(negotiationMapper::toDomain)
+                .toList();
+    }
+
+    @Override
+    public List<Negotiation> findByProjectId(Long projectId) {
+        return springDataRepository.findByProjectId(projectId).stream()
                 .map(negotiationMapper::toDomain)
                 .toList();
     }
