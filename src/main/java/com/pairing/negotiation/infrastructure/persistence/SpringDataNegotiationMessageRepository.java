@@ -12,4 +12,7 @@ public interface SpringDataNegotiationMessageRepository extends JpaRepository<Ne
 
     Optional<NegotiationMessageJpaEntity> findFirstByNegotiationIdAndConditionIdAndMessageTypeOrderByRoundNoDescIdDesc(
             Long negotiationId, Long conditionId, NegotiationMessageType messageType);
+
+    /** 체인 머리(가장 최근 로그). id 순으로 append 되므로 최대 id 가 머리다. */
+    Optional<NegotiationMessageJpaEntity> findFirstByNegotiationIdOrderByIdDesc(Long negotiationId);
 }

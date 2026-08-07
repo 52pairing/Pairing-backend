@@ -11,7 +11,8 @@ public class NegotiationMessageMapper {
     public NegotiationMessageJpaEntity toJpaEntity(NegotiationMessage m) {
         return new NegotiationMessageJpaEntity(m.getId(), m.getNegotiationId(), m.getConditionId(),
                 m.getRoundNo(), m.getSenderType(), m.getMessageType(), m.getContent(), m.getReason(),
-                m.getProposedValue(), m.getResponse(), m.getCreatedAt());
+                m.getProposedValue(), m.getResponse(), m.getActingAccountId(), m.getPrevHash(),
+                m.getContentHash(), m.getCreatedAt());
     }
 
     public NegotiationMessage toDomain(NegotiationMessageJpaEntity e) {
@@ -20,6 +21,7 @@ public class NegotiationMessageMapper {
         }
         return NegotiationMessage.reconstitute(e.getId(), e.getNegotiationId(), e.getConditionId(),
                 e.getRoundNo(), e.getSenderType(), e.getMessageType(), e.getContent(), e.getReason(),
-                e.getProposedValue(), e.getResponse(), e.getCreatedAt());
+                e.getProposedValue(), e.getResponse(), e.getActingAccountId(), e.getPrevHash(),
+                e.getContentHash(), e.getCreatedAt());
     }
 }

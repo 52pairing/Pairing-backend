@@ -3,6 +3,7 @@ package com.pairing.negotiation.application.usecase;
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
+import com.pairing.negotiation.domain.service.NegotiationLogVerifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -26,4 +27,7 @@ public interface NegotiationQueryUseCase {
 
     /** 협상 로그(라운드순). 당사자만 조회 가능(아니면 NG_002), 없으면 NG_001. */
     List<NegotiationMessage> findMessages(Long negotiationId, Long accountId);
+
+    /** 협상 로그 해시 체인 무결성 검증(위변조 탐지). 당사자만(아니면 NG_002), 없으면 NG_001. */
+    NegotiationLogVerifier.Result verifyLog(Long negotiationId, Long accountId);
 }

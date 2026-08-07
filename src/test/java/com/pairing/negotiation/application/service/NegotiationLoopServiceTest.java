@@ -125,6 +125,21 @@ class NegotiationLoopServiceTest {
     }
 
     @Test
+    @DisplayName("실제 협상 로그는 해시 체인이 유효하다(증거 무결성)")
+    void logChainIsValid() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, false, "5800000")));
+
+        var result = com.pairing.negotiation.domain.service.NegotiationLogVerifier.verify(
+                messageRepository.findByNegotiationId(negotiationId));
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.checked()).isGreaterThanOrEqualTo(3);   // 제안 + 응답 + 재제안
+    }
+
+    @Test
     @DisplayName("give-up: 즉시 결렬(FAILED)")
     void giveUpFails() {
         loopUseCase.giveUp(negotiationId, FREELANCER_ACCOUNT_ID, "예산이 맞지 않습니다.");

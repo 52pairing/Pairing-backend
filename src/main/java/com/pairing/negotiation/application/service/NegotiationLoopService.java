@@ -70,14 +70,15 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                         .orElse(answer.proposedValue());
                 condition.lock(lockValue);
                 messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
-                        negotiation.getTotalRound(), sender, "제안을 수락했습니다.", "YES"));
+                        negotiation.getTotalRound(), sender, "제안을 수락했습니다.", "YES", accountId));
             } else {
                 if (answer.proposedValue() == null || answer.proposedValue().isBlank()) {
                     throw new BusinessException(NegotiationErrorCode.INVALID_CONDITION);
                 }
                 condition.redirect(role, answer.proposedValue());
                 messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
-                        negotiation.getTotalRound(), sender, "제안을 거절하고 재지시했습니다.", answer.proposedValue()));
+                        negotiation.getTotalRound(), sender, "제안을 거절하고 재지시했습니다.",
+                        answer.proposedValue(), accountId));
             }
         }
 
@@ -181,9 +182,17 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
 
     private void persist(Negotiation negotiation, List<NegotiationMessage> messages) {
         negotiationRepository.save(negotiation);
-        if (!messages.isEmpty()) {
-            messageRepository.saveAll(messages);
+        if (messages.isEmpty()) {
+            return;
         }
+        // 해시 체인 봉인: 직전 로그 해시부터 이어 붙인다(append 순서 = id 순서와 일치).
+        String prevHash = messageRepository.findLatestHash(negotiation.getId())
+                .orElse(NegotiationMessage.GENESIS_HASH);
+        for (NegotiationMessage message : messages) {
+            message.seal(prevHash);
+            prevHash = message.getContentHash();
+        }
+        messageRepository.saveAll(messages);
     }
 
     private Long parseOrNull(String value) {
