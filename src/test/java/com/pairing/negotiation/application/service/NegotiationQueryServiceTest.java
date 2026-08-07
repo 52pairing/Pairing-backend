@@ -74,9 +74,10 @@ class NegotiationQueryServiceTest {
         freelancerProfileId = freelancerProfileRepository.save(
                 FreelancerProfile.create(freelancerAccountId, LocalDate.of(1990, 1, 1))).getId();
 
-        // project 는 협상 소유의 읽기 전용 엔티티(id/client_id/title)만 매핑되므로 직접 삽입한다.
-        jdbcTemplate.update("INSERT INTO project (id, client_id, title) VALUES (?, ?, ?)",
-                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼");
+        // project 는 협상 소유의 읽기 전용 엔티티만 매핑되므로 직접 삽입한다.
+        // start_negotiable 은 NOT NULL(primitive)이라 반드시 채운다.
+        jdbcTemplate.update("INSERT INTO project (id, client_id, title, start_negotiable) VALUES (?, ?, ?, ?)",
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true);
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
                 50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));
