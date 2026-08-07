@@ -10,6 +10,7 @@ public enum ConditionStatus {
 
     PENDING("협상중"),
     AGREED("합의"),
+    REJECTED("재협상 필요"),
     FAILED("미합의");
 
     private final String label;
