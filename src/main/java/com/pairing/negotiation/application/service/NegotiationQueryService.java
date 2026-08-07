@@ -1,6 +1,7 @@
 package com.pairing.negotiation.application.service;
 
 import com.pairing.global.exception.BusinessException;
+import com.pairing.negotiation.application.port.out.PartyNameReaderPort;
 import com.pairing.negotiation.application.port.out.PartyProfilePort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort.ProjectView;
@@ -26,6 +27,7 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
     private final NegotiationRepository negotiationRepository;
     private final ProjectReaderPort projectReaderPort;
     private final PartyProfilePort partyProfilePort;
+    private final PartyNameReaderPort partyNameReaderPort;
     private final NegotiationViewerResolver viewerResolver;
 
     @Override
@@ -39,7 +41,7 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
         PartyRole role = viewerResolver.resolve(accountId, negotiation.getFreelancerId(), clientProfileId);
         String title = project.map(ProjectView::title).orElse(null);
 
-        return new NegotiationView(negotiation, role, title);
+        return toView(negotiation, role, title, clientProfileId);
     }
 
     @Override
@@ -61,9 +63,11 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
             throw new BusinessException(NegotiationErrorCode.NOT_PARTICIPANT);
         }
 
+        String clientName = partyNameReaderPort.findClientCompanyName(project.clientProfileId()).orElse(null);
         return negotiationRepository.findByProjectId(projectId).stream()
                 .filter(n -> matchesStatus(n, status))
-                .map(n -> new NegotiationView(n, PartyRole.CLIENT, project.title()))
+                .map(n -> new NegotiationView(n, PartyRole.CLIENT, project.title(), clientName,
+                        partyNameReaderPort.findFreelancerName(n.getFreelancerId()).orElse(null)))
                 .toList();
     }
 
@@ -75,11 +79,19 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
         return negotiationRepository.findByFreelancerId(myFreelancerProfileId).stream()
                 .filter(n -> matchesStatus(n, status))
                 .map(n -> {
-                    String title = projectReaderPort.findById(n.getProjectId())
-                            .map(ProjectView::title).orElse(null);
-                    return new NegotiationView(n, PartyRole.FREELANCER, title);
+                    Optional<ProjectView> project = projectReaderPort.findById(n.getProjectId());
+                    return toView(n, PartyRole.FREELANCER,
+                            project.map(ProjectView::title).orElse(null),
+                            project.map(ProjectView::clientProfileId).orElse(null));
                 })
                 .toList();
+    }
+
+    /** 애그리거트 + role + 표시용 이름(회사명·프리 이름)을 조립한다. */
+    private NegotiationView toView(Negotiation negotiation, PartyRole role, String title, Long clientProfileId) {
+        String clientName = partyNameReaderPort.findClientCompanyName(clientProfileId).orElse(null);
+        String freelancerName = partyNameReaderPort.findFreelancerName(negotiation.getFreelancerId()).orElse(null);
+        return new NegotiationView(negotiation, role, title, clientName, freelancerName);
     }
 
     private boolean matchesStatus(Negotiation negotiation, NegotiationStatus status) {
