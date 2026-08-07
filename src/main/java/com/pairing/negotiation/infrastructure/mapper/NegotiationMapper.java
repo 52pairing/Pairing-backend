@@ -1,0 +1,57 @@
+package com.pairing.negotiation.infrastructure.mapper;
+
+import com.pairing.negotiation.domain.model.Negotiation;
+import com.pairing.negotiation.domain.model.NegotiationCondition;
+import com.pairing.negotiation.infrastructure.persistence.NegotiationConditionJpaEntity;
+import com.pairing.negotiation.infrastructure.persistence.NegotiationJpaEntity;
+import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 협상 애그리거트 ↔ JPA 매핑. 도메인 생성자가 닫혀 있어 reconstitute 정적 팩토리로 복원한다.
+ * 조건(자식)은 협상과 함께 매핑한다.
+ */
+@Component
+public class NegotiationMapper {
+
+    public NegotiationJpaEntity toJpaEntity(Negotiation d) {
+        List<NegotiationConditionJpaEntity> conds = new ArrayList<>();
+        for (NegotiationCondition c : d.getConditions()) {
+            conds.add(toConditionJpa(c));
+        }
+        return new NegotiationJpaEntity(
+                d.getId(), d.getRequestId(), d.getProjectId(), d.getPositionId(), d.getFreelancerId(),
+                d.getStatus(), d.getTotalRound(), d.getAgreedAmount(), d.getBudgetCap(), d.getFloorAmount(),
+                d.getAiOutAt(), d.getStartedAt(), d.getEndedAt(), d.getEndReason(), conds);
+    }
+
+    public Negotiation toDomain(NegotiationJpaEntity e) {
+        if (e == null) {
+            return null;
+        }
+        List<NegotiationCondition> conds = new ArrayList<>();
+        for (NegotiationConditionJpaEntity c : e.getConditions()) {
+            conds.add(toConditionDomain(c, e.getId()));
+        }
+        return Negotiation.reconstitute(
+                e.getId(), e.getRequestId(), e.getProjectId(), e.getPositionId(), e.getFreelancerId(),
+                e.getStatus(), e.getTotalRound(), e.getAgreedAmount(), e.getBudgetCap(), e.getFloorAmount(),
+                e.getAiOutAt(), e.getStartedAt(), e.getEndedAt(), e.getEndReason(), conds);
+    }
+
+    private NegotiationConditionJpaEntity toConditionJpa(NegotiationCondition c) {
+        return new NegotiationConditionJpaEntity(
+                c.getId(), c.getConditionType(), c.getClientValue(), c.getFreelancerValue(),
+                c.getClientFloor(), c.getFreelancerFloor(), c.getAgreedValue(), c.getStatus(),
+                c.getRoundCount(), c.getSortOrder(), c.getAgreedAt());
+    }
+
+    private NegotiationCondition toConditionDomain(NegotiationConditionJpaEntity c, Long negotiationId) {
+        return NegotiationCondition.reconstitute(
+                c.getId(), negotiationId, c.getConditionType(), c.getClientValue(), c.getFreelancerValue(),
+                c.getClientFloor(), c.getFreelancerFloor(), c.getAgreedValue(), c.getStatus(),
+                c.getRoundCount(), c.getSortOrder(), c.getAgreedAt());
+    }
+}

@@ -1,0 +1,153 @@
+package com.pairing.negotiation.domain.model;
+
+import com.pairing.global.exception.BusinessException;
+import com.pairing.negotiation.exception.NegotiationErrorCode;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * 협상 애그리거트 루트. (요구사항 R06~R12)
+ *
+ * <p>매칭 수락으로 생성되며, 서로 맞지 않는 조건(conditions)만 담는다. 백엔드는 심판 역할로
+ * 라운드 카운트/락/타결·결렬을 확정하고, 실제 제안 문구 생성은 파이썬 AI 에이전트가 맡는다.
+ *
+ * <p>라운드 상한 {@link #MAX_ROUND}회. 소진 시 자동 결렬(설계 #5).
+ */
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Negotiation {
+
+    /** 대리인 왕복 라운드 상한. 소진 시 자동 결렬. */
+    public static final int MAX_ROUND = 15;
+
+    private Long id;
+    private Long requestId;
+    private Long projectId;
+    private Long positionId;
+    private Long freelancerId;
+    private NegotiationStatus status;
+    private int totalRound;
+    private Long agreedAmount;   // 원 단위. 타결 전 null
+    private Long budgetCap;      // 순예산 상한(원). 매칭이 배정
+    private Long floorAmount;    // [레거시] AMOUNT 조건 floor. 조건별 floor 로 대체됨
+    private LocalDateTime aiOutAt;
+    private LocalDateTime startedAt;
+    private LocalDateTime endedAt;
+    private String endReason;
+    private List<NegotiationCondition> conditions;
+
+    private Negotiation(Long requestId, Long projectId, Long positionId, Long freelancerId,
+                        Long budgetCap, List<NegotiationCondition> conditions) {
+        validateCreation(requestId, projectId, positionId, freelancerId, budgetCap);
+        this.requestId = requestId;
+        this.projectId = projectId;
+        this.positionId = positionId;
+        this.freelancerId = freelancerId;
+        this.budgetCap = budgetCap;
+        this.floorAmount = 0L;
+        this.status = NegotiationStatus.IN_PROGRESS;
+        this.totalRound = 0;
+        this.startedAt = LocalDateTime.now();
+        this.conditions = conditions == null ? List.of() : List.copyOf(conditions);
+    }
+
+    private Negotiation(Long id, Long requestId, Long projectId, Long positionId, Long freelancerId,
+                        NegotiationStatus status, int totalRound, Long agreedAmount, Long budgetCap,
+                        Long floorAmount, LocalDateTime aiOutAt, LocalDateTime startedAt,
+                        LocalDateTime endedAt, String endReason, List<NegotiationCondition> conditions) {
+        this.id = id;
+        this.requestId = requestId;
+        this.projectId = projectId;
+        this.positionId = positionId;
+        this.freelancerId = freelancerId;
+        this.status = status;
+        this.totalRound = totalRound;
+        this.agreedAmount = agreedAmount;
+        this.budgetCap = budgetCap;
+        this.floorAmount = floorAmount;
+        this.aiOutAt = aiOutAt;
+        this.startedAt = startedAt;
+        this.endedAt = endedAt;
+        this.endReason = endReason;
+        this.conditions = conditions == null ? List.of() : conditions;
+    }
+
+    /** 매칭 수락 시 협상 생성. conditions = 계산된 불일치 조건들. */
+    public static Negotiation create(Long requestId, Long projectId, Long positionId, Long freelancerId,
+                                     Long budgetCap, List<NegotiationCondition> conditions) {
+        return new Negotiation(requestId, projectId, positionId, freelancerId, budgetCap, conditions);
+    }
+
+    public static Negotiation reconstitute(Long id, Long requestId, Long projectId, Long positionId,
+                                           Long freelancerId, NegotiationStatus status, int totalRound,
+                                           Long agreedAmount, Long budgetCap, Long floorAmount,
+                                           LocalDateTime aiOutAt, LocalDateTime startedAt, LocalDateTime endedAt,
+                                           String endReason, List<NegotiationCondition> conditions) {
+        return new Negotiation(id, requestId, projectId, positionId, freelancerId, status, totalRound,
+                agreedAmount, budgetCap, floorAmount, aiOutAt, startedAt, endedAt, endReason, conditions);
+    }
+
+    /** 대리인 왕복 1라운드 소비. 상한 도달 시 소비 불가(결렬 처리로 넘긴다). */
+    public void incrementRound() {
+        ensureInProgress();
+        if (isMaxRoundReached()) {
+            throw new BusinessException(NegotiationErrorCode.ROUND_LIMIT_REACHED);
+        }
+        this.totalRound++;
+    }
+
+    public boolean isMaxRoundReached() {
+        return this.totalRound >= MAX_ROUND;
+    }
+
+    /** 전 조건 합의 → 타결(AI Out). */
+    public void agree(Long agreedAmount) {
+        ensureInProgress();
+        if (!allConditionsAgreed()) {
+            throw new BusinessException(NegotiationErrorCode.NO_PROPOSAL_TO_RESPOND);
+        }
+        this.status = NegotiationStatus.AGREED;
+        this.agreedAmount = agreedAmount;
+        this.aiOutAt = LocalDateTime.now();
+        this.endedAt = this.aiOutAt;
+    }
+
+    /** 결렬(포기 / 15회 소진). */
+    public void fail(String reason) {
+        ensureInProgress();
+        this.status = NegotiationStatus.FAILED;
+        this.endReason = reason;
+        this.endedAt = LocalDateTime.now();
+    }
+
+    public boolean allConditionsAgreed() {
+        return !conditions.isEmpty() && conditions.stream().allMatch(NegotiationCondition::isAgreed);
+    }
+
+    public NegotiationCondition findCondition(Long conditionId) {
+        return conditions.stream()
+                .filter(c -> Objects.equals(c.getId(), conditionId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
+    }
+
+    private void ensureInProgress() {
+        if (this.status != NegotiationStatus.IN_PROGRESS) {
+            throw new BusinessException(NegotiationErrorCode.NOT_IN_PROGRESS);
+        }
+    }
+
+    private void validateCreation(Long requestId, Long projectId, Long positionId, Long freelancerId, Long budgetCap) {
+        if (requestId == null || projectId == null || positionId == null || freelancerId == null) {
+            throw new BusinessException(NegotiationErrorCode.INVALID_CONDITION);
+        }
+        if (budgetCap == null || budgetCap <= 0) {
+            throw new BusinessException(NegotiationErrorCode.FLOOR_EXCEEDS_BUDGET);
+        }
+    }
+}
