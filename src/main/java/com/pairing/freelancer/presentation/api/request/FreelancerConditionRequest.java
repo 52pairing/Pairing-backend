@@ -94,7 +94,7 @@ public record FreelancerConditionRequest(
         List<Skill> skills
 ) {
 
-    @Schema(description = "보유 스킬")
+    @Schema(name = "ConditionSkillRequest", description = "보유 스킬")
     public record Skill(
             @Schema(description = "스킬", example = "JAVA")
             @NotNull(message = "스킬은 필수입니다.")

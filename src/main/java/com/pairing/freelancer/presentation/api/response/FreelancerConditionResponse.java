@@ -32,7 +32,7 @@ public record FreelancerConditionResponse(
         @Schema(description = "기간 단위") PeriodUnit periodUnit,
         @Schema(description = "프리랜서 경험 여부") boolean hasFreelanceExperience,
         @Schema(description = "경력(년)", example = "5") int careerYears,
-        @Schema(description = "보유 스킬") List<Skill> skills
+        @Schema(name = "ConditionSkillResponse", description = "보유 스킬") List<Skill> skills
 ) {
 
     @Schema(description = "보유 스킬")

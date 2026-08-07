@@ -112,6 +112,9 @@ CREATE TABLE "file" (
 CREATE TABLE "terms" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "code" VARCHAR(50) NOT NULL,
+    -- AGREEMENT: 가입 시 동의를 받는 약관 / POLICY: 게시만 하는 문서(개인정보 처리방침)
+    -- 개인정보 처리방침은 보호법 제30조상 '공개' 대상이지 동의 대상이 아니라 구분해 둔다.
+    "terms_type" VARCHAR(20) DEFAULT 'AGREEMENT' NOT NULL,
     "version" VARCHAR(20) NOT NULL,
     "title" VARCHAR(200) NOT NULL,
     "content" TEXT NOT NULL,
@@ -1168,7 +1171,8 @@ COMMENT ON COLUMN "file"."size_bytes" IS '파일 크기(byte)';
 COMMENT ON COLUMN "file"."uploaded_by" IS '업로더 account.id';
 
 COMMENT ON COLUMN "terms"."id" IS 'PK';
-COMMENT ON COLUMN "terms"."code" IS 'SERVICE_CLIENT / SERVICE_FREELANCER / PRIVACY / REVIEW_EXPOSURE / FEE_NOTICE / MARKETING';
+COMMENT ON COLUMN "terms"."code" IS 'SERVICE / PRIVACY_CONSENT / MARKETING / PRIVACY_POLICY';
+COMMENT ON COLUMN "terms"."terms_type" IS 'AGREEMENT(가입 동의 항목) / POLICY(게시 문서, 동의 대상 아님)';
 COMMENT ON COLUMN "terms"."version" IS '약관 버전(v1.0)';
 COMMENT ON COLUMN "terms"."title" IS '약관 제목';
 COMMENT ON COLUMN "terms"."content" IS '약관 전문(버전별 INSERT, UPDATE 금지)';

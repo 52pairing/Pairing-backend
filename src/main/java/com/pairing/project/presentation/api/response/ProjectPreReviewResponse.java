@@ -25,7 +25,7 @@ public record ProjectPreReviewResponse(
         String notice
 ) {
 
-    @Schema(description = "직군별 검수 결과")
+    @Schema(name = "PreReviewItem", description = "직군별 검수 결과")
     public record Item(
 
             @Schema(description = "직무") JobRole jobRole,

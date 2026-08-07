@@ -43,7 +43,8 @@ public enum AuthErrorCode implements BaseErrorCode {
     UNDER_MINIMUM_AGE(HttpStatus.BAD_REQUEST, "AU_025", "만 18세 미만은 가입할 수 없습니다."),
     MAIL_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "AU_026", "메일 발송에 실패했습니다. 잠시 후 다시 시도해 주세요."),
     PASSWORD_RESET_TOKEN_INVALID(HttpStatus.BAD_REQUEST, "AU_027", "비밀번호 재설정 링크가 만료되었거나 유효하지 않습니다."),
-    SAME_AS_CURRENT_PASSWORD(HttpStatus.BAD_REQUEST, "AU_028", "현재 비밀번호와 다른 비밀번호를 입력해 주세요.");
+    SAME_AS_CURRENT_PASSWORD(HttpStatus.BAD_REQUEST, "AU_028", "현재 비밀번호와 다른 비밀번호를 입력해 주세요."),
+    SOCIAL_ACCOUNT_NO_PASSWORD(HttpStatus.BAD_REQUEST, "AU_029", "소셜 로그인 계정은 비밀번호를 변경할 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

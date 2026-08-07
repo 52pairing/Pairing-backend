@@ -253,7 +253,7 @@ app:
     endpoint: ${WEBSOCKET_ENDPOINT:/ws}
   cors:
     # 핸드셰이크 허용 오리진도 이 값을 함께 사용합니다.
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:17000,http://127.0.0.1:17000}
 ```
 
 ### 메트릭

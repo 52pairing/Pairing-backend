@@ -23,6 +23,18 @@ public class TermsQueryService implements TermsQueryUseCase {
 
     @Override
     public List<Terms> findLatestByRole(String targetRole) {
+        // 가입 화면은 동의 항목만 보여준다. 개인정보 처리방침은 동의 대상이 아니라 게시 대상이다.
+        return latestByCode(targetRole).stream()
+                .filter(Terms::isAgreement)
+                .toList();
+    }
+
+    @Override
+    public List<Terms> findLatestDocuments(String targetRole) {
+        return latestByCode(targetRole);
+    }
+
+    private List<Terms> latestByCode(String targetRole) {
         // 조회 결과는 code 오름차순 + 시행일 내림차순이라, code별 첫 항목이 최신 버전이다.
         Map<TermsCode, Terms> latestByCode = new EnumMap<>(TermsCode.class);
 
