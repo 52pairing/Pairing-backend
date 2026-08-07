@@ -15,6 +15,8 @@ import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,15 +61,17 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
     }
 
     @Override
-    public List<NegotiationView> findMine(Long accountId, Long projectId, NegotiationStatus status) {
+    public Page<NegotiationView> findMine(Long accountId, Long projectId, NegotiationStatus status,
+                                          Pageable pageable) {
         if (projectId != null) {
-            return findClientTab(accountId, projectId, status);
+            return findClientTab(accountId, projectId, status, pageable);
         }
-        return findFreelancerList(accountId, status);
+        return findFreelancerList(accountId, status, pageable);
     }
 
-    /** 클라 협상 탭: 프로젝트 소유자만. 조건 목록·role·title 은 프로젝트 하나로 공유된다. */
-    private List<NegotiationView> findClientTab(Long accountId, Long projectId, NegotiationStatus status) {
+    /** 클라 협상 탭: 프로젝트 소유자만. role·title·회사명은 프로젝트 하나로 공유된다. */
+    private Page<NegotiationView> findClientTab(Long accountId, Long projectId, NegotiationStatus status,
+                                                Pageable pageable) {
         ProjectView project = projectReaderPort.findById(projectId)
                 .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NOT_PARTICIPANT));
 
@@ -78,27 +82,23 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
         }
 
         String clientName = partyNameReaderPort.findClientCompanyName(project.clientProfileId()).orElse(null);
-        return negotiationRepository.findByProjectId(projectId).stream()
-                .filter(n -> matchesStatus(n, status))
+        return negotiationRepository.findByProjectId(projectId, status, pageable)
                 .map(n -> new NegotiationView(n, PartyRole.CLIENT, project.title(), clientName,
-                        partyNameReaderPort.findFreelancerName(n.getFreelancerId()).orElse(null)))
-                .toList();
+                        partyNameReaderPort.findFreelancerName(n.getFreelancerId()).orElse(null)));
     }
 
     /** 프리랜서 목록: 협상마다 프로젝트가 달라 title 은 건별로 읽는다. */
-    private List<NegotiationView> findFreelancerList(Long accountId, NegotiationStatus status) {
+    private Page<NegotiationView> findFreelancerList(Long accountId, NegotiationStatus status, Pageable pageable) {
         Long myFreelancerProfileId = partyProfilePort.findFreelancerProfileIdByAccountId(accountId)
                 .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NOT_PARTICIPANT));
 
-        return negotiationRepository.findByFreelancerId(myFreelancerProfileId).stream()
-                .filter(n -> matchesStatus(n, status))
+        return negotiationRepository.findByFreelancerId(myFreelancerProfileId, status, pageable)
                 .map(n -> {
                     Optional<ProjectView> project = projectReaderPort.findById(n.getProjectId());
                     return toView(n, PartyRole.FREELANCER,
                             project.map(ProjectView::title).orElse(null),
                             project.map(ProjectView::clientProfileId).orElse(null));
-                })
-                .toList();
+                });
     }
 
     /** 애그리거트 + role + 표시용 이름(회사명·프리 이름)을 조립한다. */
@@ -106,9 +106,5 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
         String clientName = partyNameReaderPort.findClientCompanyName(clientProfileId).orElse(null);
         String freelancerName = partyNameReaderPort.findFreelancerName(negotiation.getFreelancerId()).orElse(null);
         return new NegotiationView(negotiation, role, title, clientName, freelancerName);
-    }
-
-    private boolean matchesStatus(Negotiation negotiation, NegotiationStatus status) {
-        return status == null || negotiation.getStatus() == status;
     }
 }

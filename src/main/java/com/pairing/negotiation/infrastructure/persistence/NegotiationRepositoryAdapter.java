@@ -1,12 +1,14 @@
 package com.pairing.negotiation.infrastructure.persistence;
 
 import com.pairing.negotiation.domain.model.Negotiation;
+import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
 import com.pairing.negotiation.infrastructure.mapper.NegotiationMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -29,16 +31,15 @@ public class NegotiationRepositoryAdapter implements NegotiationRepository {
     }
 
     @Override
-    public List<Negotiation> findByFreelancerId(Long freelancerProfileId) {
-        return springDataRepository.findByFreelancerId(freelancerProfileId).stream()
-                .map(negotiationMapper::toDomain)
-                .toList();
+    public Page<Negotiation> findByFreelancerId(Long freelancerProfileId, NegotiationStatus status,
+                                                Pageable pageable) {
+        return springDataRepository.findByFreelancerId(freelancerProfileId, status, pageable)
+                .map(negotiationMapper::toDomainSummary);
     }
 
     @Override
-    public List<Negotiation> findByProjectId(Long projectId) {
-        return springDataRepository.findByProjectId(projectId).stream()
-                .map(negotiationMapper::toDomain)
-                .toList();
+    public Page<Negotiation> findByProjectId(Long projectId, NegotiationStatus status, Pageable pageable) {
+        return springDataRepository.findByProjectId(projectId, status, pageable)
+                .map(negotiationMapper::toDomainSummary);
     }
 }

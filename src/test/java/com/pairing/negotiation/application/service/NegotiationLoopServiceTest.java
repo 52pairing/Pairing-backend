@@ -64,8 +64,9 @@ class NegotiationLoopServiceTest {
         Long freelancerProfileId = freelancerProfileRepository.save(
                 FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1))).getId();
 
-        jdbcTemplate.update("INSERT INTO project (id, client_id, title) VALUES (?, ?, ?)",
-                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼");
+        // start_negotiable 은 NOT NULL(primitive 매핑)이라 반드시 채운다.
+        jdbcTemplate.update("INSERT INTO project (id, client_id, title, start_negotiable) VALUES (?, ?, ?, ?)",
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true);
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0)));

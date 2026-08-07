@@ -11,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -77,15 +78,16 @@ class NegotiationPersistenceTest {
     }
 
     @Test
-    @DisplayName("findByFreelancerId/findByProjectId: 명함 ID 기준으로 협상을 조회한다")
+    @DisplayName("findByFreelancerId/findByProjectId: 명함 ID 기준으로 페이징 조회한다")
     void findByFreelancerIdAndProjectId() {
         Long id = negotiationRepository.save(newNegotiation()).getId();  // freelancer_profile.id=51, project.id=1
+        var pageable = PageRequest.of(0, 10);
 
-        assertThat(negotiationRepository.findByFreelancerId(51L))
+        assertThat(negotiationRepository.findByFreelancerId(51L, null, pageable))
                 .extracting(Negotiation::getId).contains(id);
-        assertThat(negotiationRepository.findByProjectId(1L))
+        assertThat(negotiationRepository.findByProjectId(1L, null, pageable))
                 .extracting(Negotiation::getId).contains(id);
-        assertThat(negotiationRepository.findByFreelancerId(999L))
+        assertThat(negotiationRepository.findByFreelancerId(999L, null, pageable))
                 .extracting(Negotiation::getId).doesNotContain(id);
     }
 }

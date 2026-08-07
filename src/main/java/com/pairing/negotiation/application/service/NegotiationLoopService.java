@@ -1,6 +1,9 @@
 package com.pairing.negotiation.application.service;
 
 import com.pairing.global.exception.BusinessException;
+import com.pairing.negotiation.application.event.NegotiationEvent;
+import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
+import com.pairing.negotiation.application.port.out.NegotiationEventPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.domain.model.ConditionType;
@@ -29,6 +32,7 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final NegotiationMessageRepository messageRepository;
     private final ProjectReaderPort projectReaderPort;
     private final NegotiationViewerResolver viewerResolver;
+    private final NegotiationEventPort eventPort;
 
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
@@ -46,6 +50,7 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         List<NegotiationMessage> messages = proposeForPending(negotiation);
 
         persist(negotiation, messages);
+        publish(negotiation, NegotiationEventType.STARTED);
     }
 
     @Override
@@ -85,6 +90,11 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         }
 
         persist(negotiation, messages);
+        publish(negotiation, switch (negotiation.getStatus()) {
+            case AGREED -> NegotiationEventType.AGREED;
+            case FAILED -> NegotiationEventType.FAILED;
+            default -> NegotiationEventType.ANSWERED;
+        });
     }
 
     @Override
@@ -96,9 +106,15 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         negotiation.fail(endReason);
         persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
                 "협상이 종료되었습니다: " + endReason)));
+        publish(negotiation, NegotiationEventType.FAILED);
     }
 
     // ----- helpers -----
+
+    private void publish(Negotiation negotiation, NegotiationEventType type) {
+        eventPort.publish(new NegotiationEvent(
+                negotiation.getId(), type, negotiation.getStatus(), negotiation.getTotalRound()));
+    }
 
     /** 다음 라운드로 넘기며 미합의 조건 제안 생성. 라운드 상한 소진 시 자동 결렬(설계 #5). */
     private void advanceOrFail(Negotiation negotiation, List<NegotiationMessage> messages) {

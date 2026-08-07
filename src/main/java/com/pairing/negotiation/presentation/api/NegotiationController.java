@@ -30,6 +30,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -72,12 +75,11 @@ public class NegotiationController {
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        List<NegotiationSummaryResponse> all = negotiationQueryUseCase.findMine(accountId, projectId, status)
-                .stream()
-                .map(NegotiationResponseFactory::summary)
-                .toList();
-        return ResponseEntity.ok(ApiResponse.success("NEGOTIATIONS_FOUND", "조회에 성공했습니다.",
-                paginate(all, page, size)));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "startedAt"));
+        PageResponse<NegotiationSummaryResponse> result = PageResponse.from(
+                negotiationQueryUseCase.findMine(accountId, projectId, status, pageable)
+                        .map(NegotiationResponseFactory::summary));
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATIONS_FOUND", "조회에 성공했습니다.", result));
     }
 
     @GetMapping("/{negotiationId}")
@@ -230,18 +232,6 @@ public class NegotiationController {
     ) {
         // TODO: 관리자용 전체 로그 조회
         return ResponseEntity.ok(ApiResponse.success("MESSAGES_FOUND", "조회에 성공했습니다.", List.of(sampleMessage())));
-    }
-
-    /** 조회 결과 in-memory 페이징(당사자별 협상 수가 적음). 규모가 커지면 DB 페이징으로 전환. */
-    private static <T> PageResponse<T> paginate(List<T> all, int page, int size) {
-        if (size <= 0) {
-            return new PageResponse<>(List.of(), page, size, all.size(), 0, true, true);
-        }
-        int from = Math.min(page * size, all.size());
-        int to = Math.min(from + size, all.size());
-        int totalPages = (int) Math.ceil((double) all.size() / size);
-        return new PageResponse<>(all.subList(from, to), page, size, all.size(), totalPages,
-                page == 0, to >= all.size());
     }
 
     // ==========================================
