@@ -44,4 +44,8 @@ public interface AccountQueryUseCase {
 
     /** 매칭/협상 도메인이 freelancer_profile.id 로 프리랜서를 다시 찾을 때 쓴다. 없으면 empty. */
     Optional<FreelancerProfile> findFreelancerProfileById(Long freelancerProfileId);
+
+    /** 매칭/협상 도메인이 client_profile.id 로 클라이언트를 다시 찾을 때 쓴다. 없으면 empty. */
+    Optional<ClientProfile> findClientProfileById(Long clientProfileId);
+
 }

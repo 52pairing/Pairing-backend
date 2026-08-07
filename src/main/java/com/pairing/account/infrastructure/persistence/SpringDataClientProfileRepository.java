@@ -8,5 +8,7 @@ public interface SpringDataClientProfileRepository extends JpaRepository<ClientP
 
     Optional<ClientProfileJpaEntity> findByAccountIdAndDeletedAtIsNull(Long accountId);
 
+    Optional<ClientProfileJpaEntity> findByIdAndDeletedAtIsNull(Long id);
+
     boolean existsByBusinessNo(String businessNo);
 }
