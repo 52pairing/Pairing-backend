@@ -18,6 +18,7 @@ public class Terms {
 
     private Long id;
     private TermsCode code;
+    private TermsType type;
     private String version;
     private String title;
     private String content;
@@ -25,10 +26,11 @@ public class Terms {
     private String targetRole;
     private LocalDateTime effectiveAt;
 
-    private Terms(Long id, TermsCode code, String version, String title, String content, boolean required,
-                  String targetRole, LocalDateTime effectiveAt) {
+    private Terms(Long id, TermsCode code, TermsType type, String version, String title, String content,
+                  boolean required, String targetRole, LocalDateTime effectiveAt) {
         this.id = id;
         this.code = code;
+        this.type = type;
         this.version = version;
         this.title = title;
         this.content = content;
@@ -37,9 +39,15 @@ public class Terms {
         this.effectiveAt = effectiveAt;
     }
 
-    public static Terms reconstitute(Long id, TermsCode code, String version, String title, String content,
-                                     boolean required, String targetRole, LocalDateTime effectiveAt) {
-        return new Terms(id, code, version, title, content, required, targetRole, effectiveAt);
+    public static Terms reconstitute(Long id, TermsCode code, TermsType type, String version, String title,
+                                     String content, boolean required, String targetRole,
+                                     LocalDateTime effectiveAt) {
+        return new Terms(id, code, type, version, title, content, required, targetRole, effectiveAt);
+    }
+
+    /** 가입 화면에서 동의를 받아야 하는 항목인지. 게시용 문서는 false 다. */
+    public boolean isAgreement() {
+        return this.type == TermsType.AGREEMENT;
     }
 
     /** 해당 역할에게 보여야 하는 약관인지. targetRole이 없으면 공통 약관이다. */

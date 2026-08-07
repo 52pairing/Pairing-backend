@@ -45,7 +45,7 @@ public record NegotiationResponse(
         @Schema(description = "AI 협상 종료(AI Out) 시각")
         LocalDateTime aiOutAt,
 
-        @Schema(description = "최종 승인 단계 여부. true 면 승인/거부만 가능하다.", example = "false")
+        @Schema(description = "[미사용] 15회 자동 결렬 채택으로 폐기. 항상 false", example = "false")
         boolean finalApprovalRequired,
 
         @Schema(description = "협상 조건 목록")
@@ -56,13 +56,14 @@ public record NegotiationResponse(
     public record Condition(
             @Schema(description = "조건 ID", example = "401") Long conditionId,
             @Schema(description = "조건 종류") ConditionType type,
-            @Schema(description = "클라이언트 값", example = "20000000") String clientValue,
-            @Schema(description = "프리랜서 값", example = "25000000") String freelancerValue,
+            @Schema(description = "클라이언트 희망값(공개·고정). 초기 제안 카드·상대 희망 힌트용. 마지노선 아님", example = "20000000") String clientValue,
+            @Schema(description = "프리랜서 희망값(공개·고정). 마지노선 아님", example = "25000000") String freelancerValue,
             @Schema(description = "AI 제안값", example = "22000000") String proposedValue,
             @Schema(description = "제안 근거", example = "프리랜서 경력이 요구 수준을 넘어 중간값을 제안합니다.") String reason,
             @Schema(description = "합의값. 합의 전에는 null") String agreedValue,
             @Schema(description = "조건 상태") ConditionStatus status,
-            @Schema(description = "이 조건의 라운드 수", example = "2") int roundCount
+            @Schema(description = "이 조건의 라운드 수", example = "2") int roundCount,
+            @Schema(description = "내 마지노선(직전 입력값). 뷰어 본인 것만 내려감. 상대 마지노선은 절대 노출하지 않는다. 재지시 '직전 마지노선' 표시에 쓴다.", example = "3500000") String myFloor
     ) {
     }
 }

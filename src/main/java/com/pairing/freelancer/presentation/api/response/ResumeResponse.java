@@ -23,9 +23,9 @@ public record ResumeResponse(
         @Schema(description = "프로필 사진 URL") String profileImageUrl,
         @Schema(description = "간단 자기소개") String selfIntroduction,
         @Schema(description = "포트폴리오 URL") String portfolioUrl,
-        @Schema(description = "학력") List<Education> educations,
-        @Schema(description = "경력") List<Career> careers,
-        @Schema(description = "자격증·어학") List<Certificate> certificates,
+        @Schema(name = "ResumeEducationResponse", description = "학력") List<Education> educations,
+        @Schema(name = "ResumeCareerResponse", description = "경력") List<Career> careers,
+        @Schema(name = "ResumeCertificateResponse", description = "자격증·어학") List<Certificate> certificates,
         @Schema(description = "링크") List<String> links
 ) implements CdnMappable {
 

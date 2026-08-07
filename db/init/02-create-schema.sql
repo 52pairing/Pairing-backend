@@ -112,6 +112,9 @@ CREATE TABLE "file" (
 CREATE TABLE "terms" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "code" VARCHAR(50) NOT NULL,
+    -- AGREEMENT: 가입 시 동의를 받는 약관 / POLICY: 게시만 하는 문서(개인정보 처리방침)
+    -- 개인정보 처리방침은 보호법 제30조상 '공개' 대상이지 동의 대상이 아니라 구분해 둔다.
+    "terms_type" VARCHAR(20) DEFAULT 'AGREEMENT' NOT NULL,
     "version" VARCHAR(20) NOT NULL,
     "title" VARCHAR(200) NOT NULL,
     "content" TEXT NOT NULL,
@@ -517,6 +520,8 @@ CREATE TABLE "negotiation_condition" (
     "condition_type" VARCHAR(30) NOT NULL,
     "client_value" VARCHAR(255),
     "freelancer_value" VARCHAR(255),
+    "client_floor" VARCHAR(255),
+    "freelancer_floor" VARCHAR(255),
     "agreed_value" VARCHAR(255),
     "status" VARCHAR(20) DEFAULT 'PENDING' NOT NULL,
     "round_count" INTEGER DEFAULT 0 NOT NULL,
@@ -539,6 +544,9 @@ CREATE TABLE "negotiation_message" (
     "proposed_value" VARCHAR(255),
     "proposal_json" JSONB,
     "response" VARCHAR(20),
+    "acting_account_id" BIGINT,
+    "prev_hash" CHAR(64),
+    "content_hash" CHAR(64),
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
 );
@@ -1168,7 +1176,8 @@ COMMENT ON COLUMN "file"."size_bytes" IS '파일 크기(byte)';
 COMMENT ON COLUMN "file"."uploaded_by" IS '업로더 account.id';
 
 COMMENT ON COLUMN "terms"."id" IS 'PK';
-COMMENT ON COLUMN "terms"."code" IS 'SERVICE_CLIENT / SERVICE_FREELANCER / PRIVACY / REVIEW_EXPOSURE / FEE_NOTICE / MARKETING';
+COMMENT ON COLUMN "terms"."code" IS 'SERVICE / PRIVACY_CONSENT / MARKETING / PRIVACY_POLICY';
+COMMENT ON COLUMN "terms"."terms_type" IS 'AGREEMENT(가입 동의 항목) / POLICY(게시 문서, 동의 대상 아님)';
 COMMENT ON COLUMN "terms"."version" IS '약관 버전(v1.0)';
 COMMENT ON COLUMN "terms"."title" IS '약관 제목';
 COMMENT ON COLUMN "terms"."content" IS '약관 전문(버전별 INSERT, UPDATE 금지)';
@@ -1421,8 +1430,10 @@ COMMENT ON COLUMN "negotiation"."end_reason" IS '종료 사유';
 COMMENT ON COLUMN "negotiation_condition"."id" IS 'PK';
 COMMENT ON COLUMN "negotiation_condition"."negotiation_id" IS '협상 FK';
 COMMENT ON COLUMN "negotiation_condition"."condition_type" IS 'AMOUNT / PERIOD / START_DATE / WORK_STYLE / WORK_FORM / CAREER / SKILL';
-COMMENT ON COLUMN "negotiation_condition"."client_value" IS '클라이언트 조건값';
-COMMENT ON COLUMN "negotiation_condition"."freelancer_value" IS '프리랜서 조건값';
+COMMENT ON COLUMN "negotiation_condition"."client_value" IS '클라이언트 희망값(공개·고정). 초기 제안 카드·상대 희망 힌트용. 마지노선 아님';
+COMMENT ON COLUMN "negotiation_condition"."freelancer_value" IS '프리랜서 희망값(공개·고정). 마지노선 아님';
+COMMENT ON COLUMN "negotiation_condition"."client_floor" IS '클라이언트 마지노선(비공개). 응답엔 뷰어 본인 것만 myFloor로';
+COMMENT ON COLUMN "negotiation_condition"."freelancer_floor" IS '프리랜서 마지노선(비공개). 응답엔 뷰어 본인 것만 myFloor로';
 COMMENT ON COLUMN "negotiation_condition"."agreed_value" IS '합의된 값';
 COMMENT ON COLUMN "negotiation_condition"."status" IS 'PENDING / IN_PROGRESS / AGREED / FAILED';
 COMMENT ON COLUMN "negotiation_condition"."round_count" IS '해당 조건 협상 라운드 수';

@@ -22,10 +22,11 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| POST | `/api/v1/auth/email-verifications` | X | 인증코드 발송. body `{email, purpose}` (purpose: SIGNUP/UNLOCK/PROFILE_UPDATE) |
+| POST | `/api/v1/auth/email-verifications` | X | 인증코드 발송. body `{email, purpose}` (purpose: SIGNUP/UNLOCK/PASSWORD_CHANGE/PROFILE_UPDATE) |
 | POST | `/api/v1/auth/email-verifications/confirm` | X | 코드 확인. body `{email, purpose, code}` |
 
 - 코드 유효 3분, 입력 시도 5회, 발송 1시간 15회.
+- `purpose`: `SIGNUP` / `UNLOCK` / `PASSWORD_CHANGE` / `PROFILE_UPDATE`. 용도가 다르면 코드도 다르다.
 - 발송 응답 data: `{expiresAt, remainingSendCount}` — 프론트 타이머와 재발송 안내에 사용.
 - 확인 성공 후 30분 안에 가입을 제출해야 한다.
 
@@ -83,12 +84,15 @@
 | POST | `/api/v1/auth/find-email` | X | body `{name, phone}` → `accounts[{role, maskedEmail}]` |
 | POST | `/api/v1/auth/password/reset-requests` | X | body `{email, role, name, phone}` → 3분 링크 메일 |
 | POST | `/api/v1/auth/password/reset-confirm` | X | body `{token}` → 임시 비밀번호 메일 |
-| PATCH | `/api/v1/auth/password` | O | body `{currentPassword, newPassword, newPasswordConfirm}` |
+| PATCH | `/api/v1/auth/password` | O | body `{newPassword, newPasswordConfirm}` (마이페이지 변경, 인증코드 선행) |
 | POST | `/api/v1/auth/unlock` | X | body `{email, role, code}` (UNLOCK 인증코드) |
 
 - 아이디 찾기는 두 역할로 가입했다면 두 건을 반환한다. 사용자가 어느 탭으로 로그인할지 고를 수 있어야 한다.
 - `reset-requests`는 계정 열거 방지를 위해 일치하지 않아도 200을 반환한다.
 - 비밀번호 변경 후 모든 세션이 끊기므로 재로그인이 필요하다.
+- **로그인 전 "비밀번호 찾기"와 로그인 후 "비밀번호 변경"은 방식이 다르다.**
+  찾기는 메일 링크 → 임시 비밀번호 발급, 변경은 메일 인증코드 → 사용자가 새 비밀번호 직접 입력.
+  변경은 현재 비밀번호를 받지 않고, `purpose=PASSWORD_CHANGE` 인증을 먼저 통과해야 한다(미인증 시 `AU_006`).
 
 ---
 
@@ -111,7 +115,21 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/terms?role=CLIENT` | X | 역할별 최신 약관(코드별 최신 버전) |
+| GET | `/api/v1/terms?role=CLIENT` | X | 가입 동의 항목 3개 (코드별 최신 버전) |
+| GET | `/api/v1/terms/documents?role=CLIENT` | X | 약관 전문 + 개인정보 처리방침 (푸터 링크용) |
+
+가입 화면 동의 항목은 셋으로 고정한다.
+
+| code | 제목 | 필수 | 대상 | 근거 |
+| --- | --- | --- | --- | --- |
+| `SERVICE` | 서비스 이용약관 동의 | 필수 | 역할별로 내용이 다름 | 계약 |
+| `PRIVACY_CONSENT` | 개인정보 수집 및 이용 동의 | 필수 | 공통 | 개인정보 보호법 §15①1 |
+| `MARKETING` | 마케팅 정보 수신 동의 | **선택** | 공통 | 보호법 §15①1 + 정보통신망법 §50 |
+
+`PRIVACY_POLICY`(개인정보 처리방침)는 **동의 대상이 아니다.** 보호법 §30상 수립·공개 의무라
+`/documents` 에만 나오고 `GET /terms` 에는 포함되지 않는다. 가입 화면에 체크박스로 넣으면 안 된다.
+
+응답의 `type` 이 `AGREEMENT` 인 항목만 `agreements[]` 에 넣는다.
 
 ---
 
@@ -446,6 +464,7 @@
 | AU_025 | 400 | 만 18세 미만 |
 | AU_026 | 500 | 메일 발송 실패 |
 | AU_027 / AU_028 | 400 | 재설정 링크 무효 / 기존 비밀번호와 동일 |
+| AU_029 | 400 | 소셜 전용 계정이라 비밀번호 변경 불가 |
 | AC_001 ~ AC_005 | - | 계정 조회/상태 오류 |
 | AC_006 | 400 | 지원하지 않는 은행 코드 |
 | TM_002 / TM_003 | 400 | 필수 약관 미동의 / 알 수 없는 약관 포함 |

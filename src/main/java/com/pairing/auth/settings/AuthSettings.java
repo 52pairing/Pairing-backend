@@ -23,7 +23,7 @@ public class AuthSettings {
     private String fromAddress = "no-reply@pairing.local";
 
     /** 비밀번호 재설정 링크를 조립할 프론트엔드 주소. */
-    private String frontBaseUrl = "http://localhost:3000";
+    private String frontBaseUrl = "http://localhost:17000";
 
     /** 인증코드 유효시간. */
     private Duration emailCodeTtl = Duration.ofMinutes(3);

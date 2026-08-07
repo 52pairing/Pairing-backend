@@ -17,6 +17,7 @@ public interface TermsMapper {
         return Terms.reconstitute(
                 entity.getId(),
                 entity.getCode(),
+                entity.getType(),
                 entity.getVersion(),
                 entity.getTitle(),
                 entity.getContent(),

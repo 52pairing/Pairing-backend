@@ -17,7 +17,7 @@ public record FindEmailResponse(
         List<Item> accounts
 ) {
 
-    @Schema(description = "마스킹된 계정 정보")
+    @Schema(name = "FindEmailAccountItem", description = "마스킹된 계정 정보")
     public record Item(
 
             @Schema(description = "역할", example = "FREELANCER")
