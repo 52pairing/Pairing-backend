@@ -45,7 +45,7 @@ public class MatchingRoundJpaEntity {
     @Column(name = "requested_count")
     private Integer requestedCount;
 
-    @Column(name = "cost_amount", nullable = false)
+    @Column(name = "cost_amount", nullable = false, columnDefinition = "numeric(15,0)")
     private long costAmount;
 
     @Column(name = "expose_count", nullable = false)

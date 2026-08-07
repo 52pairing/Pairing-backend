@@ -41,16 +41,16 @@ public class MatchingCandidateJpaEntity {
     @Column(name = "stage", nullable = false, length = 20)
     private CandidateStage stage;
 
-    @Column(name = "similarity")
+    @Column(name = "similarity", columnDefinition = "numeric(6,4)")
     private Double similarity;
 
-    @Column(name = "base_score")
+    @Column(name = "base_score", columnDefinition = "numeric(5,2)")
     private Double baseScore;
 
-    @Column(name = "grade_weight")
+    @Column(name = "grade_weight", columnDefinition = "numeric(5,2)")
     private Double gradeWeight;
 
-    @Column(name = "fit_score")
+    @Column(name = "fit_score", columnDefinition = "numeric(5,2)")
     private Double fitScore;
 
     @Column(name = "guard_passed")
