@@ -1,0 +1,152 @@
+name: Deploy to ECS
+
+# develop / main 에 머지되면 ECR 에 이미지를 올리고 ECS 서비스를 새 이미지로 교체한다.
+# 롤백은 ECS 콘솔에서 이전 태스크 정의 리비전으로 되돌린다.
+on:
+  push:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-northeast-2
+  # 슬래시가 들어간 네임스페이스형 리포지토리다. 이미지 URI 는
+  # {계정ID}.dkr.ecr.ap-northeast-2.amazonaws.com/team02-02/pairing-backend:{태그} 가 된다.
+  ECR_REPOSITORY: team02-02/pairing-backend
+  # 태스크 정의 안의 컨테이너 이름과 반드시 같아야 한다. 다르면 이미지가 교체되지 않고 그대로 배포된다.
+  CONTAINER_NAME: pairing-backend
+
+concurrency:
+  # develop 과 main 이 지금은 같은 ECS 서비스를 쓴다. 동시에 돌면 나중에 끝난 쪽이 이겨서
+  # 어느 커밋이 떠 있는지 알 수 없게 되므로, 브랜치와 무관하게 한 번에 하나만 실행한다.
+  # 환경을 분리하면 group 을 deploy-ecs-${{ github.ref_name }} 로 바꾼다.
+  group: deploy-ecs
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: build → ECR → ECS
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ------------------------------------------------------------------
+      # 배포 대상 결정
+      # 지금은 환경이 하나라 develop 과 main 이 같은 클러스터·서비스를 가리킨다.
+      # 운영 환경을 따로 만들면 main 쪽 값만 바꾸면 된다.
+      # ------------------------------------------------------------------
+      - name: Resolve target
+        id: target
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            ENV_NAME=prod
+            CLUSTER=team02-02-pairing-cluster
+            SERVICE=team02-02-pairing-backend-service
+            TASK_FAMILY=team02-02-pairing-backend-task
+            TAG="${{ github.sha }}"
+            MOVING_TAG=latest
+          else
+            ENV_NAME=dev
+            CLUSTER=team02-02-pairing-cluster
+            SERVICE=team02-02-pairing-backend-service
+            TASK_FAMILY=team02-02-pairing-backend-task
+            TAG="develop-${{ github.sha }}"
+            MOVING_TAG=develop
+          fi
+          {
+            echo "env_name=$ENV_NAME"
+            echo "cluster=$CLUSTER"
+            echo "service=$SERVICE"
+            echo "task_family=$TASK_FAMILY"
+            echo "tag=$TAG"
+            echo "moving_tag=$MOVING_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - run: chmod +x ./gradlew
+
+      # 테스트까지 돌린다. 머지가 깨진 상태로 배포되는 것을 여기서 막는다.
+      - name: Build and test
+        run: ./gradlew --no-daemon clean build
+
+      # Dockerfile 이 컨텍스트 루트의 app.jar 를 복사하는 구조라 이름을 맞춰 준다.
+      - name: Rename jar to app.jar
+        run: |
+          JAR=$(find build/libs -name '*.jar' ! -name '*-plain.jar' | head -1)
+          if [ -z "$JAR" ]; then echo "빌드된 jar 를 찾지 못했다"; exit 1; fi
+          cp "$JAR" app.jar
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ steps.target.outputs.tag }}
+          MOVING_TAG: ${{ steps.target.outputs.moving_tag }}
+        run: |
+          docker build -t "$REGISTRY/$ECR_REPOSITORY:$TAG" -t "$REGISTRY/$ECR_REPOSITORY:$MOVING_TAG" .
+          docker push "$REGISTRY/$ECR_REPOSITORY:$TAG"
+          docker push "$REGISTRY/$ECR_REPOSITORY:$MOVING_TAG"
+          echo "uri=$REGISTRY/$ECR_REPOSITORY:$TAG" >> "$GITHUB_OUTPUT"
+
+      # 태스크 정의를 레포에 두지 않고 AWS 에 등록된 최신 리비전을 그대로 받아 온다.
+      # 환경변수·시크릿·CPU·메모리는 AWS 콘솔에서 관리하고, 파이프라인은 이미지만 교체한다.
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${{ steps.target.outputs.task_family }}" \
+            --query taskDefinition \
+            | jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                      .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
+            > task-definition.json
+
+      - name: Render new image into task definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.image.outputs.uri }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ steps.target.outputs.cluster }}
+          service: ${{ steps.target.outputs.service }}
+          # 새 태스크가 정상(healthy)이 될 때까지 기다린다. 실패하면 워크플로가 빨간불이 된다.
+          wait-for-service-stability: true
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### 배포 결과"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "| --- | --- |"
+            echo "| 브랜치 | \`${{ github.ref_name }}\` |"
+            echo "| 환경 | \`${{ steps.target.outputs.env_name }}\` |"
+            echo "| 이미지 | \`${{ steps.image.outputs.uri }}\` |"
+            echo "| 클러스터 | \`${{ steps.target.outputs.cluster }}\` |"
+            echo "| 서비스 | \`${{ steps.target.outputs.service }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

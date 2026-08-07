@@ -69,7 +69,7 @@ public record ResumeRequest(
         List<Link> links
 ) {
 
-    @Schema(description = "학력")
+    @Schema(name = "ResumeEducationRequest", description = "학력")
     public record Education(
             @Schema(description = "입학일") @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Schema(description = "졸업일. 재학중이면 비운다.") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -80,7 +80,7 @@ public record ResumeRequest(
     ) {
     }
 
-    @Schema(description = "경력")
+    @Schema(name = "ResumeCareerRequest", description = "경력")
     public record Career(
             @Schema(description = "입사일") @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Schema(description = "퇴사일. 재직중이면 비운다.") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -90,7 +90,7 @@ public record ResumeRequest(
     ) {
     }
 
-    @Schema(description = "자격증·어학")
+    @Schema(name = "ResumeCertificateRequest", description = "자격증·어학")
     public record Certificate(
             @Schema(description = "취득일자") @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate acquiredDate,
             @Schema(description = "자격/어학 시험명") @NotBlank @Size(max = 100) String name,

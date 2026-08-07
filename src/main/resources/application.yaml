@@ -23,9 +23,12 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      # 스키마는 db/init/02-create-schema.sql 로 관리한다.
-      # validate 는 엔티티와 테이블이 어긋나면 애플리케이션 시작을 실패시킨다. Hibernate 가 스키마를 바꾸지 않는다.
-      ddl-auto: validate
+      # 스키마의 단일 소스는 여전히 db/init/02-create-schema.sql 이다.
+      # update 는 엔티티가 있는 테이블의 누락 컬럼만 채운다. 아래는 채워 주지 않으니 SQL 을 먼저 실행해야 한다.
+      #   - 엔티티가 없는 테이블(스켈레톤 도메인 전체)
+      #   - 유니크 제약, 부분 인덱스, FK 이름, 컬럼 코멘트
+      #   - 약관 시드(db/init/03-seed-terms.sql). 없으면 회원가입이 막힌다.
+      ddl-auto: update
     properties:
       hibernate:
         format_sql: true
