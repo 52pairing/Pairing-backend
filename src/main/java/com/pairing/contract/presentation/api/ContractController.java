@@ -62,7 +62,7 @@ public class ContractController {
         // TODO: 내가 당사자인 계약 목록
         ContractSummaryResponse summary = new ContractSummaryResponse(600L, "PR-2026-000123",
                 "페어링 웹 리뉴얼", "홍길동", ContractStatus.SIGN_PENDING, 22_000_000L,
-                LocalDate.of(2026, 9, 1), LocalDate.of(2027, 2, 28), true);
+                LocalDate.of(2026, 9, 1), LocalDate.of(2027, 2, 28), true,PayUnit.MONTHLY, 6_200_000L );
 
         return ResponseEntity.ok(ApiResponse.success("CONTRACTS_FOUND", "조회에 성공했습니다.",
                 new PageResponse<>(List.of(summary), page, size, 1, 1, true, true)));

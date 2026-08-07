@@ -3,7 +3,6 @@ package com.pairing.settlement.presentation.api.response;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
-import com.pairing.global.common.api.response.StatusHistoryResponse;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
@@ -40,9 +39,6 @@ public record SettlementResponse(
 
         @Schema(description = "결제 실패 사유") String failReason,
         @Schema(description = "미납 사유") String overdueReason,
-
-        @Schema(description = "상태 이력. 관리자 상세에서만 채워진다")
-        List<StatusHistoryResponse> statusHistories,
 
         @Schema(description = "납부 기한") LocalDate dueDate,
         @Schema(description = "결제 가능 여부. false 면 결제 버튼을 비활성화한다.", example = "true") boolean payable,
