@@ -17,6 +17,7 @@ public class ProjectReaderAdapter implements ProjectReaderPort {
         return projectReadRepository.findById(projectId)
                 .map(p -> new ProjectView(p.getId(), p.getClientId(), p.getTitle(),
                         p.getBudgetAmount(), p.getWorkStyle(), p.getWorkForm(),
-                        p.getStartDesiredDate(), p.isStartNegotiable()));
+                        p.getStartDesiredDate(), p.isStartNegotiable(),
+                        p.getPeriodValue(), p.getPeriodUnit()));
     }
 }

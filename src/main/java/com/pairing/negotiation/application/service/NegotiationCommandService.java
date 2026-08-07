@@ -39,7 +39,9 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
                 project.workStyle(),
                 project.workForm(),
                 project.startDesiredDate(),
-                project.startNegotiable());
+                project.startNegotiable(),
+                project.periodValue(),
+                project.periodUnit());
 
         Negotiation negotiation = Negotiation.create(
                 command.requestId(), command.projectId(), command.positionId(),

@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.port.out;
 
+import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 
@@ -26,7 +27,9 @@ public interface ProjectReaderPort {
             WorkStyle workStyle,
             WorkForm workForm,
             LocalDate startDesiredDate,
-            boolean startNegotiable
+            boolean startNegotiable,
+            Integer periodValue,
+            PeriodUnit periodUnit
     ) {
     }
 }

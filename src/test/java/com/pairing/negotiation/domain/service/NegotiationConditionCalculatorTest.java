@@ -1,11 +1,13 @@
 package com.pairing.negotiation.domain.service;
 
 import com.pairing.meta.domain.model.PayUnit;
+import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.FreelancerConditionSnapshot;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
+import com.pairing.negotiation.domain.model.PartyRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -17,9 +19,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** 불일치 판정(값 비교) 규칙 단위 검증. Spring 없이 순수 로직만 본다. */
 class NegotiationConditionCalculatorTest {
 
+    /** 급여/근무 관련만 지정하는 스냅샷(보조 필드 없음). */
     private FreelancerConditionSnapshot snapshot(PayUnit unit, long amount, WorkStyle style, WorkForm form,
                                                  LocalDate availableFrom, boolean startNegotiable) {
-        return new FreelancerConditionSnapshot(unit, amount, style, form, availableFrom, startNegotiable);
+        return new FreelancerConditionSnapshot(unit, amount, style, form, availableFrom, startNegotiable,
+                null, null, null);
+    }
+
+    private List<NegotiationCondition> compute(long budgetCap, FreelancerConditionSnapshot freelancer,
+                                               Long projectBudget, WorkStyle projectStyle, WorkForm projectForm,
+                                               LocalDate projectStart, boolean projectNegotiable) {
+        return NegotiationConditionCalculator.compute(budgetCap, freelancer, projectBudget, projectStyle,
+                projectForm, projectStart, projectNegotiable, null, null);
     }
 
     private List<ConditionType> typesOf(List<NegotiationCondition> conditions) {
@@ -29,8 +40,7 @@ class NegotiationConditionCalculatorTest {
     @Test
     @DisplayName("완전 일치면 조건이 하나도 안 생긴다")
     void allMatch() {
-        List<NegotiationCondition> result = NegotiationConditionCalculator.compute(
-                5_000_000L,
+        List<NegotiationCondition> result = compute(5_000_000L,
                 snapshot(PayUnit.MONTHLY, 5_000_000L, WorkStyle.REMOTE, WorkForm.FULL_TIME,
                         LocalDate.of(2026, 1, 1), false),
                 5_000_000L, WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), false);
@@ -41,8 +51,7 @@ class NegotiationConditionCalculatorTest {
     @Test
     @DisplayName("프리 월단가가 예산 상한을 넘으면 AMOUNT 불일치")
     void amountMismatch() {
-        List<NegotiationCondition> result = NegotiationConditionCalculator.compute(
-                5_000_000L,
+        List<NegotiationCondition> result = compute(5_000_000L,
                 snapshot(PayUnit.MONTHLY, 6_000_000L, WorkStyle.ANY, WorkForm.ANY, null, true),
                 4_800_000L, WorkStyle.ANY, WorkForm.ANY, null, true);
 
@@ -53,18 +62,33 @@ class NegotiationConditionCalculatorTest {
     }
 
     @Test
+    @DisplayName("minAcceptAmount는 AMOUNT 프리 마지노선(floor)으로 프리필된다")
+    void minAcceptPrefillsFreelancerFloor() {
+        FreelancerConditionSnapshot freelancer = new FreelancerConditionSnapshot(
+                PayUnit.MONTHLY, 6_000_000L, WorkStyle.ANY, WorkForm.ANY, null, true,
+                5_500_000L, null, null);
+
+        List<NegotiationCondition> result = NegotiationConditionCalculator.compute(
+                4_800_000L, freelancer, 4_800_000L, WorkStyle.ANY, WorkForm.ANY, null, true, null, null);
+
+        NegotiationCondition amount = result.get(0);
+        assertThat(amount.floorForViewer(PartyRole.FREELANCER)).isEqualTo("5500000");
+        assertThat(amount.floorForViewer(PartyRole.CLIENT)).isNull();   // 상대 floor는 안 건드림
+    }
+
+    @Test
     @DisplayName("급여 단위 환산: 일급×20, 시급×160 후 예산과 비교")
     void payConversion() {
         // 일급 30만 × 20 = 600만 > 500만 → 불일치
-        List<NegotiationCondition> daily = NegotiationConditionCalculator.compute(
-                5_000_000L, snapshot(PayUnit.DAILY, 300_000L, WorkStyle.ANY, WorkForm.ANY, null, true),
+        List<NegotiationCondition> daily = compute(5_000_000L,
+                snapshot(PayUnit.DAILY, 300_000L, WorkStyle.ANY, WorkForm.ANY, null, true),
                 null, WorkStyle.ANY, WorkForm.ANY, null, true);
         assertThat(typesOf(daily)).containsExactly(ConditionType.AMOUNT);
         assertThat(daily.get(0).getFreelancerValue()).isEqualTo("6000000");
 
         // 시급 3만 × 160 = 480만 <= 500만 → 일치
-        List<NegotiationCondition> hourly = NegotiationConditionCalculator.compute(
-                5_000_000L, snapshot(PayUnit.HOURLY, 30_000L, WorkStyle.ANY, WorkForm.ANY, null, true),
+        List<NegotiationCondition> hourly = compute(5_000_000L,
+                snapshot(PayUnit.HOURLY, 30_000L, WorkStyle.ANY, WorkForm.ANY, null, true),
                 null, WorkStyle.ANY, WorkForm.ANY, null, true);
         assertThat(hourly).isEmpty();
     }
@@ -72,14 +96,12 @@ class NegotiationConditionCalculatorTest {
     @Test
     @DisplayName("근무방식/형태: 한쪽이라도 ANY면 일치, 둘 다 구체값이고 다르면 불일치")
     void workStyleAndForm() {
-        // ANY → 일치
-        assertThat(NegotiationConditionCalculator.compute(
-                9_000_000L, snapshot(PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.FULL_TIME, null, true),
+        assertThat(compute(9_000_000L,
+                snapshot(PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.FULL_TIME, null, true),
                 null, WorkStyle.ONSITE, WorkForm.FULL_TIME, null, true)).isEmpty();
 
-        // 재택 vs 상주 → 불일치, 풀타임 vs 파트타임 → 불일치
-        List<NegotiationCondition> result = NegotiationConditionCalculator.compute(
-                9_000_000L, snapshot(PayUnit.MONTHLY, 1_000_000L, WorkStyle.REMOTE, WorkForm.PART_TIME, null, true),
+        List<NegotiationCondition> result = compute(9_000_000L,
+                snapshot(PayUnit.MONTHLY, 1_000_000L, WorkStyle.REMOTE, WorkForm.PART_TIME, null, true),
                 null, WorkStyle.ONSITE, WorkForm.FULL_TIME, null, true);
         assertThat(typesOf(result)).containsExactly(ConditionType.WORK_STYLE, ConditionType.WORK_FORM);
     }
@@ -87,15 +109,13 @@ class NegotiationConditionCalculatorTest {
     @Test
     @DisplayName("착수일: 협의 가능이면 일치, 둘 다 고정이고 프리가 더 늦으면 불일치")
     void startDate() {
-        // 프리 협의 가능 → 일치
-        assertThat(NegotiationConditionCalculator.compute(
-                9_000_000L, snapshot(PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.ANY,
+        assertThat(compute(9_000_000L,
+                snapshot(PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.ANY,
                         LocalDate.of(2026, 3, 1), true),
                 null, WorkStyle.ANY, WorkForm.ANY, LocalDate.of(2026, 1, 1), false)).isEmpty();
 
-        // 둘 다 고정, 프리 착수일이 더 늦음 → 불일치
-        List<NegotiationCondition> result = NegotiationConditionCalculator.compute(
-                9_000_000L, snapshot(PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.ANY,
+        List<NegotiationCondition> result = compute(9_000_000L,
+                snapshot(PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.ANY,
                         LocalDate.of(2026, 3, 1), false),
                 null, WorkStyle.ANY, WorkForm.ANY, LocalDate.of(2026, 1, 1), false);
         assertThat(typesOf(result)).containsExactly(ConditionType.START_DATE);
@@ -104,13 +124,29 @@ class NegotiationConditionCalculatorTest {
     }
 
     @Test
-    @DisplayName("PERIOD는 diff 대상이 아니다(조건부 제외)")
-    void periodExcluded() {
-        List<NegotiationCondition> result = NegotiationConditionCalculator.compute(
-                1L, snapshot(PayUnit.MONTHLY, 9_999_999L, WorkStyle.REMOTE, WorkForm.PART_TIME,
-                        LocalDate.of(2027, 1, 1), false),
-                null, WorkStyle.ONSITE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), false);
+    @DisplayName("PERIOD 조건부: 프리 기간값 없으면 제외, 있고 다르면 포함")
+    void periodConditional() {
+        // 프리 기간 없음(null) → 제외
+        FreelancerConditionSnapshot noPeriod = new FreelancerConditionSnapshot(
+                PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.ANY, null, true, null, null, null);
+        List<NegotiationCondition> excluded = NegotiationConditionCalculator.compute(
+                9_000_000L, noPeriod, null, WorkStyle.ANY, WorkForm.ANY, null, true, 6, PeriodUnit.MONTH);
+        assertThat(typesOf(excluded)).doesNotContain(ConditionType.PERIOD);
 
-        assertThat(typesOf(result)).doesNotContain(ConditionType.PERIOD);
+        // 프리 4개월 vs 프로젝트 6개월 → 불일치 포함
+        FreelancerConditionSnapshot withPeriod = new FreelancerConditionSnapshot(
+                PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.ANY, null, true, null, 4, PeriodUnit.MONTH);
+        List<NegotiationCondition> included = NegotiationConditionCalculator.compute(
+                9_000_000L, withPeriod, null, WorkStyle.ANY, WorkForm.ANY, null, true, 6, PeriodUnit.MONTH);
+        assertThat(typesOf(included)).containsExactly(ConditionType.PERIOD);
+        assertThat(included.get(0).getClientValue()).isEqualTo("6 MONTH");
+        assertThat(included.get(0).getFreelancerValue()).isEqualTo("4 MONTH");
+
+        // 1개월(=4주) vs 4주 → 정규화하면 같음 → 제외
+        FreelancerConditionSnapshot fourWeeks = new FreelancerConditionSnapshot(
+                PayUnit.MONTHLY, 1_000_000L, WorkStyle.ANY, WorkForm.ANY, null, true, null, 4, PeriodUnit.WEEK);
+        List<NegotiationCondition> sameLength = NegotiationConditionCalculator.compute(
+                9_000_000L, fourWeeks, null, WorkStyle.ANY, WorkForm.ANY, null, true, 1, PeriodUnit.MONTH);
+        assertThat(typesOf(sameLength)).doesNotContain(ConditionType.PERIOD);
     }
 }

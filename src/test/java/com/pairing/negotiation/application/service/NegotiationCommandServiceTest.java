@@ -62,7 +62,8 @@ class NegotiationCommandServiceTest {
 
         Long id = commandUseCase.create(command(4_800_000L,
                 new FreelancerConditionSnapshot(PayUnit.MONTHLY, 6_000_000L,
-                        WorkStyle.REMOTE, WorkForm.PART_TIME, LocalDate.of(2026, 3, 1), false)));
+                        WorkStyle.REMOTE, WorkForm.PART_TIME, LocalDate.of(2026, 3, 1), false,
+                        5_500_000L, null, null)));
 
         Negotiation saved = negotiationRepository.findById(id).orElseThrow();
         assertThat(saved.getStatus()).isEqualTo(NegotiationStatus.IN_PROGRESS);
@@ -82,7 +83,8 @@ class NegotiationCommandServiceTest {
 
         Long id = commandUseCase.create(command(5_000_000L,
                 new FreelancerConditionSnapshot(PayUnit.MONTHLY, 5_000_000L,
-                        WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), false)));
+                        WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), false,
+                        null, null, null)));
 
         Negotiation saved = negotiationRepository.findById(id).orElseThrow();
         assertThat(saved.getConditions()).isEmpty();
@@ -93,7 +95,7 @@ class NegotiationCommandServiceTest {
     void createFailsWhenProjectMissing() {
         assertThatThrownBy(() -> commandUseCase.create(command(5_000_000L,
                 new FreelancerConditionSnapshot(PayUnit.MONTHLY, 5_000_000L,
-                        WorkStyle.ANY, WorkForm.ANY, null, true))))
+                        WorkStyle.ANY, WorkForm.ANY, null, true, null, null, null))))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(NegotiationErrorCode.INVALID_CONDITION);

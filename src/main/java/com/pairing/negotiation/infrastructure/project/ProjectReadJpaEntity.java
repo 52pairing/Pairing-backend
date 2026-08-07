@@ -1,5 +1,6 @@
 package com.pairing.negotiation.infrastructure.project;
 
+import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 import jakarta.persistence.Column;
@@ -52,4 +53,12 @@ public class ProjectReadJpaEntity {
 
     @Column(name = "start_negotiable")
     private boolean startNegotiable;
+
+    // nullable(Integer/enum)로 매핑 → H2 create-drop 에서도 NOT NULL 안 걸려 조회 테스트에 지장 없음.
+    @Column(name = "period_value")
+    private Integer periodValue;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "period_unit")
+    private PeriodUnit periodUnit;
 }
