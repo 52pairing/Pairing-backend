@@ -52,6 +52,7 @@ public class GlobalJwtAuthenticationFilter extends OncePerRequestFilter {
             // 비로그인 조회. 만료된 쿠키가 남아 있다고 해서 가입 화면의 약관/선택목록이 막히면 안 된다.
             "/api/v1/meta",
             "/api/v1/terms",
+            "/api/v1/home",
             "/api/v1/auth/login",
             "/api/v1/auth/signup",
             "/api/v1/auth/refresh",

@@ -188,6 +188,7 @@ CREATE TABLE "freelancer_profile" (
     "address" VARCHAR(255),
     "profile_file_id" BIGINT,
     "ai_matching_agreed" BOOLEAN DEFAULT TRUE NOT NULL,
+    "matching_paused" BOOLEAN DEFAULT FALSE NOT NULL,
     "grade" VARCHAR(20) DEFAULT 'JUNIOR' NOT NULL,
     "grade_checked_at" TIMESTAMP,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -200,9 +201,14 @@ CREATE TABLE "payment_method" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "account_id" BIGINT NOT NULL,
     "method_type" VARCHAR(20) NOT NULL,
+    "is_default" BOOLEAN DEFAULT FALSE NOT NULL,
     "card_number_enc" BYTEA,
     "card_brand" VARCHAR(30),
     "card_last4" CHAR(4),
+    "card_expiry_month" SMALLINT,
+    "card_expiry_year" SMALLINT,
+    "card_holder" VARCHAR(50),
+    "easy_pay_provider" VARCHAR(20),
     "bank_code" VARCHAR(10),
     "account_no_enc" BYTEA,
     "account_holder" VARCHAR(50),
@@ -333,6 +339,21 @@ CREATE TABLE "resume_link" (
     PRIMARY KEY ("id")
 );
 
+-- 마이페이지 포트폴리오. 이력서 첨부 파일과 별개로 여러 건을 관리한다.
+CREATE TABLE "portfolio" (
+    "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    "freelancer_id" BIGINT NOT NULL,
+    "title" VARCHAR(100) NOT NULL,
+    "description" VARCHAR(1000),
+    "file_id" BIGINT,
+    "link_url" VARCHAR(500),
+    "sort_order" INTEGER DEFAULT 0 NOT NULL,
+    "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "deleted_at" TIMESTAMP,
+    PRIMARY KEY ("id")
+);
+
 CREATE TABLE "project" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "client_id" BIGINT NOT NULL,
@@ -376,6 +397,7 @@ CREATE TABLE "project_position" (
     "job_role" VARCHAR(40) NOT NULL,
     "min_career_years" INTEGER NOT NULL,
     "headcount" INTEGER NOT NULL,
+    "preferred_note" VARCHAR(500),
     "confirmed_count" INTEGER DEFAULT 0 NOT NULL,
     "status" VARCHAR(30) DEFAULT 'RECRUITING' NOT NULL,
     "closed_at" TIMESTAMP,
@@ -660,6 +682,10 @@ CREATE TABLE "settlement" (
     "grade_discount" NUMERIC(5,2) DEFAULT 0.00 NOT NULL,
     "fee_amount" NUMERIC(15,0) NOT NULL,
     "ledger_entry_id" BIGINT,
+    "payment_method_id" BIGINT,
+    "approval_no" VARCHAR(50),
+    "fail_reason" VARCHAR(255),
+    "overdue_reason" VARCHAR(255),
     "status" VARCHAR(30) DEFAULT 'PENDING' NOT NULL,
     "due_date" DATE,
     "paid_at" TIMESTAMP,
@@ -791,6 +817,32 @@ CREATE TABLE "inquiry" (
     PRIMARY KEY ("id")
 );
 
+-- 1:1 문의 첨부파일. 작성 화면에서 여러 건을 올릴 수 있다.
+CREATE TABLE "inquiry_file" (
+    "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    "inquiry_id" BIGINT NOT NULL,
+    "file_id" BIGINT NOT NULL,
+    "sort_order" INTEGER DEFAULT 0 NOT NULL,
+    "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY ("id")
+);
+
+-- 상태 변경 이력. 관리자 상세 화면의 "상태 이력" 표에 쓴다.
+-- 프로젝트/정산/계약이 같은 형태(일시·상태·처리자·비고)라 대상 종류를 컬럼으로 구분한다.
+-- 대상 테이블이 여러 개여서 FK 는 걸지 않고 인덱스로만 조회한다.
+CREATE TABLE "status_history" (
+    "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    "target_type" VARCHAR(20) NOT NULL,
+    "target_id" BIGINT NOT NULL,
+    "status" VARCHAR(30) NOT NULL,
+    "actor_type" VARCHAR(20) NOT NULL,
+    "actor_account_id" BIGINT,
+    "note" VARCHAR(255),
+    "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY ("id")
+);
+
 CREATE TABLE "ai_agent_log" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "agent_type" VARCHAR(30) NOT NULL,
@@ -869,6 +921,11 @@ ALTER TABLE "resume_education" ADD CONSTRAINT "fk_resume_education" FOREIGN KEY 
 ALTER TABLE "resume_career" ADD CONSTRAINT "fk_resume_career" FOREIGN KEY ("resume_id") REFERENCES "resume" ("id");
 ALTER TABLE "resume_certificate" ADD CONSTRAINT "fk_resume_certificate" FOREIGN KEY ("resume_id") REFERENCES "resume" ("id");
 ALTER TABLE "resume_link" ADD CONSTRAINT "fk_resume_link" FOREIGN KEY ("resume_id") REFERENCES "resume" ("id");
+ALTER TABLE "portfolio" ADD CONSTRAINT "fk_portfolio_freelancer" FOREIGN KEY ("freelancer_id") REFERENCES "account" ("id");
+ALTER TABLE "portfolio" ADD CONSTRAINT "fk_portfolio_file" FOREIGN KEY ("file_id") REFERENCES "file" ("id");
+ALTER TABLE "inquiry_file" ADD CONSTRAINT "fk_inquiry_file_inquiry" FOREIGN KEY ("inquiry_id") REFERENCES "inquiry" ("id");
+ALTER TABLE "inquiry_file" ADD CONSTRAINT "fk_inquiry_file_file" FOREIGN KEY ("file_id") REFERENCES "file" ("id");
+ALTER TABLE "settlement" ADD CONSTRAINT "fk_settlement_payment_method" FOREIGN KEY ("payment_method_id") REFERENCES "payment_method" ("id");
 ALTER TABLE "project" ADD CONSTRAINT "fk_project_client" FOREIGN KEY ("client_id") REFERENCES "client_profile" ("id");
 ALTER TABLE "project_position" ADD CONSTRAINT "fk_position_project" FOREIGN KEY ("project_id") REFERENCES "project" ("id");
 ALTER TABLE "position_skill" ADD CONSTRAINT "fk_position_skill_position" FOREIGN KEY ("position_id") REFERENCES "project_position" ("id");
@@ -956,6 +1013,7 @@ CREATE INDEX "idx_client_grade" ON "client_profile" ("grade");
 CREATE INDEX "idx_freelancer_photo" ON "freelancer_profile" ("profile_file_id");
 CREATE INDEX "idx_freelancer_grade" ON "freelancer_profile" ("grade", "ai_matching_agreed");
 CREATE INDEX "idx_payment_method_account" ON "payment_method" ("account_id", "method_type");
+CREATE UNIQUE INDEX "uk_payment_method_default" ON "payment_method" ("account_id") WHERE "is_default" AND "deleted_at" IS NULL;
 CREATE INDEX "idx_terms_agreement_terms" ON "terms_agreement" ("terms_id");
 CREATE INDEX "idx_email_verification" ON "email_verification" ("email", "purpose", "created_at");
 CREATE INDEX "idx_email_verification_expire" ON "email_verification" ("expires_at");
@@ -968,6 +1026,9 @@ CREATE INDEX "idx_resume_portfolio" ON "resume" ("portfolio_file_id");
 CREATE INDEX "idx_resume_education" ON "resume_education" ("resume_id", "sort_order");
 CREATE INDEX "idx_resume_certificate" ON "resume_certificate" ("resume_id", "sort_order");
 CREATE INDEX "idx_resume_link" ON "resume_link" ("resume_id");
+CREATE INDEX "idx_portfolio_freelancer" ON "portfolio" ("freelancer_id", "sort_order");
+CREATE INDEX "idx_inquiry_file" ON "inquiry_file" ("inquiry_id", "sort_order");
+CREATE INDEX "idx_status_history_target" ON "status_history" ("target_type", "target_id", "created_at");
 CREATE INDEX "idx_project_client_status" ON "project" ("client_id", "status");
 CREATE INDEX "idx_project_status_created" ON "project" ("status", "created_at");
 CREATE INDEX "idx_project_deadline" ON "project" ("recruit_deadline", "status");

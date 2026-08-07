@@ -1,0 +1,815 @@
+﻿도메인,DTO 구분,DTO,상위 DTO,필드,타입,필수,열거값,설명,예시,사용 API
+01. Auth,요청,ChangePasswordRequest,,currentPassword,String,필수,,현재 비밀번호(임시 비밀번호 포함),,PATCH /api/v1/auth/password (요청)
+01. Auth,요청,ChangePasswordRequest,,newPassword,String,필수,,"새 비밀번호(대소문자+숫자+특수문자, 8~20자)",,PATCH /api/v1/auth/password (요청)
+01. Auth,요청,ChangePasswordRequest,,newPasswordConfirm,String,필수,,새 비밀번호 확인,,PATCH /api/v1/auth/password (요청)
+01. Auth,요청,ClientSignUpRequest,,companyName,String,필수,,기업명,주식회사 페어링,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,businessNo,String,선택,,사업자등록번호(하이픈 없이 숫자 10자리),1234567890,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,businessField,Enum,필수,IT_CONTENTS_AI / GAME / SALES_DISTRIBUTION_LOGISTICS / MANUFACTURING / ADVANCED_SCIENCE / OTHER_SERVICE / FINANCE / EDUCATION / REAL_ESTATE / ARTS_SPORTS_LEISURE / HEALTH_WELFARE / CONSTRUCTION / LODGING_FOOD / AGRICULTURE_FISHERY / MARKETING / WATER_ENVIRONMENT / ELECTRICITY_GAS / PUBLIC_ADMIN_DEFENSE / MINING / MEDICAL_HEALTHCARE,사업 분야,IT_CONTENTS_AI,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,employeeCount,Enum,필수,SIZE_1_4 / SIZE_5_9 / SIZE_10_49 / SIZE_50_299 / SIZE_300_OVER,직원수 구간,SIZE_10_49,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,email,String,필수,,업무 이메일(로그인 아이디),owner@pairing.com,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,name,String,필수,,대표자명,홍길동,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,phone,String,선택,,휴대폰번호(법인폰),010-1234-5678,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,password,String,필수,,"비밀번호(대소문자+숫자+특수문자, 8~20자)",Passw0rd!,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,passwordConfirm,String,필수,,비밀번호 확인,Passw0rd!,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,card,CardRequest,필수,,수수료 결제용 카드,,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,bankAccount,BankAccountRequest,필수,,용역비 수령용 계좌,,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ClientSignUpRequest,,agreements,List<TermsAgreementRequest>,필수,,약관 동의 목록,,POST /api/v1/auth/signup/client (요청)
+01. Auth,요청,ConfirmCodeRequest,,email,String,필수,,인증 대상 이메일,user@pairing.com,POST /api/v1/auth/email-verifications/confirm (요청)
+01. Auth,요청,ConfirmCodeRequest,,purpose,Enum,필수,SIGNUP / UNLOCK / PROFILE_UPDATE,인증 용도,SIGNUP,POST /api/v1/auth/email-verifications/confirm (요청)
+01. Auth,요청,ConfirmCodeRequest,,code,String,선택,,6자리 인증코드,123456,POST /api/v1/auth/email-verifications/confirm (요청)
+01. Auth,요청,FindEmailRequest,,name,String,필수,,이름,홍길동,POST /api/v1/auth/find-email (요청)
+01. Auth,요청,FindEmailRequest,,phone,String,선택,,전화번호,010-1234-5678,POST /api/v1/auth/find-email (요청)
+01. Auth,요청,FreelancerSignUpRequest,,name,String,필수,,이름,홍길동,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,FreelancerSignUpRequest,,phone,String,선택,,전화번호,010-1234-5678,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,FreelancerSignUpRequest,,email,String,필수,,이메일(로그인 아이디),user@pairing.com,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,FreelancerSignUpRequest,,password,String,필수,,"비밀번호(대소문자+숫자+특수문자, 8~20자)",Passw0rd!,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,FreelancerSignUpRequest,,passwordConfirm,String,필수,,비밀번호 확인,Passw0rd!,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,FreelancerSignUpRequest,,birthDate,LocalDate,필수,,생년월일(만 18세 이상),1995-03-01,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,FreelancerSignUpRequest,,card,CardRequest,필수,,수수료 결제용 카드,,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,FreelancerSignUpRequest,,bankAccount,BankAccountRequest,필수,,용역비 수령용 계좌,,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,FreelancerSignUpRequest,,agreements,List<TermsAgreementRequest>,필수,,약관 동의 목록,,POST /api/v1/auth/signup/freelancer (요청)
+01. Auth,요청,LoginRequest,,email,String,필수,,로그인 아이디(이메일),user@pairing.com,POST /api/v1/auth/login (요청)
+01. Auth,요청,LoginRequest,,password,String,필수,,비밀번호,Passw0rd!,POST /api/v1/auth/login (요청)
+01. Auth,요청,LoginRequest,,role,Enum,필수,CLIENT / FREELANCER / ADMIN,로그인 탭에서 고른 역할. 같은 이메일이라도 역할이 다르면 다른 계정이다.,CLIENT,POST /api/v1/auth/login (요청)
+01. Auth,요청,PasswordResetConfirmRequest,,token,String,필수,,메일 링크에 담긴 토큰,,POST /api/v1/auth/password/reset-confirm (요청)
+01. Auth,요청,PasswordResetRequest,,email,String,필수,,아이디(이메일),user@pairing.com,POST /api/v1/auth/password/reset-requests (요청)
+01. Auth,요청,PasswordResetRequest,,role,Enum,필수,CLIENT / FREELANCER / ADMIN,역할. 같은 이메일이라도 역할이 다르면 다른 계정이다.,FREELANCER,POST /api/v1/auth/password/reset-requests (요청)
+01. Auth,요청,PasswordResetRequest,,name,String,필수,,이름,홍길동,POST /api/v1/auth/password/reset-requests (요청)
+01. Auth,요청,PasswordResetRequest,,phone,String,선택,,전화번호,010-1234-5678,POST /api/v1/auth/password/reset-requests (요청)
+01. Auth,요청,SendCodeRequest,,email,String,필수,,인증 대상 이메일,user@pairing.com,POST /api/v1/auth/email-verifications (요청)
+01. Auth,요청,SendCodeRequest,,purpose,Enum,필수,SIGNUP / UNLOCK / PROFILE_UPDATE,인증 용도,SIGNUP,POST /api/v1/auth/email-verifications (요청)
+01. Auth,요청,SocialCallbackRequest,,code,String,필수,,공급자가 준 인가 코드,,POST /api/v1/auth/social/{provider}/callback (요청)
+01. Auth,요청,SocialCallbackRequest,,state,String,필수,,인가 요청 시 발급받은 state,,POST /api/v1/auth/social/{provider}/callback (요청)
+01. Auth,요청,SocialSignUpRequest,,signUpTicket,String,필수,,소셜 콜백에서 받은 가입 티켓,,POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,요청,SocialSignUpRequest,,name,String,필수,,이름,홍길동,POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,요청,SocialSignUpRequest,,phone,String,선택,,전화번호,010-1234-5678,POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,요청,SocialSignUpRequest,,birthDate,LocalDate,필수,,생년월일(만 18세 이상),1995-03-01,POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,요청,SocialSignUpRequest,,card,CardRequest,필수,,수수료 결제용 카드,,POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,요청,SocialSignUpRequest,,bankAccount,BankAccountRequest,필수,,용역비 수령용 계좌,,POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,요청,SocialSignUpRequest,,agreements,List<TermsAgreementRequest>,필수,,약관 동의 목록,,POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,요청,UnlockRequest,,email,String,필수,,아이디(이메일),user@pairing.com,POST /api/v1/auth/unlock (요청)
+01. Auth,요청,UnlockRequest,,role,Enum,필수,CLIENT / FREELANCER / ADMIN,역할,CLIENT,POST /api/v1/auth/unlock (요청)
+01. Auth,요청,UnlockRequest,,code,String,선택,,UNLOCK 용도로 받은 6자리 인증코드,123456,POST /api/v1/auth/unlock (요청)
+01. Auth,응답,AuthorizeUrlResponse,,authorizeUrl,String,선택,,이 URL로 이동시키면 공급자 로그인 화면이 열린다.,,GET /api/v1/auth/social/{provider}/authorize (응답)
+01. Auth,응답,AuthorizeUrlResponse,,state,String,선택,,콜백에서 그대로 돌려줘야 하는 state,,GET /api/v1/auth/social/{provider}/authorize (응답)
+01. Auth,응답,DuplicationResponse,,duplicated,Boolean,선택,,이미 사용 중이면 true,False,GET /api/v1/auth/exists/business-no (응답) / GET /api/v1/auth/exists/email (응답) / GET /api/v1/auth/exists/phone (응답)
+01. Auth,응답,FindEmailResponse,,accounts,List<Item>,선택,,찾은 계정 목록,,POST /api/v1/auth/find-email (응답)
+01. Auth,응답,LoginResponse,,accountId,Long,선택,,계정 ID,1,POST /api/v1/auth/login (응답) / POST /api/v1/auth/refresh (응답) / POST /api/v1/auth/signup/freelancer/social (응답) 외 1건
+01. Auth,응답,LoginResponse,,role,String,선택,,역할,FREELANCER,POST /api/v1/auth/login (응답) / POST /api/v1/auth/refresh (응답) / POST /api/v1/auth/signup/freelancer/social (응답) 외 1건
+01. Auth,응답,LoginResponse,,name,String,선택,,이름,홍길동,POST /api/v1/auth/login (응답) / POST /api/v1/auth/refresh (응답) / POST /api/v1/auth/signup/freelancer/social (응답) 외 1건
+01. Auth,응답,LoginResponse,,tempPassword,Boolean,선택,,임시 비밀번호 상태. true면 비밀번호 변경 화면으로 보내야 한다.,False,POST /api/v1/auth/login (응답) / POST /api/v1/auth/refresh (응답) / POST /api/v1/auth/signup/freelancer/social (응답) 외 1건
+01. Auth,응답,MeResponse,,accountId,Long,선택,,계정 ID,1,GET /api/v1/auth/me (응답)
+01. Auth,응답,MeResponse,,email,String,선택,,이메일,user@pairing.com,GET /api/v1/auth/me (응답)
+01. Auth,응답,MeResponse,,role,String,선택,,역할,FREELANCER,GET /api/v1/auth/me (응답)
+01. Auth,응답,MeResponse,,name,String,선택,,이름,홍길동,GET /api/v1/auth/me (응답)
+01. Auth,응답,MeResponse,,tempPassword,Boolean,선택,,임시 비밀번호 상태,False,GET /api/v1/auth/me (응답)
+01. Auth,응답,SendCodeResponse,,expiresAt,LocalDateTime,선택,,코드 만료 시각. 프론트는 이 값으로 타이머를 표시한다.,,POST /api/v1/auth/email-verifications (응답)
+01. Auth,응답,SendCodeResponse,,remainingSendCount,Integer,선택,,이번 집계 구간에서 남은 발송 가능 횟수,14,POST /api/v1/auth/email-verifications (응답)
+01. Auth,응답,SignUpResponse,,accountId,Long,선택,,생성된 계정 ID,1,POST /api/v1/auth/signup/client (응답) / POST /api/v1/auth/signup/freelancer (응답)
+01. Auth,응답,SignUpResponse,,role,String,선택,,역할,CLIENT,POST /api/v1/auth/signup/client (응답) / POST /api/v1/auth/signup/freelancer (응답)
+01. Auth,응답,SocialAuthResponse,,status,String,선택,,LOGIN 또는 SIGNUP_REQUIRED,SIGNUP_REQUIRED,POST /api/v1/auth/social/{provider}/callback (응답)
+01. Auth,응답,SocialAuthResponse,,login,LoginResponse,선택,,로그인 정보. status가 LOGIN일 때만 채워진다.,,POST /api/v1/auth/social/{provider}/callback (응답)
+01. Auth,응답,SocialAuthResponse,,signUpTicket,String,선택,,가입 티켓. status가 SIGNUP_REQUIRED일 때만 채워진다.,,POST /api/v1/auth/social/{provider}/callback (응답)
+01. Auth,응답,SocialAuthResponse,,email,String,선택,,공급자가 준 이메일(수정 불가),user@gmail.com,POST /api/v1/auth/social/{provider}/callback (응답)
+01. Auth,응답,SocialAuthResponse,,name,String,선택,,공급자가 준 이름(수정 가능),홍길동,POST /api/v1/auth/social/{provider}/callback (응답)
+01. Auth,중첩,BankAccountRequest,ClientSignUpRequest,bankCode,String,선택,,은행 코드(금융결제원 기관코드),088,POST /api/v1/auth/signup/client (요청) / POST /api/v1/auth/signup/freelancer (요청) / POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,중첩,BankAccountRequest,ClientSignUpRequest,accountNo,String,필수,,계좌번호. 하이픈 허용,110-123-456789,POST /api/v1/auth/signup/client (요청) / POST /api/v1/auth/signup/freelancer (요청) / POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,중첩,BankAccountRequest,ClientSignUpRequest,accountHolder,String,필수,,예금주,홍길동,POST /api/v1/auth/signup/client (요청) / POST /api/v1/auth/signup/freelancer (요청) / POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,중첩,CardRequest,ClientSignUpRequest,cardNumber,String,필수,,카드번호. 하이픈 허용,1234-5678-1234-5678,POST /api/v1/auth/signup/client (요청) / POST /api/v1/auth/signup/freelancer (요청) / POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,중첩,CardRequest,ClientSignUpRequest,cardBrand,String,필수,,카드사,신한카드,POST /api/v1/auth/signup/client (요청) / POST /api/v1/auth/signup/freelancer (요청) / POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,중첩,Item,FindEmailResponse,jobRole,Enum,선택,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,직무,,POST /api/v1/auth/find-email (응답) / POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+01. Auth,중첩,Item,FindEmailResponse,headcount,Integer,선택,,모집 인원,2,POST /api/v1/auth/find-email (응답) / POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+01. Auth,중첩,Item,FindEmailResponse,expectedCandidateCount,Integer,선택,,예상 후보 수,5,POST /api/v1/auth/find-email (응답) / POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+01. Auth,중첩,Item,FindEmailResponse,matchable,Boolean,선택,,매칭 가능 여부,True,POST /api/v1/auth/find-email (응답) / POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+01. Auth,중첩,Item,FindEmailResponse,message,String,선택,,불가 사유. matchable 이 true 면 null,현재 조건에 맞는 백엔드 개발자 후보가 모집 인원보다 부족합니다.,POST /api/v1/auth/find-email (응답) / POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+01. Auth,중첩,Item,FindEmailResponse,suggestions,List<String>,선택,,조건 조정 제안,['희망 경력을 낮춰보세요.'],POST /api/v1/auth/find-email (응답) / POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+01. Auth,중첩,TermsAgreementRequest,ClientSignUpRequest,termsId,Long,필수,,약관 ID,1,POST /api/v1/auth/signup/client (요청) / POST /api/v1/auth/signup/freelancer (요청) / POST /api/v1/auth/signup/freelancer/social (요청)
+01. Auth,중첩,TermsAgreementRequest,ClientSignUpRequest,agreed,Boolean,선택,,동의 여부,True,POST /api/v1/auth/signup/client (요청) / POST /api/v1/auth/signup/freelancer (요청) / POST /api/v1/auth/signup/freelancer/social (요청)
+02. Meta,응답,CodeItemResponse,,code,String,선택,,코드,BACKEND,GET /api/v1/meta/job-categories (응답) / GET /api/v1/meta/job-roles (응답) / GET /api/v1/meta/skills (응답)
+02. Meta,응답,CodeItemResponse,,label,String,선택,,표시명,백엔드 개발자,GET /api/v1/meta/job-categories (응답) / GET /api/v1/meta/job-roles (응답) / GET /api/v1/meta/skills (응답)
+02. Meta,응답,CodeItemResponse,,parentCode,String,선택,,상위 코드. 직무는 직군을 가리킨다.,DEVELOPMENT,GET /api/v1/meta/job-categories (응답) / GET /api/v1/meta/job-roles (응답) / GET /api/v1/meta/skills (응답)
+02. Meta,응답,CodeLabelResponse,,code,String,선택,,저장/전송에 사용하는 코드,IT_CONTENTS_AI,GET /api/v1/meta/banks (응답) / GET /api/v1/meta/business-fields (응답) / GET /api/v1/meta/employee-counts (응답)
+02. Meta,응답,CodeLabelResponse,,label,String,선택,,화면에 표시하는 이름,IT/컨텐츠/AI,GET /api/v1/meta/banks (응답) / GET /api/v1/meta/business-fields (응답) / GET /api/v1/meta/employee-counts (응답)
+03. Terms,응답,TermsResponse,,termsId,Long,선택,,약관 ID. 동의 요청 시 이 값을 그대로 보낸다.,1,GET /api/v1/terms (응답)
+03. Terms,응답,TermsResponse,,code,String,선택,,약관 코드,SERVICE_CLIENT,GET /api/v1/terms (응답)
+03. Terms,응답,TermsResponse,,title,String,선택,,약관 제목,클라이언트 서비스 이용약관,GET /api/v1/terms (응답)
+03. Terms,응답,TermsResponse,,version,String,선택,,약관 버전,v1.0,GET /api/v1/terms (응답)
+03. Terms,응답,TermsResponse,,required,Boolean,선택,,필수 동의 여부,True,GET /api/v1/terms (응답)
+03. Terms,응답,TermsResponse,,content,String,선택,,약관 전문,,GET /api/v1/terms (응답)
+04. File,응답,FileResponse,,fileId,Long,선택,,파일 ID. 다른 API 요청 본문에는 이 값만 넣는다.,1,POST /api/v1/files (응답) / GET /api/v1/files/{fileId} (응답)
+04. File,응답,FileResponse,,originalName,String,선택,,원본 파일명,portfolio.pdf,POST /api/v1/files (응답) / GET /api/v1/files/{fileId} (응답)
+04. File,응답,FileResponse,,fileUrl,String,선택,,다운로드 URL,,POST /api/v1/files (응답) / GET /api/v1/files/{fileId} (응답)
+04. File,응답,FileResponse,,mimeType,String,선택,,MIME 타입,application/pdf,POST /api/v1/files (응답) / GET /api/v1/files/{fileId} (응답)
+04. File,응답,FileResponse,,sizeBytes,Long,선택,,크기(byte),1048576,POST /api/v1/files (응답) / GET /api/v1/files/{fileId} (응답)
+05. Home,응답,FaqResponse,,question,String,선택,,질문,페어링의 매칭 프로세스가 궁금합니다,GET /api/v1/home/faqs (응답)
+05. Home,응답,FaqResponse,,answer,String,선택,,답변,프로젝트 등록 → 프리랜서 매칭 → 협상 → 계약 성사 순으로 진행됩니다.,GET /api/v1/home/faqs (응답)
+05. Home,응답,FaqResponse,,sortOrder,Integer,선택,,노출 순서,1,GET /api/v1/home/faqs (응답)
+05. Home,응답,HomeSummaryResponse,,completionRate,Double,선택,,프로젝트 완수율(%),99.0,GET /api/v1/home/summary (응답)
+05. Home,응답,HomeSummaryResponse,,projectCount,Long,선택,,누적 프로젝트 등록 수,5657,GET /api/v1/home/summary (응답)
+05. Home,응답,HomeSummaryResponse,,negotiationCount,Long,선택,,누적 협상 수,6000,GET /api/v1/home/summary (응답)
+05. Home,응답,HomeSummaryResponse,,freelancerCount,Long,선택,,검증된 프리랜서 수,5000,GET /api/v1/home/summary (응답)
+05. Home,응답,HomeSummaryResponse,,satisfaction,Double,선택,,AI 매칭 고객만족도(5점 만점),4.8,GET /api/v1/home/summary (응답)
+05. Home,응답,HomeSummaryResponse,,totalProjectAmount,Long,선택,,누적 프로젝트 금액(원),300000000000,GET /api/v1/home/summary (응답)
+05. Home,응답,SiteReviewResponse,,siteReviewId,Long,선택,,사이트 리뷰 ID,950,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+05. Home,응답,SiteReviewResponse,,writerRole,Enum,선택,CLIENT / FREELANCER,작성자 구분,,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+05. Home,응답,SiteReviewResponse,,writerName,String,선택,,작성자 표시명. 메인 노출 시 마스킹된다.,고**,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+05. Home,응답,SiteReviewResponse,,score,Integer,선택,,별점,5,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+05. Home,응답,SiteReviewResponse,,content,String,선택,,내용,,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+05. Home,응답,SiteReviewResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+05. Home,응답,SiteReviewResponse,,visibility,Enum,선택,PRIVATE / PUBLIC,공개 여부,,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+05. Home,응답,SiteReviewResponse,,promoted,Boolean,선택,,홍보 활용 여부,False,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+05. Home,응답,SiteReviewResponse,,createdAt,LocalDateTime,선택,,작성 시각,,GET /api/v1/home/site-reviews (응답) / GET /api/v1/reviews/admin/site-reviews (응답) / PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (응답)
+06. Account,요청,AccountSuspendRequest,,reason,String,필수,,정지 사유. 사용자에게 안내된다.,허위 정보 등록,POST /api/v1/accounts/admin/{accountId}/suspension (요청)
+06. Account,요청,AccountSuspendRequest,,days,Integer,선택,,정지 기간(일). 비우면 무기한,30,POST /api/v1/accounts/admin/{accountId}/suspension (요청)
+06. Account,요청,AccountWithdrawRequest,,currentPassword,String,선택,,본인 확인용 현재 비밀번호. 소셜 전용 계정은 비운다.,,DELETE /api/v1/accounts/me (요청)
+06. Account,요청,AccountWithdrawRequest,,reason,String,선택,,탈퇴 사유(선택),서비스를 더 이용하지 않습니다.,DELETE /api/v1/accounts/me (요청)
+06. Account,요청,PaymentMethodCreateRequest,,methodType,Enum,필수,CARD / EASY_PAY / BANK_ACCOUNT,결제수단 종류,CARD,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,요청,PaymentMethodCreateRequest,,card,Card,선택,,카드 정보. methodType 이 CARD 일 때 필수,,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,요청,PaymentMethodCreateRequest,,easyPay,EasyPay,선택,,간편결제 정보. methodType 이 EASY_PAY 일 때 필수,,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,응답,AdminAccountDetailResponse,,accountId,Long,선택,,계정 ID,7,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,memberNo,String,선택,,화면 표시용 회원번호,MEM-001,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,role,Enum,선택,CLIENT / FREELANCER / ADMIN,유형,,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,name,String,선택,,이름 또는 담당자명,김담당,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,email,String,선택,,이메일,hr@samsung.com,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,phone,String,선택,,전화번호,02-1234-5678,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,signupType,Enum,선택,EMAIL / SOCIAL,가입 방식,,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,joinedAt,LocalDate,선택,,가입일,,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,lastLoginAt,LocalDateTime,선택,,최근 로그인,,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,status,Enum,선택,PENDING / ACTIVE / LOCKED / WITHDRAWN,상태,,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,suspended,Boolean,선택,,정지 여부,False,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,suspendReason,String,선택,,정지 사유,,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,companyName,String,선택,,기업명. 클라이언트만,삼성전자,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,businessNo,String,선택,,사업자번호. 클라이언트만,123-45-67890,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,businessField,String,선택,,사업 분야. 클라이언트만,IT·콘텐츠·AI,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,employeeCount,String,선택,,직원수. 클라이언트만,500명 이상,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,activity,Activity,선택,,활동 현황,,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountDetailResponse,,projectHistories,List<ProjectHistory>,선택,,프로젝트 이력,,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,응답,AdminAccountResponse,,accountId,Long,선택,,계정 ID,7,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,memberNo,String,선택,,화면에 표시하는 회원번호,MEM-001,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,role,Enum,선택,CLIENT / FREELANCER / ADMIN,유형,,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,name,String,선택,,이름 또는 기업명,주식회사 페어링,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,managerName,String,선택,,담당자명. 클라이언트만 채워진다,김담당,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,email,String,선택,,이메일,owner@pairing.com,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,signupType,Enum,선택,EMAIL / SOCIAL,가입 방식,,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,status,Enum,선택,PENDING / ACTIVE / LOCKED / WITHDRAWN,상태,,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,suspended,Boolean,선택,,정지 여부. 정지는 상태와 별도로 관리한다.,False,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,suspendReason,String,선택,,정지 사유,,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,activeProjectCount,Integer,선택,,진행 중 프로젝트 수,2,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,createdAt,LocalDateTime,선택,,가입일,,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountResponse,,lastLoginAt,LocalDateTime,선택,,최근 로그인,,GET /api/v1/accounts/admin (응답) / DELETE /api/v1/accounts/admin/{accountId}/suspension (응답) / POST /api/v1/accounts/admin/{accountId}/suspension (응답)
+06. Account,응답,AdminAccountSummaryResponse,,totalCount,Long,선택,,전체 회원 수,6,GET /api/v1/accounts/admin/summary (응답)
+06. Account,응답,AdminAccountSummaryResponse,,activeCount,Long,선택,,정상 회원 수,4,GET /api/v1/accounts/admin/summary (응답)
+06. Account,응답,AdminAccountSummaryResponse,,suspendedCount,Long,선택,,정지 회원 수,1,GET /api/v1/accounts/admin/summary (응답)
+06. Account,응답,AdminAccountSummaryResponse,,withdrawnCount,Long,선택,,탈퇴 회원 수,1,GET /api/v1/accounts/admin/summary (응답)
+06. Account,응답,AdminAccountSummaryResponse,,clientCount,Long,선택,,클라이언트 수,3,GET /api/v1/accounts/admin/summary (응답)
+06. Account,응답,AdminAccountSummaryResponse,,freelancerCount,Long,선택,,프리랜서 수,3,GET /api/v1/accounts/admin/summary (응답)
+06. Account,응답,PaymentMethodResponse,,paymentMethodId,Long,선택,,결제수단 ID,300,GET /api/v1/accounts/me/payment-methods (응답) / POST /api/v1/accounts/me/payment-methods (응답) / PUT /api/v1/accounts/me/payment-methods/{paymentMethodId}/default (응답)
+06. Account,응답,PaymentMethodResponse,,methodType,Enum,선택,CARD / EASY_PAY / BANK_ACCOUNT,결제수단 종류,CARD,GET /api/v1/accounts/me/payment-methods (응답) / POST /api/v1/accounts/me/payment-methods (응답) / PUT /api/v1/accounts/me/payment-methods/{paymentMethodId}/default (응답)
+06. Account,응답,PaymentMethodResponse,,displayName,String,선택,,화면 표시용 이름,신한카드 **** 1234,GET /api/v1/accounts/me/payment-methods (응답) / POST /api/v1/accounts/me/payment-methods (응답) / PUT /api/v1/accounts/me/payment-methods/{paymentMethodId}/default (응답)
+06. Account,응답,PaymentMethodResponse,,cardBrand,String,선택,,카드사. 간편결제면 null,신한카드,GET /api/v1/accounts/me/payment-methods (응답) / POST /api/v1/accounts/me/payment-methods (응답) / PUT /api/v1/accounts/me/payment-methods/{paymentMethodId}/default (응답)
+06. Account,응답,PaymentMethodResponse,,cardLast4,String,선택,,카드번호 끝 4자리. 간편결제면 null,1234,GET /api/v1/accounts/me/payment-methods (응답) / POST /api/v1/accounts/me/payment-methods (응답) / PUT /api/v1/accounts/me/payment-methods/{paymentMethodId}/default (응답)
+06. Account,응답,PaymentMethodResponse,,expiry,String,선택,,유효기간 MM/YY. 간편결제면 null,09/28,GET /api/v1/accounts/me/payment-methods (응답) / POST /api/v1/accounts/me/payment-methods (응답) / PUT /api/v1/accounts/me/payment-methods/{paymentMethodId}/default (응답)
+06. Account,응답,PaymentMethodResponse,,cardHolder,String,선택,,카드 소지자 이름. 간편결제면 null,김개발,GET /api/v1/accounts/me/payment-methods (응답) / POST /api/v1/accounts/me/payment-methods (응답) / PUT /api/v1/accounts/me/payment-methods/{paymentMethodId}/default (응답)
+06. Account,응답,PaymentMethodResponse,,isDefault,Boolean,선택,,기본 결제수단 여부,True,GET /api/v1/accounts/me/payment-methods (응답) / POST /api/v1/accounts/me/payment-methods (응답) / PUT /api/v1/accounts/me/payment-methods/{paymentMethodId}/default (응답)
+06. Account,중첩,Activity,AdminAccountDetailResponse,inProgressCount,Long,선택,,진행중 프로젝트,2,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,Activity,AdminAccountDetailResponse,completedCount,Long,선택,,완료 프로젝트,2,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,Activity,AdminAccountDetailResponse,canceledCount,Long,선택,,취소,0,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,Activity,AdminAccountDetailResponse,totalTransactionAmount,Long,선택,,누적 거래금액(원),10000000,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,Activity,AdminAccountDetailResponse,reviewCount,Long,선택,,리뷰 수,3,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,Activity,AdminAccountDetailResponse,ratingAverage,Double,선택,,평균 별점,4.8,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,Card,PaymentMethodCreateRequest,cardBrand,String,필수,,카드사,신한카드,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,중첩,Card,PaymentMethodCreateRequest,cardNumber,String,필수,,카드번호,1234-5678-9123-4567,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,중첩,Card,PaymentMethodCreateRequest,expiryMonth,Integer,필수,,유효기간 월,9,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,중첩,Card,PaymentMethodCreateRequest,expiryYear,Integer,필수,,유효기간 연도 두 자리,28,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,중첩,Card,PaymentMethodCreateRequest,cvc,String,필수,,CVC. 저장하지 않고 검증에만 사용한다,123,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,중첩,Card,PaymentMethodCreateRequest,cardHolder,String,필수,,카드 소지자 이름,홍길동,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,중첩,EasyPay,PaymentMethodCreateRequest,provider,Enum,필수,KAKAO_PAY / NAVER_PAY / TOSS_PAY,간편결제 공급자,KAKAO_PAY,POST /api/v1/accounts/me/payment-methods (요청)
+06. Account,중첩,ProjectHistory,AdminAccountDetailResponse,projectId,Long,선택,,프로젝트 ID,1,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,ProjectHistory,AdminAccountDetailResponse,projectNo,String,선택,,프로젝트 번호,PRJ-001,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,ProjectHistory,AdminAccountDetailResponse,title,String,선택,,프로젝트명,쇼핑몰 관리자 페이지 리뉴얼,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,ProjectHistory,AdminAccountDetailResponse,statusLabel,String,선택,,상태 라벨,진행중,GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,ProjectHistory,AdminAccountDetailResponse,budgetLabel,String,선택,,예산 표기,"월 5,000,000원",GET /api/v1/accounts/admin/{accountId} (응답)
+06. Account,중첩,ProjectHistory,AdminAccountDetailResponse,createdAt,LocalDate,선택,,등록일,,GET /api/v1/accounts/admin/{accountId} (응답)
+07. Grade,응답,GradeResponse,,role,Enum,선택,CLIENT / FREELANCER / ADMIN,대상 역할,,GET /api/v1/grades (응답)
+07. Grade,응답,GradeResponse,,grade,String,선택,,등급 코드,GOLD,GET /api/v1/grades (응답)
+07. Grade,응답,GradeResponse,,label,String,선택,,등급 이름,골드,GET /api/v1/grades (응답)
+07. Grade,응답,GradeResponse,,level,Integer,선택,,정렬 순서. 낮을수록 하위 등급,2,GET /api/v1/grades (응답)
+07. Grade,응답,GradeResponse,,promotionCondition,String,선택,,승급 조건,별점 평균 3점 이상 + 완료 건수 10건 이상,GET /api/v1/grades (응답)
+07. Grade,응답,GradeResponse,,maintenanceCondition,String,선택,,등급 유지 기준,12개월 내 프로젝트 경험 · 매월 체크,GET /api/v1/grades (응답)
+07. Grade,응답,GradeResponse,,benefits,List<Benefit>,선택,,주요 혜택,,GET /api/v1/grades (응답)
+07. Grade,응답,GradeResponse,,feeRate,FeeRate,선택,,수수료율,,GET /api/v1/grades (응답)
+07. Grade,응답,GradeResponse,,feeNote,String,선택,,수수료 표시 문구,기본 수수료,GET /api/v1/grades (응답)
+07. Grade,응답,MyGradeResponse,,grade,String,선택,,현재 등급 코드,SILVER,GET /api/v1/grades/me (응답)
+07. Grade,응답,MyGradeResponse,,label,String,선택,,현재 등급 이름,실버,GET /api/v1/grades/me (응답)
+07. Grade,응답,MyGradeResponse,,completedProjectCount,Integer,선택,,완료 프로젝트 건수,4,GET /api/v1/grades/me (응답)
+07. Grade,응답,MyGradeResponse,,ratingAverage,Double,선택,,평균 별점,4.2,GET /api/v1/grades/me (응답)
+07. Grade,응답,MyGradeResponse,,nextGrade,String,선택,,다음 등급 코드. 최고 등급이면 null,GOLD,GET /api/v1/grades/me (응답)
+07. Grade,응답,MyGradeResponse,,nextGradeGuide,String,선택,,다음 등급까지 남은 조건. 최고 등급이면 null,완료 건수 6건이 더 필요합니다.,GET /api/v1/grades/me (응답)
+07. Grade,응답,MyGradeResponse,,checkedGuide,String,선택,,등급 재산정 기준일 안내,매월 1일 자동 산정,GET /api/v1/grades/me (응답)
+07. Grade,중첩,Benefit,GradeResponse,label,String,선택,,항목,프로젝트 등록,GET /api/v1/grades (응답)
+07. Grade,중첩,Benefit,GradeResponse,value,String,선택,,값,최대 2개,GET /api/v1/grades (응답)
+07. Grade,중첩,FeeRate,GradeResponse,depositUnder,BigDecimal,선택,,착수금 · 1억 미만,3.00,GET /api/v1/grades (응답)
+07. Grade,중첩,FeeRate,GradeResponse,depositOver,BigDecimal,선택,,착수금 · 1억 이상,2.00,GET /api/v1/grades (응답)
+07. Grade,중첩,FeeRate,GradeResponse,successFeeUnder,BigDecimal,선택,,성공보수 · 1억 미만,7.00,GET /api/v1/grades (응답)
+07. Grade,중첩,FeeRate,GradeResponse,successFeeOver,BigDecimal,선택,,성공보수 · 1억 이상,6.00,GET /api/v1/grades (응답)
+10. Project,요청,ProjectCreateRequest,,title,String,필수,,프로젝트명,페어링 웹 리뉴얼,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,positions,List<PositionRequest>,필수,,모집 인원(포지션) 목록. 최소 1건,,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,startDesiredDate,LocalDate,선택,,시작 희망일,2026-09-01,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,startNegotiable,Boolean,선택,,시작일 협의 가능 여부. 희망일과 함께 보낼 수 있다.,True,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,periodValue,Integer,선택,,예상 기간 값. 최대 24(개월/주),6,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,periodUnit,Enum,필수,MONTH / WEEK,기간 단위,MONTH,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,budgetAmount,Long,필수,,"프로젝트 예산(원, 부가세 별도). 500만~10억",50000000,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,workStyle,Enum,필수,REMOTE / ONSITE / ANY,근무 방식,REMOTE,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,workForm,Enum,필수,FULL_TIME / PART_TIME / ANY,근무 형태,FULL_TIME,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,workLocation,String,선택,,근무 장소. 상주일 때 사용,서울 강남구,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,currentSituation,String,필수,,현재 프로젝트 진행 상황,,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,mainTask,String,필수,,주요 담당 업무,,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,detailScope,String,선택,,세부 업무범위,,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,extraNote,String,선택,,기타 전달사항 또는 우대사항,,POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,fileIds,List<Long>,선택,,첨부 자료 fileId 목록. 최대 10개,"[1, 2]",POST /api/v1/projects (요청)
+10. Project,요청,ProjectCreateRequest,,noticeAgreed,Boolean,선택,,등록 전 안내 동의. 동의해야 등록된다.,True,POST /api/v1/projects (요청)
+10. Project,요청,ProjectPreReviewRequest,,positions,List<PositionRequest>,필수,,확인할 포지션 조건 목록,,POST /api/v1/projects/pre-review (요청)
+10. Project,요청,ProjectUpdateRequest,,title,String,필수,,프로젝트명,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,positions,List<PositionRequest>,필수,,모집 인원(포지션) 목록,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,startDesiredDate,LocalDate,선택,,시작 희망일,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,startNegotiable,Boolean,선택,,시작일 협의 가능 여부,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,periodValue,Integer,선택,,예상 기간 값,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,periodUnit,Enum,필수,MONTH / WEEK,기간 단위,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,budgetAmount,Long,필수,,"프로젝트 예산(원, 부가세 별도)",,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,workStyle,Enum,필수,REMOTE / ONSITE / ANY,근무 방식,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,workForm,Enum,필수,FULL_TIME / PART_TIME / ANY,근무 형태,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,workLocation,String,선택,,근무 장소,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,currentSituation,String,필수,,현재 프로젝트 진행 상황,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,mainTask,String,필수,,주요 담당 업무,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,detailScope,String,선택,,세부 업무범위,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,extraNote,String,선택,,기타 전달사항,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,요청,ProjectUpdateRequest,,fileIds,List<Long>,선택,,첨부 자료 fileId 목록,,PUT /api/v1/projects/{projectId} (요청)
+10. Project,응답,ProjectPreReviewResponse,,allMatchable,Boolean,선택,,전 직군이 매칭 가능한지,True,POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+10. Project,응답,ProjectPreReviewResponse,,items,List<Item>,선택,,직군별 검수 결과,,POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+10. Project,응답,ProjectPreReviewResponse,,notice,String,선택,,안내 문구,현재 프리랜서 풀 기준 예상 결과입니다. 실제 후보 수 및 매칭 성사 여부는 달라질 수 있습니다.,POST /api/v1/projects/pre-review (응답) / GET /api/v1/projects/{projectId}/pre-review (응답)
+10. Project,응답,ProjectResponse,,projectId,Long,선택,,프로젝트 ID,1,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,title,String,선택,,프로젝트명,페어링 웹 리뉴얼,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,status,Enum,선택,REGISTERED / RECRUITING / NEGOTIATING / CONTRACT_PENDING / IN_PROGRESS / COMPLETION_PENDING / CLOSED / CANCELED,프로젝트 상태,RECRUITING,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,statusNote,String,선택,,상태 보조 문구. 인원별 현황을 사람이 읽는 문장으로 준다.,2 / 3명 협상중 · 1명 모집중,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,paymentStatus,Enum,선택,DEPOSIT_PENDING / DEPOSIT_PAID / SUCCESS_FEE_PENDING / SUCCESS_FEE_PAID / PAYMENT_FAILED,결제 상태,DEPOSIT_PAID,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,startDesiredDate,LocalDate,선택,,시작 희망일,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,startNegotiable,Boolean,선택,,시작일 협의 가능 여부,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,periodValue,Integer,선택,,예상 기간 값,6,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,periodUnit,Enum,선택,MONTH / WEEK,기간 단위,MONTH,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,budgetAmount,Long,선택,,"예산(원, 부가세 별도)",50000000,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,workStyle,Enum,선택,REMOTE / ONSITE / ANY,근무 방식,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,workForm,Enum,선택,FULL_TIME / PART_TIME / ANY,근무 형태,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,workLocation,String,선택,,근무 장소,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,currentSituation,String,선택,,현재 진행 상황,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,mainTask,String,선택,,주요 담당 업무,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,detailScope,String,선택,,세부 업무범위,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,extraNote,String,선택,,기타 전달사항,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,totalHeadcount,Integer,선택,,총 모집 인원,3,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,confirmedHeadcount,Integer,선택,,확정 인원,2,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,recruitDeadline,LocalDateTime,선택,,"모집 마감 시각. 기본 2주, 1주씩 최대 2회 연장",,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,extensionCount,Integer,선택,,연장 횟수,0,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,freeRerecommendUsed,Integer,선택,,사용한 무료 재추천 횟수(최대 1),0,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,paidRerecommendUsed,Integer,선택,,사용한 유료 재추천 횟수(최대 5),0,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,positions,List<Position>,선택,,포지션 목록,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,freelancers,List<ParticipantFreelancer>,선택,,프리랜서 현황. 상세 화면 하단 목록,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,statusHistories,List<StatusHistoryResponse>,선택,,상태 이력. 관리자 상세에서만 채워진다,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,files,List<AttachedFile>,선택,,첨부 자료,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectResponse,,createdAt,LocalDateTime,선택,,등록 시각,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,응답,ProjectSummaryResponse,,projectId,Long,선택,,프로젝트 ID,1,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,projectNo,String,선택,,화면 표시용 프로젝트 번호,PRJ-001,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,title,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,status,Enum,선택,REGISTERED / RECRUITING / NEGOTIATING / CONTRACT_PENDING / IN_PROGRESS / COMPLETION_PENDING / CLOSED / CANCELED,프로젝트 상태,RECRUITING,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,statusNote,String,선택,,상태 보조 문구,2 / 3명 확정 · 1명 추가 모집 필요,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,paymentStatus,Enum,선택,DEPOSIT_PENDING / DEPOSIT_PAID / SUCCESS_FEE_PENDING / SUCCESS_FEE_PAID / PAYMENT_FAILED,결제 상태,DEPOSIT_PAID,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,jobRoleLabels,List<String>,선택,,모집 직무 라벨,['풀스택 개발자'],GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,skillLabels,List<String>,선택,,요구 스킬 라벨,"['React', 'Node.js']",GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,budgetAmount,Long,선택,,예산(원),50000000,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,periodLabel,String,선택,,예상 기간,3개월,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,startDesiredDate,LocalDate,선택,,시작 희망일,,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,totalHeadcount,Integer,선택,,총 모집 인원,3,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,confirmedHeadcount,Integer,선택,,확정 인원,2,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,recruitDeadline,LocalDateTime,선택,,모집 마감 시각,,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,clientName,String,선택,,클라이언트명,삼성전자,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,matchedFreelancerName,String,선택,,매칭된 프리랜서명. 없으면 null,김프리,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectSummaryResponse,,createdAt,LocalDateTime,선택,,등록 시각,,GET /api/v1/projects/admin (응답) / GET /api/v1/projects/mine (응답)
+10. Project,응답,ProjectTabCountResponse,,tab,Enum,선택,REGISTERED / MATCHING / IN_PROGRESS / COMPLETION_PENDING / CLOSED / CANCELED,탭. 관리자 응답에서는 null,MATCHING,GET /api/v1/projects/admin/status-counts (응답) / GET /api/v1/projects/mine/tab-counts (응답)
+10. Project,응답,ProjectTabCountResponse,,status,Enum,선택,REGISTERED / RECRUITING / NEGOTIATING / CONTRACT_PENDING / IN_PROGRESS / COMPLETION_PENDING / CLOSED / CANCELED,상태. 클라이언트 응답에서는 null,RECRUITING,GET /api/v1/projects/admin/status-counts (응답) / GET /api/v1/projects/mine/tab-counts (응답)
+10. Project,응답,ProjectTabCountResponse,,label,String,선택,,탭 라벨,매칭중,GET /api/v1/projects/admin/status-counts (응답) / GET /api/v1/projects/mine/tab-counts (응답)
+10. Project,응답,ProjectTabCountResponse,,count,Long,선택,,건수,3,GET /api/v1/projects/admin/status-counts (응답) / GET /api/v1/projects/mine/tab-counts (응답)
+10. Project,중첩,AttachedFile,ProjectResponse,fileId,Long,선택,,파일 ID,1,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,AttachedFile,ProjectResponse,originalName,String,선택,,원본 파일명,기획서.pdf,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,freelancerId,Long,선택,,프리랜서 계정 ID,7,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,name,String,선택,,이름,김개발,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,jobRole,Enum,선택,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,직무,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,status,Enum,선택,REQUEST_PENDING / REJECTED / ACCEPTED / NEGOTIATING / NEGOTIATION_FAILED / CONTRACT_PENDING / CONTRACTED / IN_PROGRESS / COMPLETION_PENDING / CLOSED / TERMINATED,매칭 상태,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,payUnit,Enum,선택,HOURLY / DAILY / MONTHLY,급여 단위,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,payAmount,Long,선택,,확정 급여(원),6200000,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,statusLabel,String,선택,,상태 라벨,협상중,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,negotiationId,Long,선택,,협상 ID. 협상 이전이면 null,500,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,ParticipantFreelancer,ProjectResponse,contractId,Long,선택,,계약 ID. 계약 이전이면 null,600,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,positionId,Long,선택,,포지션 ID,10,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,positionNo,Integer,선택,,포지션 번호,1,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,jobCategory,Enum,선택,DEVELOPMENT / DESIGN,직군,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,jobRole,Enum,선택,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,직무,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,minCareerYears,Integer,선택,,최소 경력(년),3,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,headcount,Integer,선택,,모집 인원,2,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,confirmedCount,Integer,선택,,확정 인원,1,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,status,Enum,선택,RECRUITING / FILLED / CLOSED,포지션 상태,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,skills,List<Enum>,선택,REACT / NEXT_JS / VUE / TYPESCRIPT / JAVASCRIPT / ANGULAR / SVELTE / REDUX / TAILWIND / JAVA / SPRING_BOOT / NODE_JS / NEST_JS / PYTHON / DJANGO / FASTAPI / GO / PHP / LARAVEL / DOTNET / KOTLIN / SWIFT / FLUTTER / REACT_NATIVE / SQL / PANDAS / TENSORFLOW / PYTORCH / SCIKIT_LEARN / SPARK / LANGCHAIN / MYSQL / POSTGRESQL / MONGODB / REDIS / ORACLE / ELASTICSEARCH / AWS / GCP / DOCKER / KUBERNETES / JENKINS / GITHUB_ACTIONS / TERRAFORM / NGINX / LINUX / UNITY / UNREAL / CPP / SOLIDITY / FIGMA / SKETCH / ADOBE_XD / PHOTOSHOP / ILLUSTRATOR / AFTER_EFFECTS / ZEPLIN / GIT / JIRA / NOTION / REST_API / GRAPHQL / SWAGGER,요구 스킬,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,Position,ProjectResponse,preferredNote,String,선택,,우대사항,유사 프로젝트 경험자 우대,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 5건
+10. Project,중첩,PositionRequest,ProjectCreateRequest,jobCategory,Enum,필수,DEVELOPMENT / DESIGN,직군,DEVELOPMENT,POST /api/v1/projects (요청) / POST /api/v1/projects/pre-review (요청) / PUT /api/v1/projects/{projectId} (요청)
+10. Project,중첩,PositionRequest,ProjectCreateRequest,jobRole,Enum,필수,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,직무,BACKEND,POST /api/v1/projects (요청) / POST /api/v1/projects/pre-review (요청) / PUT /api/v1/projects/{projectId} (요청)
+10. Project,중첩,PositionRequest,ProjectCreateRequest,minCareerYears,Integer,선택,,최소 경력(년). 0년은 입력할 수 없다.,3,POST /api/v1/projects (요청) / POST /api/v1/projects/pre-review (요청) / PUT /api/v1/projects/{projectId} (요청)
+10. Project,중첩,PositionRequest,ProjectCreateRequest,headcount,Integer,선택,,모집 인원,2,POST /api/v1/projects (요청) / POST /api/v1/projects/pre-review (요청) / PUT /api/v1/projects/{projectId} (요청)
+10. Project,중첩,PositionRequest,ProjectCreateRequest,skills,List<Enum>,필수,REACT / NEXT_JS / VUE / TYPESCRIPT / JAVASCRIPT / ANGULAR / SVELTE / REDUX / TAILWIND / JAVA / SPRING_BOOT / NODE_JS / NEST_JS / PYTHON / DJANGO / FASTAPI / GO / PHP / LARAVEL / DOTNET / KOTLIN / SWIFT / FLUTTER / REACT_NATIVE / SQL / PANDAS / TENSORFLOW / PYTORCH / SCIKIT_LEARN / SPARK / LANGCHAIN / MYSQL / POSTGRESQL / MONGODB / REDIS / ORACLE / ELASTICSEARCH / AWS / GCP / DOCKER / KUBERNETES / JENKINS / GITHUB_ACTIONS / TERRAFORM / NGINX / LINUX / UNITY / UNREAL / CPP / SOLIDITY / FIGMA / SKETCH / ADOBE_XD / PHOTOSHOP / ILLUSTRATOR / AFTER_EFFECTS / ZEPLIN / GIT / JIRA / NOTION / REST_API / GRAPHQL / SWAGGER,요구 스킬. 1개 이상,"['JAVA', 'SPRING_BOOT']",POST /api/v1/projects (요청) / POST /api/v1/projects/pre-review (요청) / PUT /api/v1/projects/{projectId} (요청)
+10. Project,중첩,PositionRequest,ProjectCreateRequest,preferredNote,String,선택,,우대사항. 선택,유사 프로젝트 경험자 우대,POST /api/v1/projects (요청) / POST /api/v1/projects/pre-review (요청) / PUT /api/v1/projects/{projectId} (요청)
+10. Project,중첩,StatusHistoryResponse,ProjectResponse,changedAt,LocalDateTime,선택,,변경 일시,,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 9건
+10. Project,중첩,StatusHistoryResponse,ProjectResponse,status,String,선택,,상태 코드,RECRUITING,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 9건
+10. Project,중첩,StatusHistoryResponse,ProjectResponse,statusLabel,String,선택,,상태 라벨,모집중,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 9건
+10. Project,중첩,StatusHistoryResponse,ProjectResponse,actor,String,선택,,처리자,관리자 시스템,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 9건
+10. Project,중첩,StatusHistoryResponse,ProjectResponse,note,String,선택,,비고,자동 전환,POST /api/v1/projects (응답) / GET /api/v1/projects/admin/{projectId} (응답) / GET /api/v1/projects/{projectId} (응답) 외 9건
+11. Matching,요청,MatchingRejectRequest,,reason,String,선택,,거절 사유(선택),일정이 맞지 않습니다.,POST /api/v1/matchings/requests/{requestId}/rejection (요청)
+11. Matching,요청,MatchingRequestCreateRequest,,positionId,Long,필수,,포지션 ID,10,POST /api/v1/matchings/requests (요청)
+11. Matching,요청,MatchingRequestCreateRequest,,candidateIds,List<Long>,필수,,요청할 후보의 candidateId 목록,"[100, 101]",POST /api/v1/matchings/requests (요청)
+11. Matching,요청,RerecommendRequest,,type,Enum,필수,INITIAL / FREE / PAID,재추천 종류,PAID,POST /api/v1/matchings/positions/{positionId}/rerecommendations (요청)
+11. Matching,요청,RerecommendRequest,,quantity,Integer,선택,,추천받을 인원. PAID 일 때만 사용,3,POST /api/v1/matchings/positions/{positionId}/rerecommendations (요청)
+11. Matching,응답,CandidateListResponse,,positionId,Long,선택,,포지션 ID,10,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,CandidateListResponse,,roundId,Long,선택,,추천 라운드 ID,5,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,CandidateListResponse,,roundNo,Integer,선택,,라운드 번호,1,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,CandidateListResponse,,roundType,Enum,선택,INITIAL / FREE / PAID,라운드 종류,,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,CandidateListResponse,,headcount,Integer,선택,,모집 인원,2,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,CandidateListResponse,,freeRerecommendAvailable,Boolean,선택,,무료 재추천 사용 가능 여부. 요청 후보 전원 거절 시 1회,False,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,CandidateListResponse,,paidRerecommendRemaining,Integer,선택,,남은 유료 재추천 횟수,5,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,CandidateListResponse,,lowScoreWarned,Boolean,선택,,적합도 저하 경고. 재추천을 반복하면 true 가 된다.,False,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,CandidateListResponse,,candidates,List<CandidateResponse>,선택,,후보 목록. 조건에 맞는 후보가 부족하면 모집 인원보다 적을 수 있다.,,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,응답,MatchingRequestResponse,,requestId,Long,선택,,매칭 요청 ID,200,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,projectId,Long,선택,,프로젝트 ID,1,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,positionId,Long,선택,,포지션 ID,10,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,jobRole,Enum,선택,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,포지션 직무,,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,counterpartName,String,선택,,"상대 이름. 클라이언트가 보면 프리랜서명, 프리랜서가 보면 기업명",홍길동,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,fitScore,Double,선택,,AI 적합도 점수(0~100),94,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,companyName,String,선택,,발주 기업명,주식회사 오이랩,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,companyProfile,String,선택,,업종·직원수 표기,IT/소프트웨어 · 50-100명,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,skills,List<Enum>,선택,REACT / NEXT_JS / VUE / TYPESCRIPT / JAVASCRIPT / ANGULAR / SVELTE / REDUX / TAILWIND / JAVA / SPRING_BOOT / NODE_JS / NEST_JS / PYTHON / DJANGO / FASTAPI / GO / PHP / LARAVEL / DOTNET / KOTLIN / SWIFT / FLUTTER / REACT_NATIVE / SQL / PANDAS / TENSORFLOW / PYTORCH / SCIKIT_LEARN / SPARK / LANGCHAIN / MYSQL / POSTGRESQL / MONGODB / REDIS / ORACLE / ELASTICSEARCH / AWS / GCP / DOCKER / KUBERNETES / JENKINS / GITHUB_ACTIONS / TERRAFORM / NGINX / LINUX / UNITY / UNREAL / CPP / SOLIDITY / FIGMA / SKETCH / ADOBE_XD / PHOTOSHOP / ILLUSTRATOR / AFTER_EFFECTS / ZEPLIN / GIT / JIRA / NOTION / REST_API / GRAPHQL / SWAGGER,요구 스킬,,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,minCareerYears,Integer,선택,,최소 경력(년),3,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,workLabel,String,선택,,근무 조건 표기,재택 · 풀타임,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,periodLabel,String,선택,,예상 기간 표기,4개월,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,startDesiredDate,LocalDate,선택,,시작 희망일,,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,status,Enum,선택,REQUEST_PENDING / REJECTED / ACCEPTED / NEGOTIATING / NEGOTIATION_FAILED / CONTRACT_PENDING / CONTRACTED / IN_PROGRESS / COMPLETION_PENDING / CLOSED / TERMINATED,상태,,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,budgetAmount,Long,선택,,예산(원),50000000,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,requestedAt,LocalDateTime,선택,,요청 시각,,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,expiresAt,LocalDateTime,선택,,응답 기한. 3일 후 자동 만료된다.,,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,respondedAt,LocalDateTime,선택,,응답 시각,,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,currentRound,Integer,선택,,현재 협상 라운드,4,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,maxRound,Integer,선택,,최대 협상 라운드,15,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,newProposalCount,Integer,선택,,확인하지 않은 새 AI 제안 수,1,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,응답,MatchingRequestResponse,,negotiationId,Long,선택,,협상 ID. 수락 후 생성된다.,300,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
+11. Matching,중첩,CandidateResponse,CandidateListResponse,candidateId,Long,선택,,후보 ID. 매칭 요청 발송 시 이 값을 보낸다.,100,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,freelancerId,Long,선택,,프리랜서 ID,7,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,name,String,선택,,이름,홍길동,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,profileImageUrl,String,선택,,프로필 이미지 URL,,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,jobRole,Enum,선택,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,직무,,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,careerYears,Integer,선택,,경력(년),5,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,grade,String,선택,,프리랜서 등급,SENIOR,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,ratingAverage,Double,선택,,평균 별점,4.5,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,reviewCount,Integer,선택,,리뷰 건수,12,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,skills,List<Enum>,선택,REACT / NEXT_JS / VUE / TYPESCRIPT / JAVASCRIPT / ANGULAR / SVELTE / REDUX / TAILWIND / JAVA / SPRING_BOOT / NODE_JS / NEST_JS / PYTHON / DJANGO / FASTAPI / GO / PHP / LARAVEL / DOTNET / KOTLIN / SWIFT / FLUTTER / REACT_NATIVE / SQL / PANDAS / TENSORFLOW / PYTORCH / SCIKIT_LEARN / SPARK / LANGCHAIN / MYSQL / POSTGRESQL / MONGODB / REDIS / ORACLE / ELASTICSEARCH / AWS / GCP / DOCKER / KUBERNETES / JENKINS / GITHUB_ACTIONS / TERRAFORM / NGINX / LINUX / UNITY / UNREAL / CPP / SOLIDITY / FIGMA / SKETCH / ADOBE_XD / PHOTOSHOP / ILLUSTRATOR / AFTER_EFFECTS / ZEPLIN / GIT / JIRA / NOTION / REST_API / GRAPHQL / SWAGGER,보유 스킬,,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,fitScore,Double,선택,,적합도 점수(0~100),87.5,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,fitReasons,List<String>,선택,,AI 추천 이유 태그,"['요구 스킬 97% 일치', '경력 조건 충족']",POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,payUnit,Enum,선택,HOURLY / DAILY / MONTHLY,희망 급여 단위,,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,payAmount,Long,선택,,희망 급여(원),6500000,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,rankNo,Integer,선택,,노출 순위,1,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,requested,Boolean,선택,,이미 매칭 요청을 보낸 후보인지,False,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+11. Matching,중첩,CandidateResponse,CandidateListResponse,rejected,Boolean,선택,,클라이언트가 거절한 후보인지. true면 카드가 비활성으로 표시된다.,False,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
+12. Negotiation,요청,NegotiationAnswerRequest,,roundNo,Integer,필수,,응답할 라운드 번호. 이전 라운드에 대한 늦은 응답을 걸러낸다.,3,POST /api/v1/negotiations/{negotiationId}/answers (요청)
+12. Negotiation,요청,NegotiationAnswerRequest,,answers,List<Answer>,필수,,조건별 응답 목록,,POST /api/v1/negotiations/{negotiationId}/answers (요청)
+12. Negotiation,요청,NegotiationFinalApprovalRequest,,approved,Boolean,필수,,승인 여부,True,POST /api/v1/negotiations/{negotiationId}/final-approval (요청)
+12. Negotiation,요청,NegotiationGiveUpRequest,,reason,String,선택,,포기 사유(선택),예산이 맞지 않습니다.,POST /api/v1/negotiations/{negotiationId}/give-up (요청)
+12. Negotiation,요청,NegotiationStartRequest,,conditions,List<MinimumCondition>,필수,,쟁점별 마지노선,,POST /api/v1/negotiations/{negotiationId}/start (요청)
+12. Negotiation,응답,AgentRawLogResponse,,logId,Long,선택,,로그 ID,9001,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,roundNo,Integer,선택,,라운드 번호,1,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,agentType,String,선택,,에이전트 구분,CLIENT_AGENT,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,model,String,선택,,사용 모델,gemini-2.5-flash,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,requestPayload,String,선택,,요청 프롬프트 원문,,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,responsePayload,String,선택,,응답 원문,,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,inputTokens,Integer,선택,,입력 토큰 수,1820,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,outputTokens,Integer,선택,,출력 토큰 수,410,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,durationMs,Integer,선택,,소요 시간(ms),2140,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,errorMessage,String,선택,,실패 사유. 성공이면 null,,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,AgentRawLogResponse,,createdAt,LocalDateTime,선택,,기록 시각,,GET /api/v1/negotiations/admin/{negotiationId}/raw-logs (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,negotiationId,Long,선택,,협상 ID,300,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,negotiationNo,String,선택,,협상번호,NEG-2026-001,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,projectId,Long,선택,,프로젝트 ID,1,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,projectTitle,String,선택,,프로젝트명,쇼핑몰 관리자 페이지 리뉴얼,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,clientName,String,선택,,클라이언트명,삼성전자,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,freelancerName,String,선택,,프리랜서명,김프리,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,status,Enum,선택,IN_PROGRESS / AGREED / FAILED,상태,,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,startedAt,LocalDateTime,선택,,시작일,,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,endedAt,LocalDateTime,선택,,종료일. 진행 중이면 null,,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,totalRound,Integer,선택,,총 협상 횟수,4,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,finalResult,FinalResult,선택,,최종 협상 결과. 합의 전이면 null,,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminDetailResponse,,roundLogs,List<RoundLog>,선택,,라운드별 로그,,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,응답,NegotiationAdminSummaryResponse,,totalCount,Long,선택,,전체 협상 세션,3,GET /api/v1/negotiations/admin/summary (응답)
+12. Negotiation,응답,NegotiationAdminSummaryResponse,,inProgressCount,Long,선택,,진행 중,1,GET /api/v1/negotiations/admin/summary (응답)
+12. Negotiation,응답,NegotiationAdminSummaryResponse,,agreedCount,Long,선택,,협상 완료,1,GET /api/v1/negotiations/admin/summary (응답)
+12. Negotiation,응답,NegotiationAdminSummaryResponse,,failedCount,Long,선택,,협상 결렬,1,GET /api/v1/negotiations/admin/summary (응답)
+12. Negotiation,응답,NegotiationAdminSummaryResponse,,averageRoundCount,Double,선택,,평균 협상 횟수,4.0,GET /api/v1/negotiations/admin/summary (응답)
+12. Negotiation,응답,NegotiationAdminSummaryResponse,,averageDurationDays,Double,선택,,평균 소요 일수,2.3,GET /api/v1/negotiations/admin/summary (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,messageId,Long,선택,,메시지 ID,900,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,roundNo,Integer,선택,,라운드 번호,3,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,senderType,Enum,선택,CLIENT_AGENT / FREELANCER_AGENT / CLIENT / FREELANCER / SYSTEM,작성 주체,,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,messageType,Enum,선택,PROPOSAL / RESPONSE / SYSTEM,메시지 종류,,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,conditionType,Enum,선택,AMOUNT / PERIOD / START_DATE / WORK_STYLE / WORK_FORM / SCOPE / OTHER,대상 조건. 조건과 무관한 안내는 null,,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,content,String,선택,,본문,월 220만원을 제안합니다.,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,reason,String,선택,,근거. 모든 AI 제안에는 근거가 붙는다.,클라이언트 예산 상한과 프리랜서 최저 수용가의 중간값입니다.,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,proposedValue,String,선택,,제안값,2200000,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,response,String,선택,,응답 결과. YES/NO 또는 직접 입력값,,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationMessageResponse,,createdAt,LocalDateTime,선택,,작성 시각,,GET /api/v1/negotiations/admin/{negotiationId}/messages (응답) / GET /api/v1/negotiations/{negotiationId}/messages (응답)
+12. Negotiation,응답,NegotiationResponse,,negotiationId,Long,선택,,협상 ID,300,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,projectId,Long,선택,,프로젝트 ID,1,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,positionId,Long,선택,,포지션 ID,10,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,counterpartName,String,선택,,상대 이름,홍길동,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,status,Enum,선택,IN_PROGRESS / AGREED / FAILED,상태,,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,totalRound,Integer,선택,,진행 라운드 수,3,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,maxRound,Integer,선택,,라운드 상한. 넘으면 최종 승인 단계로 간다.,15,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,agreedAmount,Long,선택,,합의 금액(원). 타결 전에는 null,22000000,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,chatRoomId,Long,선택,,협상 채팅방 ID. AI Out 이후 사람 채팅으로 쓴다.,500,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,aiOutAt,LocalDateTime,선택,,AI 협상 종료(AI Out) 시각,,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,finalApprovalRequired,Boolean,선택,,최종 승인 단계 여부. true 면 승인/거부만 가능하다.,False,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationResponse,,conditions,List<Condition>,선택,,협상 조건 목록,,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,응답,NegotiationSummaryResponse,,negotiationId,Long,선택,,협상 ID,300,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,negotiationNo,String,선택,,화면 표시용 협상번호,NEG-2026-001,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,projectId,Long,선택,,프로젝트 ID,1,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,counterpartName,String,선택,,상대 이름. 내 목록에서 쓴다,홍길동,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,clientName,String,선택,,클라이언트명. 관리자 목록에서 쓴다,삼성전자,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,freelancerName,String,선택,,프리랜서명. 관리자 목록에서 쓴다,김프리,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,status,Enum,선택,IN_PROGRESS / AGREED / FAILED,상태,,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,totalRound,Integer,선택,,진행 라운드 수,3,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,waitingForMe,Boolean,선택,,내 응답 대기 여부,True,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,startedAt,LocalDateTime,선택,,시작 시각,,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,응답,NegotiationSummaryResponse,,endedAt,LocalDateTime,선택,,종료 시각,,GET /api/v1/negotiations/admin (응답) / GET /api/v1/negotiations/mine (응답)
+12. Negotiation,중첩,Answer,NegotiationAnswerRequest,conditionId,Long,필수,,협상 조건 ID,401,POST /api/v1/negotiations/{negotiationId}/answers (요청)
+12. Negotiation,중첩,Answer,NegotiationAnswerRequest,accepted,Boolean,필수,,수락 여부. false 면 proposedValue 가 필요하다.,False,POST /api/v1/negotiations/{negotiationId}/answers (요청)
+12. Negotiation,중첩,Answer,NegotiationAnswerRequest,proposedValue,String,선택,,"직접 입력값. 금액은 숫자 문자열, 그 외는 enum 값",2200000,POST /api/v1/negotiations/{negotiationId}/answers (요청)
+12. Negotiation,중첩,Condition,NegotiationResponse,conditionId,Long,선택,,조건 ID,401,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,Condition,NegotiationResponse,type,Enum,선택,AMOUNT / PERIOD / START_DATE / WORK_STYLE / WORK_FORM / SCOPE / OTHER,조건 종류,,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,Condition,NegotiationResponse,clientValue,String,선택,,클라이언트 값,20000000,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,Condition,NegotiationResponse,freelancerValue,String,선택,,프리랜서 값,25000000,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,Condition,NegotiationResponse,proposedValue,String,선택,,AI 제안값,22000000,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,Condition,NegotiationResponse,reason,String,선택,,제안 근거,프리랜서 경력이 요구 수준을 넘어 중간값을 제안합니다.,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,Condition,NegotiationResponse,agreedValue,String,선택,,합의값. 합의 전에는 null,,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,Condition,NegotiationResponse,status,Enum,선택,PENDING / AGREED / FAILED,조건 상태,,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,Condition,NegotiationResponse,roundCount,Integer,선택,,이 조건의 라운드 수,2,GET /api/v1/negotiations/{negotiationId} (응답) / POST /api/v1/negotiations/{negotiationId}/answers (응답) / POST /api/v1/negotiations/{negotiationId}/final-approval (응답) 외 2건
+12. Negotiation,중첩,FinalResult,NegotiationAdminDetailResponse,amountLabel,String,선택,,최종 금액 표기,"월 5,000,000원",GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,FinalResult,NegotiationAdminDetailResponse,periodLabel,String,선택,,계약 기간 표기,3개월,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,FinalResult,NegotiationAdminDetailResponse,workStyleLabel,String,선택,,근무 방식 표기,혼합,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,FinalResult,NegotiationAdminDetailResponse,workScope,String,선택,,작업 범위,프론트엔드 전체 리뉴얼,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,MinimumCondition,NegotiationStartRequest,conditionType,Enum,필수,AMOUNT / PERIOD / START_DATE / WORK_STYLE / WORK_FORM / SCOPE / OTHER,쟁점 종류,PAY,POST /api/v1/negotiations/{negotiationId}/start (요청)
+12. Negotiation,중첩,MinimumCondition,NegotiationStartRequest,value,String,필수,,마지노선 값,350,POST /api/v1/negotiations/{negotiationId}/start (요청)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,roundNo,Integer,선택,,라운드 번호,1,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,senderType,Enum,선택,CLIENT_AGENT / FREELANCER_AGENT / CLIENT / FREELANCER / SYSTEM,발신 주체,,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,senderLabel,String,선택,,발신 주체 라벨,클라이언트 Agent,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,resultLabel,String,선택,,라운드 결과 라벨,수정 제안,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,sentAt,LocalDateTime,선택,,발생 시각,,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,proposedAmountLabel,String,선택,,제안 금액 표기,"월 4,500,000원",GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,periodLabel,String,선택,,계약 기간 표기,3개월,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,workScope,String,선택,,작업 범위,프론트엔드 전체,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,workCondition,String,선택,,근무 조건,주 2회 출근,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,proposalReason,String,선택,,제안 이유,예산 범위 내에서 최저 제안으로 시작,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,response,String,선택,,응답,수정 제안,GET /api/v1/negotiations/admin/{negotiationId} (응답)
+12. Negotiation,중첩,RoundLog,NegotiationAdminDetailResponse,responseReason,String,선택,,응답 이유,"희망 단가보다 낮음, 출근 조건 조정 필요",GET /api/v1/negotiations/admin/{negotiationId} (응답)
+13. Chat,요청,ChatMessageSendRequest,,content,String,필수,,메시지 본문. 한 번에 500자까지,"안녕하세요, 일정 조율 가능할까요?",POST /api/v1/chat-rooms/{chatRoomId}/messages (요청)
+13. Chat,응답,ChatMessageResponse,,messageId,Long,선택,,메시지 ID,1000,GET /api/v1/chat-rooms/{chatRoomId}/messages (응답) / POST /api/v1/chat-rooms/{chatRoomId}/messages (응답)
+13. Chat,응답,ChatMessageResponse,,senderId,Long,선택,,보낸 사람 계정 ID. 시스템 메시지는 null,3,GET /api/v1/chat-rooms/{chatRoomId}/messages (응답) / POST /api/v1/chat-rooms/{chatRoomId}/messages (응답)
+13. Chat,응답,ChatMessageResponse,,senderName,String,선택,,보낸 사람 이름,홍길동,GET /api/v1/chat-rooms/{chatRoomId}/messages (응답) / POST /api/v1/chat-rooms/{chatRoomId}/messages (응답)
+13. Chat,응답,ChatMessageResponse,,mine,Boolean,선택,,내가 보낸 메시지인지,False,GET /api/v1/chat-rooms/{chatRoomId}/messages (응답) / POST /api/v1/chat-rooms/{chatRoomId}/messages (응답)
+13. Chat,응답,ChatMessageResponse,,messageType,Enum,선택,TEXT / SYSTEM,메시지 종류,,GET /api/v1/chat-rooms/{chatRoomId}/messages (응답) / POST /api/v1/chat-rooms/{chatRoomId}/messages (응답)
+13. Chat,응답,ChatMessageResponse,,content,String,선택,,본문,"안녕하세요, 일정 조율 가능할까요?",GET /api/v1/chat-rooms/{chatRoomId}/messages (응답) / POST /api/v1/chat-rooms/{chatRoomId}/messages (응답)
+13. Chat,응답,ChatMessageResponse,,createdAt,LocalDateTime,선택,,전송 시각,,GET /api/v1/chat-rooms/{chatRoomId}/messages (응답) / POST /api/v1/chat-rooms/{chatRoomId}/messages (응답)
+13. Chat,응답,ChatRoomResponse,,chatRoomId,Long,선택,,채팅방 ID,500,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,negotiationId,Long,선택,,협상 ID,300,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,counterpartName,String,선택,,상대 이름,홍길동,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,status,Enum,선택,ACTIVE / CLOSED,상태,,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,inputEnabled,Boolean,선택,,입력창 활성화 여부. 협상 완료 후 true 가 된다.,True,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,leaveEnabled,Boolean,선택,,나가기 가능 여부. 대금 지급 완료 또는 협상 결렬 시 true,False,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,lastMessage,String,선택,,마지막 메시지,안녕하세요,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,lastMessageAt,LocalDateTime,선택,,마지막 메시지 시각,,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatRoomResponse,,unreadCount,Integer,선택,,읽지 않은 메시지 수,2,GET /api/v1/chat-rooms (응답) / GET /api/v1/chat-rooms/{chatRoomId} (응답)
+13. Chat,응답,ChatUnreadCountResponse,,unreadCount,Integer,선택,,안 읽은 메시지 수,3,GET /api/v1/chat-rooms/unread-count (응답)
+14. Contract,요청,ContractRejectRequest,,reason,String,필수,,거부 사유,업무 범위가 협의 내용과 다릅니다.,POST /api/v1/contracts/{contractId}/rejection (요청)
+14. Contract,요청,ContractSignRequest,,agreed,Boolean,선택,,계약 내용 확인 동의,True,POST /api/v1/contracts/{contractId}/signature (요청)
+14. Contract,요청,ContractTerminateRequest,,reason,String,필수,,파기 사유,내부 사정으로 프로젝트를 중단합니다.,POST /api/v1/contracts/{contractId}/termination (요청)
+14. Contract,요청,ContractTerminateRequest,,workedAmount,Long,필수,,수행분 보수(원). 위약금 계산 기준,10000000,POST /api/v1/contracts/{contractId}/termination (요청)
+14. Contract,응답,ContractFileResponse,,fileId,Long,선택,,파일 ID,9,GET /api/v1/contracts/{contractId}/pdf (응답)
+14. Contract,응답,ContractFileResponse,,originalName,String,선택,,파일명,PR-2026-000123.pdf,GET /api/v1/contracts/{contractId}/pdf (응답)
+14. Contract,응답,ContractFileResponse,,fileUrl,String,선택,,다운로드 URL,,GET /api/v1/contracts/{contractId}/pdf (응답)
+14. Contract,응답,ContractResponse,,contractId,Long,선택,,계약 ID,600,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,contractNo,String,선택,,계약번호,PR-2026-000123,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,projectId,Long,선택,,프로젝트 ID,1,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,negotiationId,Long,선택,,협상 ID,300,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,clientName,String,선택,,클라이언트명,주식회사 페어링,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,freelancerName,String,선택,,프리랜서명,홍길동,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,jobRole,Enum,선택,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,계약 대상 직무,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,status,Enum,선택,DRAFT / SIGN_PENDING / SIGNED / COMPLETED / REJECTED / TERMINATED,상태,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,totalAmount,Long,선택,,계약 총액(원),22000000,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,payUnit,Enum,선택,HOURLY / DAILY / MONTHLY,"급여 단위. 화면에 ""월 6,000,000원"" 으로 찍는다",,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,payAmount,Long,선택,,단위당 급여(원),6000000,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,downAmount,Long,선택,,착수금(원),6600000,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,finalAmount,Long,선택,,잔금(원),15400000,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,startDate,LocalDate,선택,,계약 시작일,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,endDate,LocalDate,선택,,계약 종료일,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,workStyle,Enum,선택,REMOTE / ONSITE / ANY,근무 방식,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,workForm,Enum,선택,FULL_TIME / PART_TIME / ANY,근무 형태,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,workLocation,String,선택,,근무 장소,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,inspectionDays,Integer,선택,,검수 기간(일),7,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,paymentDays,Integer,선택,,대금 지급 기한(일),7,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,confidentialYears,Integer,선택,,비밀유지 기간(년),3,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,penaltyRate,BigDecimal,선택,,위약금 비율(%),10.00,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,specialTerms,String,선택,,특약사항. 협상 로그를 근거로 작성된다.,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,signDeadline,LocalDate,선택,,서명 기한,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,clauses,List<Clause>,선택,,계약서 조항 본문. 화면에 순서대로 나열한다,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,pdfFileId,Long,선택,,계약서 PDF fileId. 생성 전에는 null,9,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,signatures,List<Signature>,선택,,당사자별 서명 현황,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,signedAt,LocalDateTime,선택,,체결 시각,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractResponse,,createdAt,LocalDateTime,선택,,생성 시각,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,응답,ContractSummaryResponse,,contractId,Long,선택,,계약 ID,600,GET /api/v1/contracts (응답)
+14. Contract,응답,ContractSummaryResponse,,contractNo,String,선택,,계약번호,PR-2026-000123,GET /api/v1/contracts (응답)
+14. Contract,응답,ContractSummaryResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/contracts (응답)
+14. Contract,응답,ContractSummaryResponse,,counterpartName,String,선택,,상대 이름,홍길동,GET /api/v1/contracts (응답)
+14. Contract,응답,ContractSummaryResponse,,status,Enum,선택,DRAFT / SIGN_PENDING / SIGNED / COMPLETED / REJECTED / TERMINATED,상태,,GET /api/v1/contracts (응답)
+14. Contract,응답,ContractSummaryResponse,,totalAmount,Long,선택,,계약 총액(원),22000000,GET /api/v1/contracts (응답)
+14. Contract,응답,ContractSummaryResponse,,startDate,LocalDate,선택,,계약 시작일,,GET /api/v1/contracts (응답)
+14. Contract,응답,ContractSummaryResponse,,endDate,LocalDate,선택,,계약 종료일,,GET /api/v1/contracts (응답)
+14. Contract,응답,ContractSummaryResponse,,signatureRequired,Boolean,선택,,내 서명이 필요한지,True,GET /api/v1/contracts (응답)
+14. Contract,중첩,Clause,ContractResponse,no,Integer,선택,,조 번호,1,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,중첩,Clause,ContractResponse,title,String,선택,,제목,용역의 내용,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,중첩,Clause,ContractResponse,content,String,선택,,본문,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,중첩,Signature,ContractResponse,partyRole,Enum,선택,CLIENT / FREELANCER,당사자 구분,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,중첩,Signature,ContractResponse,name,String,선택,,이름,홍길동,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,중첩,Signature,ContractResponse,status,Enum,선택,PENDING / SIGNED / REJECTED,서명 상태,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,중첩,Signature,ContractResponse,signedAt,LocalDateTime,선택,,서명 시각,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+14. Contract,중첩,Signature,ContractResponse,rejectReason,String,선택,,거부 사유,,GET /api/v1/contracts/{contractId} (응답) / POST /api/v1/contracts/{contractId}/completion (응답) / POST /api/v1/contracts/{contractId}/rejection (응답) 외 2건
+15. Settlement,요청,SettlementPayRequest,,paymentMethodId,Long,필수,,결제수단 ID,300,POST /api/v1/settlements/penalties/{penaltyId}/payment (요청) / POST /api/v1/settlements/{settlementId}/payment (요청)
+15. Settlement,응답,PenaltyResponse,,penaltyId,Long,선택,,위약금 ID,800,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,contractId,Long,선택,,계약 ID,600,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,terminatorRole,Enum,선택,CLIENT / FREELANCER,파기 주체,,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,payeeType,Enum,선택,PLATFORM / COUNTERPART,수령 대상,PLATFORM,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,workedAmount,Long,선택,,수행분 보수(원). 위약금 계산 기준,10000000,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,penaltyRate,BigDecimal,선택,,위약금 비율(%),10.00,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,penaltyAmount,Long,선택,,위약금(원),1000000,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,status,Enum,선택,PENDING / PAID / FAILED,상태,,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,PenaltyResponse,,paidAt,LocalDateTime,선택,,납부 시각,,GET /api/v1/settlements/penalties/mine (응답) / POST /api/v1/settlements/penalties/{penaltyId}/payment (응답)
+15. Settlement,응답,SettlementResponse,,settlementId,Long,선택,,정산 ID,700,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,settlementNo,String,선택,,정산번호,ST-2026-000045,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,projectId,Long,선택,,프로젝트 ID,1,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,contractId,Long,선택,,계약 ID,600,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,payerRole,Enum,선택,CLIENT / FREELANCER,납부자 구분,,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,payerName,String,선택,,납부자 이름,주식회사 페어링,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,phase,Enum,선택,DEPOSIT / SUCCESS_FEE,수수료 단계,,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,baseAmount,Long,선택,,기준 금액(원). 계약 금액,22000000,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,feeRate,BigDecimal,선택,,수수료율(%),3.00,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,gradeDiscount,BigDecimal,선택,,등급 할인율(%),0.00,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,feeAmount,Long,선택,,수수료(원),660000,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,status,Enum,선택,PENDING / PAID / OVERDUE / FAILED,상태,,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,paymentMethodLabel,String,선택,,결제수단 표기. 미결제면 null,신한카드 **** 1234,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,approvalNo,String,선택,,결제 승인번호. 미결제면 null,AP-20260804-3821,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,failReason,String,선택,,결제 실패 사유,,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,overdueReason,String,선택,,미납 사유,,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,statusHistories,List<StatusHistoryResponse>,선택,,상태 이력. 관리자 상세에서만 채워진다,,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,dueDate,LocalDate,선택,,납부 기한,,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,payable,Boolean,선택,,결제 가능 여부. false 면 결제 버튼을 비활성화한다.,True,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementResponse,,paidAt,LocalDateTime,선택,,완료 시각,,GET /api/v1/settlements/admin (응답) / GET /api/v1/settlements/mine (응답) / GET /api/v1/settlements/{settlementId} (응답) 외 1건
+15. Settlement,응답,SettlementSummaryResponse,,totalRevenue,Long,선택,,총 수수료 수익(원),125000000,GET /api/v1/settlements/admin/summary (응답)
+15. Settlement,응답,SettlementSummaryResponse,,monthlyRevenue,Long,선택,,이번 달 수익(원),8400000,GET /api/v1/settlements/admin/summary (응답)
+15. Settlement,응답,SettlementSummaryResponse,,scheduledAmount,Long,선택,,결제 예정 금액(원),3200000,GET /api/v1/settlements/admin/summary (응답)
+15. Settlement,응답,SettlementSummaryResponse,,overdueAmount,Long,선택,,미납 금액(원),450000,GET /api/v1/settlements/admin/summary (응답)
+15. Settlement,응답,SettlementSummaryResponse,,failedAmount,Long,선택,,결제 실패 금액(원),0,GET /api/v1/settlements/admin/summary (응답)
+15. Settlement,응답,SettlementSummaryResponse,,penaltyRevenue,Long,선택,,위약금 수수료(원),1000000,GET /api/v1/settlements/admin/summary (응답)
+16. Review,요청,ReviewCreateRequest,,contractId,Long,필수,,계약 ID. 어느 거래에 대한 평가인지,600,POST /api/v1/reviews (요청)
+16. Review,요청,ReviewCreateRequest,,counterpart,Rating,필수,,상대에 대한 평가(필수),,POST /api/v1/reviews (요청)
+16. Review,요청,ReviewCreateRequest,,site,Rating,필수,,"사이트 이용 후기(필수). 별점은 필수, 내용은 선택이다.",,POST /api/v1/reviews (요청)
+16. Review,요청,SiteReviewVisibilityRequest,,visibility,Enum,필수,PRIVATE / PUBLIC,공개 여부,PUBLIC,PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (요청)
+16. Review,요청,SiteReviewVisibilityRequest,,promoted,Boolean,필수,,홍보 활용 여부,True,PUT /api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility (요청)
+16. Review,응답,ReviewResponse,,reviewId,Long,선택,,리뷰 ID,900,POST /api/v1/reviews (응답) / GET /api/v1/reviews/pending (응답) / GET /api/v1/reviews/received (응답) 외 1건
+16. Review,응답,ReviewResponse,,contractId,Long,선택,,계약 ID,600,POST /api/v1/reviews (응답) / GET /api/v1/reviews/pending (응답) / GET /api/v1/reviews/received (응답) 외 1건
+16. Review,응답,ReviewResponse,,projectTitle,String,선택,,프로젝트명,페어링 웹 리뉴얼,POST /api/v1/reviews (응답) / GET /api/v1/reviews/pending (응답) / GET /api/v1/reviews/received (응답) 외 1건
+16. Review,응답,ReviewResponse,,reviewerName,String,선택,,작성자 이름,주식회사 페어링,POST /api/v1/reviews (응답) / GET /api/v1/reviews/pending (응답) / GET /api/v1/reviews/received (응답) 외 1건
+16. Review,응답,ReviewResponse,,reviewerRole,Enum,선택,CLIENT / FREELANCER,작성자 구분,,POST /api/v1/reviews (응답) / GET /api/v1/reviews/pending (응답) / GET /api/v1/reviews/received (응답) 외 1건
+16. Review,응답,ReviewResponse,,score,Integer,선택,,별점,5,POST /api/v1/reviews (응답) / GET /api/v1/reviews/pending (응답) / GET /api/v1/reviews/received (응답) 외 1건
+16. Review,응답,ReviewResponse,,content,String,선택,,리뷰 내용,,POST /api/v1/reviews (응답) / GET /api/v1/reviews/pending (응답) / GET /api/v1/reviews/received (응답) 외 1건
+16. Review,응답,ReviewResponse,,createdAt,LocalDateTime,선택,,작성 시각,,POST /api/v1/reviews (응답) / GET /api/v1/reviews/pending (응답) / GET /api/v1/reviews/received (응답) 외 1건
+16. Review,응답,ReviewSummaryResponse,,averageScore,Double,선택,,평균 별점,4.5,GET /api/v1/reviews/summary (응답)
+16. Review,응답,ReviewSummaryResponse,,reviewCount,Integer,선택,,리뷰 건수,12,GET /api/v1/reviews/summary (응답)
+16. Review,응답,ReviewSummaryResponse,,grade,String,선택,,등급. 평균 별점과 건수로 산정된다.,SENIOR,GET /api/v1/reviews/summary (응답)
+16. Review,응답,SiteReviewSummaryResponse,,ratingAverage,Double,선택,,평균 별점,4.8,GET /api/v1/reviews/admin/site-reviews/summary (응답)
+16. Review,응답,SiteReviewSummaryResponse,,totalCount,Long,선택,,전체 리뷰 수,4,GET /api/v1/reviews/admin/site-reviews/summary (응답)
+16. Review,응답,SiteReviewSummaryResponse,,thisMonthCount,Long,선택,,이번 달 리뷰 수,1,GET /api/v1/reviews/admin/site-reviews/summary (응답)
+16. Review,응답,SiteReviewSummaryResponse,,promotedCount,Long,선택,,홍보 활용 수,2,GET /api/v1/reviews/admin/site-reviews/summary (응답)
+16. Review,응답,SiteReviewSummaryResponse,,notPromotedCount,Long,선택,,홍보 제외 수,2,GET /api/v1/reviews/admin/site-reviews/summary (응답)
+16. Review,응답,SiteReviewSummaryResponse,,publicCount,Long,선택,,공개 수,3,GET /api/v1/reviews/admin/site-reviews/summary (응답)
+16. Review,응답,SiteReviewSummaryResponse,,scoreDistribution,Map,선택,,별점 분포,"{'5': 2, '4': 1, '3': 1, '2': 0, '1': 0}",GET /api/v1/reviews/admin/site-reviews/summary (응답)
+16. Review,중첩,Rating,ReviewCreateRequest,score,Integer,필수,,"별점. 1~5, 1점 단위",5,POST /api/v1/reviews (요청)
+16. Review,중첩,Rating,ReviewCreateRequest,content,String,선택,,리뷰 내용(선택). 500자 이하,일정 준수가 좋았습니다.,POST /api/v1/reviews (요청)
+17. Notification,응답,NotificationResponse,,notificationId,Long,선택,,알림 ID,1100,GET /api/v1/notifications (응답)
+17. Notification,응답,NotificationResponse,,type,Enum,선택,MATCHING_RECOMMENDED / MATCHING_REQUESTED / MATCHING_ACCEPTED / MATCHING_REJECTED / NEGOTIATION_STARTED / NEGOTIATION_PROPOSED / NEGOTIATION_FAILED / CONTRACT_CREATED / CONTRACT_SIGNED / CONTRACT_REJECTED / SETTLEMENT_DUE / INQUIRY_ANSWERED,알림 종류,,GET /api/v1/notifications (응답)
+17. Notification,응답,NotificationResponse,,title,String,선택,,제목,매칭 요청이 도착했습니다,GET /api/v1/notifications (응답)
+17. Notification,응답,NotificationResponse,,content,String,선택,,본문,페어링 웹 리뉴얼 프로젝트에서 매칭 요청을 보냈습니다.,GET /api/v1/notifications (응답)
+17. Notification,응답,NotificationResponse,,linkUrl,String,선택,,이동 경로. 알림을 누르면 이 경로로 보낸다.,/matchings/requests/200,GET /api/v1/notifications (응답)
+17. Notification,응답,NotificationResponse,,read,Boolean,선택,,읽음 여부,False,GET /api/v1/notifications (응답)
+17. Notification,응답,NotificationResponse,,createdAt,LocalDateTime,선택,,발생 시각,,GET /api/v1/notifications (응답)
+17. Notification,응답,UnreadCountResponse,,unreadCount,Integer,선택,,읽지 않은 알림 수,3,GET /api/v1/notifications/unread-count (응답)
+18. Support,요청,ChatbotAskRequest,,sessionId,Long,선택,,이어서 물을 세션 ID. 첫 질문이면 비운다.,1200,POST /api/v1/support/chatbot/questions (요청)
+18. Support,요청,ChatbotAskRequest,,question,String,필수,,질문,착수금 수수료는 언제 결제하나요?,POST /api/v1/support/chatbot/questions (요청)
+18. Support,요청,InquiryAnswerRequest,,answer,String,필수,,답변 내용,,POST /api/v1/support/admin/inquiries/{inquiryId}/answer (요청)
+18. Support,요청,InquiryCreateRequest,,category,Enum,선택,ACCOUNT / PROJECT / MATCHING / NEGOTIATION / CONTRACT / PAYMENT / REVIEW / ETC,문의 유형. 생략 가능,PAYMENT,POST /api/v1/support/inquiries (요청)
+18. Support,요청,InquiryCreateRequest,,title,String,필수,,제목,정산 관련 문의드립니다,POST /api/v1/support/inquiries (요청)
+18. Support,요청,InquiryCreateRequest,,content,String,필수,,내용,성공보수 수수료 결제일이 언제인지 확인 부탁드립니다.,POST /api/v1/support/inquiries (요청)
+18. Support,요청,InquiryCreateRequest,,fileIds,List<Long>,선택,,첨부파일 ID 목록. 선택,[42],POST /api/v1/support/inquiries (요청)
+18. Support,응답,ChatbotAnswerResponse,,sessionId,Long,선택,,세션 ID. 다음 질문에 그대로 넣는다.,1200,POST /api/v1/support/chatbot/questions (응답) / GET /api/v1/support/chatbot/sessions/{sessionId}/messages (응답)
+18. Support,응답,ChatbotAnswerResponse,,question,String,선택,,질문,착수금 수수료는 언제 결제하나요?,POST /api/v1/support/chatbot/questions (응답) / GET /api/v1/support/chatbot/sessions/{sessionId}/messages (응답)
+18. Support,응답,ChatbotAnswerResponse,,answer,String,선택,,답변,,POST /api/v1/support/chatbot/questions (응답) / GET /api/v1/support/chatbot/sessions/{sessionId}/messages (응답)
+18. Support,응답,ChatbotAnswerResponse,,remainingQuota,Integer,선택,,오늘 남은 질의 횟수,9,POST /api/v1/support/chatbot/questions (응답) / GET /api/v1/support/chatbot/sessions/{sessionId}/messages (응답)
+18. Support,응답,ChatbotAnswerResponse,,createdAt,LocalDateTime,선택,,응답 시각,,POST /api/v1/support/chatbot/questions (응답) / GET /api/v1/support/chatbot/sessions/{sessionId}/messages (응답)
+18. Support,응답,ChatbotQuotaResponse,,quotaDate,LocalDate,선택,,기준 날짜,,GET /api/v1/support/chatbot/quota (응답)
+18. Support,응답,ChatbotQuotaResponse,,dailyLimit,Integer,선택,,하루 한도,10,GET /api/v1/support/chatbot/quota (응답)
+18. Support,응답,ChatbotQuotaResponse,,usedCount,Integer,선택,,사용 횟수,1,GET /api/v1/support/chatbot/quota (응답)
+18. Support,응답,ChatbotQuotaResponse,,remainingCount,Integer,선택,,남은 횟수,9,GET /api/v1/support/chatbot/quota (응답)
+18. Support,응답,InquiryResponse,,inquiryNo,String,선택,,화면 표시용 문의번호,QNA-20260805-0012,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,category,Enum,선택,ACCOUNT / PROJECT / MATCHING / NEGOTIATION / CONTRACT / PAYMENT / REVIEW / ETC,문의 유형,,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,inquiryId,Long,선택,,문의 ID,1300,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,writerName,String,선택,,작성자 이름. 관리자 목록에서만 채워진다.,홍길동,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,title,String,선택,,제목,정산 관련 문의드립니다,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,content,String,선택,,내용,,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,status,Enum,선택,PENDING / ANSWERED,상태,,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,answer,String,선택,,답변 내용. 미답변이면 null,,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,answererName,String,선택,,답변자 표기,페어링 고객지원,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,answeredAt,LocalDateTime,선택,,답변 시각,,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,files,List<InquiryFileResponse>,선택,,첨부파일,,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,응답,InquiryResponse,,createdAt,LocalDateTime,선택,,등록 시각,,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,중첩,InquiryFileResponse,InquiryResponse,fileId,Long,선택,,파일 ID,42,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,중첩,InquiryFileResponse,InquiryResponse,originalName,String,선택,,원본 파일명,오류화면.png,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+18. Support,중첩,InquiryFileResponse,InquiryResponse,fileUrl,String,선택,,다운로드 URL. 응답 시점에 CDN 절대 URL 로 변환된다,,GET /api/v1/support/admin/inquiries (응답) / POST /api/v1/support/admin/inquiries/{inquiryId}/answer (응답) / POST /api/v1/support/inquiries (응답) 외 2건
+20. Freelancer,요청,FreelancerConditionRequest,,jobCategory,Enum,필수,DEVELOPMENT / DESIGN,직군,DEVELOPMENT,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,jobRole,Enum,필수,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,직무,BACKEND,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,affiliation,String,선택,,소속(선택),프리랜서,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,workStyle,Enum,필수,REMOTE / ONSITE / ANY,근무 방식,,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,workForm,Enum,필수,FULL_TIME / PART_TIME / ANY,근무 형태,,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,payUnit,Enum,필수,HOURLY / DAILY / MONTHLY,희망 급여 단위,,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,payAmount,Long,필수,,희망 급여(원). 최소 1만원,5000000,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,minAcceptAmount,Long,선택,,최저 수용 금액(원). 선택 항목이며 협상 하한선의 기본값 힌트로만 쓰인다.,4000000,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,availableFrom,LocalDate,선택,,프로젝트 시작 가능일,,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,startNegotiable,Boolean,선택,,시작일 협의 가능 여부,True,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,periodValue,Integer,선택,,희망 프로젝트 기간 값. 최대 24,6,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,periodUnit,Enum,필수,MONTH / WEEK,기간 단위,,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,hasFreelanceExperience,Boolean,필수,,프리랜서 경험 여부,True,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,careerYears,Integer,선택,,경력(년). 최소 1년,5,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerConditionRequest,,skills,List<Skill>,필수,,"보유 스킬. 1개 이상, 각 스킬마다 숙련도 선택",,PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,요청,FreelancerProfileUpdateRequest,,currentPassword,String,선택,,본인 확인용 현재 비밀번호,,PATCH /api/v1/freelancers/me (요청)
+20. Freelancer,요청,FreelancerProfileUpdateRequest,,profileFileId,Long,선택,,프로필 사진 fileId,3,PATCH /api/v1/freelancers/me (요청)
+20. Freelancer,요청,FreelancerProfileUpdateRequest,,phone,String,선택,,전화번호,010-1234-5678,PATCH /api/v1/freelancers/me (요청)
+20. Freelancer,요청,FreelancerProfileUpdateRequest,,address,String,선택,,주소,서울 강남구,PATCH /api/v1/freelancers/me (요청)
+20. Freelancer,요청,FreelancerProfileUpdateRequest,,aiMatchingAgreed,Boolean,필수,,AI 매칭 사용 여부. 끄면 추천 대상에서 제외된다.,True,PATCH /api/v1/freelancers/me (요청)
+20. Freelancer,요청,MatchingSettingsRequest,,aiMatchingAgreed,Boolean,필수,,AI 매칭 활용 동의,True,PUT /api/v1/freelancers/me/matching-settings (요청)
+20. Freelancer,요청,MatchingSettingsRequest,,matchingPaused,Boolean,필수,,매칭 일시 중지,False,PUT /api/v1/freelancers/me/matching-settings (요청)
+20. Freelancer,요청,PortfolioRequest,,title,String,필수,,제목,쇼핑몰 관리자 페이지 리뉴얼,POST /api/v1/freelancers/me/portfolios (요청) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (요청)
+20. Freelancer,요청,PortfolioRequest,,description,String,선택,,설명,React 기반 관리자 페이지를 전면 리뉴얼했습니다.,POST /api/v1/freelancers/me/portfolios (요청) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (요청)
+20. Freelancer,요청,PortfolioRequest,,fileId,Long,선택,,첨부 파일 ID. 파일 API 로 먼저 업로드한다.,42,POST /api/v1/freelancers/me/portfolios (요청) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (요청)
+20. Freelancer,요청,PortfolioRequest,,linkUrl,String,선택,,외부 링크,https://github.com/pairing/sample,POST /api/v1/freelancers/me/portfolios (요청) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (요청)
+20. Freelancer,요청,ResumeRequest,,profileFileId,Long,필수,,프로필 사진 fileId,3,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,contactPhone,String,선택,,연락처. 비우면 계정 전화번호를 쓴다.,010-1234-5678,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,contactEmail,String,선택,,연락 이메일. 비우면 계정 이메일을 쓴다.,user@pairing.com,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,address,String,필수,,주소,서울 강남구,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,selfIntroduction,String,필수,,간단 자기소개,,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,portfolioFileId,Long,필수,,포트폴리오 fileId. PDF 만 허용,4,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,educations,List<Education>,필수,,학력사항. 1건 이상,,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,careers,List<Career>,필수,,경력사항. 1건 이상,,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,certificates,List<Certificate>,선택,,자격증 및 어학(선택),,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,요청,ResumeRequest,,links,List<Link>,선택,,"링크(깃허브·포트폴리오·노션 등, 선택)",,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,응답,FreelancerConditionResponse,,conditionId,Long,선택,,조건 ID,50,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,jobCategory,Enum,선택,DEVELOPMENT / DESIGN,직군,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,jobRole,Enum,선택,FRONTEND / BACKEND / FULLSTACK / WEB_PUBLISHER / IOS / ANDROID / CROSS_PLATFORM / DATA_ENGINEER / DATA_ANALYST / AI_ML / DEVOPS / CLOUD_INFRA / DBA / SECURITY / GAME / BLOCKCHAIN / EMBEDDED / QA / UX_UI_DESIGNER / PRODUCT_DESIGNER / WEB_DESIGNER / GRAPHIC_DESIGNER / BX_DESIGNER / ILLUSTRATOR / MOTION_DESIGNER / THREE_D_DESIGNER,직무,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,affiliation,String,선택,,소속,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,workStyle,Enum,선택,REMOTE / ONSITE / ANY,근무 방식,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,workForm,Enum,선택,FULL_TIME / PART_TIME / ANY,근무 형태,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,payUnit,Enum,선택,HOURLY / DAILY / MONTHLY,희망 급여 단위,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,payAmount,Long,선택,,희망 급여(원),5000000,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,minAcceptAmount,Long,선택,,최저 수용 금액(원),4000000,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,availableFrom,LocalDate,선택,,시작 가능일,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,startNegotiable,Boolean,선택,,시작일 협의 가능 여부,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,periodValue,Integer,선택,,희망 기간 값,6,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,periodUnit,Enum,선택,MONTH / WEEK,기간 단위,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,hasFreelanceExperience,Boolean,선택,,프리랜서 경험 여부,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,careerYears,Integer,선택,,경력(년),5,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerConditionResponse,,skills,List<Skill>,선택,,보유 스킬,,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,accountId,Long,선택,,계정 ID,7,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,name,String,선택,,이름(수정 불가),홍길동,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,email,String,선택,,이메일(수정 불가),user@pairing.com,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,phone,String,선택,,전화번호,01012345678,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,birthDate,LocalDate,선택,,생년월일(수정 불가),,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,address,String,선택,,주소,서울 강남구,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,profileImageUrl,String,선택,,프로필 사진 URL,,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,aiMatchingAgreed,Boolean,선택,,AI 매칭 사용 여부,True,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,grade,Enum,선택,JUNIOR / SENIOR / MASTER,등급,,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,ratingAverage,Double,선택,,평균 별점,4.5,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,reviewCount,Integer,선택,,리뷰 건수,12,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,resumeCompleted,Boolean,선택,,이력서 작성 완료 여부,True,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerMyPageResponse,,withdrawable,Boolean,선택,,탈퇴 가능 여부. 진행 중 프로젝트나 미납금이 있으면 false,True,GET /api/v1/freelancers/me (응답) / PATCH /api/v1/freelancers/me (응답)
+20. Freelancer,응답,FreelancerResumePageResponse,,status,Enum,선택,DRAFT / COMPLETED,이력서 상태. 필수 항목을 모두 채우면 COMPLETED,,GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerResumePageResponse,,lastModifiedAt,LocalDateTime,선택,,마지막 수정 시각,,GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerResumePageResponse,,condition,FreelancerConditionResponse,선택,,기본 희망 조건. 미등록이면 null,,GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerResumePageResponse,,resume,ResumeResponse,선택,,이력서 본문. 미등록이면 null,,GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,FreelancerResumePageResponse,,notice,String,선택,,안내 문구,수정한 이력서는 새로운 추천부터 반영됩니다. 이미 진행 중인 매칭과 협상에는 매칭 시작 당시의 정보가 기준으로 적용됩니다.,GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,MatchingSettingsResponse,,aiMatchingAgreed,Boolean,선택,,AI 매칭 활용 동의,True,GET /api/v1/freelancers/me/matching-settings (응답) / PUT /api/v1/freelancers/me/matching-settings (응답)
+20. Freelancer,응답,MatchingSettingsResponse,,matchingPaused,Boolean,선택,,매칭 일시 중지,False,GET /api/v1/freelancers/me/matching-settings (응답) / PUT /api/v1/freelancers/me/matching-settings (응답)
+20. Freelancer,응답,MatchingSettingsResponse,,matchable,Boolean,선택,,추천 대상에 포함되는지. 이력서 미완성이면 false,True,GET /api/v1/freelancers/me/matching-settings (응답) / PUT /api/v1/freelancers/me/matching-settings (응답)
+20. Freelancer,응답,MatchingSettingsResponse,,unmatchableReason,String,선택,,추천 대상에서 빠진 사유. matchable 이 true 면 null,이력서를 완성해야 추천 대상에 포함됩니다.,GET /api/v1/freelancers/me/matching-settings (응답) / PUT /api/v1/freelancers/me/matching-settings (응답)
+20. Freelancer,응답,PortfolioResponse,,portfolioId,Long,선택,,포트폴리오 ID,70,GET /api/v1/freelancers/me/portfolios (응답) / POST /api/v1/freelancers/me/portfolios (응답) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (응답)
+20. Freelancer,응답,PortfolioResponse,,title,String,선택,,제목,쇼핑몰 관리자 페이지 리뉴얼,GET /api/v1/freelancers/me/portfolios (응답) / POST /api/v1/freelancers/me/portfolios (응답) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (응답)
+20. Freelancer,응답,PortfolioResponse,,description,String,선택,,설명,,GET /api/v1/freelancers/me/portfolios (응답) / POST /api/v1/freelancers/me/portfolios (응답) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (응답)
+20. Freelancer,응답,PortfolioResponse,,fileId,Long,선택,,파일 ID,42,GET /api/v1/freelancers/me/portfolios (응답) / POST /api/v1/freelancers/me/portfolios (응답) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (응답)
+20. Freelancer,응답,PortfolioResponse,,fileUrl,String,선택,,파일 URL. 응답 시점에 CDN 절대 URL 로 변환된다,,GET /api/v1/freelancers/me/portfolios (응답) / POST /api/v1/freelancers/me/portfolios (응답) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (응답)
+20. Freelancer,응답,PortfolioResponse,,linkUrl,String,선택,,외부 링크,,GET /api/v1/freelancers/me/portfolios (응답) / POST /api/v1/freelancers/me/portfolios (응답) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (응답)
+20. Freelancer,응답,PortfolioResponse,,sortOrder,Integer,선택,,정렬 순서,0,GET /api/v1/freelancers/me/portfolios (응답) / POST /api/v1/freelancers/me/portfolios (응답) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (응답)
+20. Freelancer,응답,PortfolioResponse,,createdAt,LocalDateTime,선택,,등록 시각,,GET /api/v1/freelancers/me/portfolios (응답) / POST /api/v1/freelancers/me/portfolios (응답) / PUT /api/v1/freelancers/me/portfolios/{portfolioId} (응답)
+20. Freelancer,응답,ResumeResponse,,resumeId,Long,선택,,이력서 ID,60,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,status,Enum,선택,DRAFT / COMPLETED,상태,,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,name,String,선택,,성명(수정 불가),홍길동,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,birthDate,LocalDate,선택,,생년월일(수정 불가),,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,contactPhone,String,선택,,연락처,01012345678,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,contactEmail,String,선택,,연락 이메일,user@pairing.com,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,address,String,선택,,주소,서울 강남구,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,profileImageUrl,String,선택,,프로필 사진 URL,,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,selfIntroduction,String,선택,,간단 자기소개,,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,portfolioUrl,String,선택,,포트폴리오 URL,,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,educations,List<Education>,선택,,학력,,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,careers,List<Career>,선택,,경력,,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,certificates,List<Certificate>,선택,,자격증·어학,,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,응답,ResumeResponse,,links,List<String>,선택,,링크,,PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Career,ResumeRequest,startDate,LocalDate,필수,,입사일,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Career,ResumeRequest,endDate,LocalDate,선택,,퇴사일. 재직중이면 비운다.,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Career,ResumeRequest,companyName,String,필수,,회사/기관명,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Career,ResumeRequest,departmentRank,String,선택,,부서 및 직급,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Career,ResumeRequest,jobDescription,String,선택,,담당 업무,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Certificate,ResumeRequest,acquiredDate,LocalDate,필수,,취득일자,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Certificate,ResumeRequest,name,String,필수,,자격/어학 시험명,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Certificate,ResumeRequest,issuerScore,String,선택,,발급기관/점수,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Certificate,ResumeRequest,note,String,선택,,비고,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Education,ResumeRequest,startDate,LocalDate,필수,,입학일,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Education,ResumeRequest,endDate,LocalDate,선택,,졸업일. 재학중이면 비운다.,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Education,ResumeRequest,schoolName,String,필수,,학교명,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Education,ResumeRequest,major,String,선택,,전공,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Education,ResumeRequest,graduationStatus,Enum,필수,GRADUATED / EXPECTED / ATTENDING / LEAVE / DROPPED,졸업 구분,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Education,ResumeRequest,campusType,Enum,선택,MAIN / BRANCH,본교/분교,,PUT /api/v1/freelancers/me/resume (요청) / PUT /api/v1/freelancers/me/resume (응답) / GET /api/v1/freelancers/me/resume (응답)
+20. Freelancer,중첩,Link,ResumeRequest,url,String,필수,,URL,https://github.com/pairing,PUT /api/v1/freelancers/me/resume (요청)
+20. Freelancer,중첩,Skill,FreelancerConditionResponse,skillCode,Enum,필수,REACT / NEXT_JS / VUE / TYPESCRIPT / JAVASCRIPT / ANGULAR / SVELTE / REDUX / TAILWIND / JAVA / SPRING_BOOT / NODE_JS / NEST_JS / PYTHON / DJANGO / FASTAPI / GO / PHP / LARAVEL / DOTNET / KOTLIN / SWIFT / FLUTTER / REACT_NATIVE / SQL / PANDAS / TENSORFLOW / PYTORCH / SCIKIT_LEARN / SPARK / LANGCHAIN / MYSQL / POSTGRESQL / MONGODB / REDIS / ORACLE / ELASTICSEARCH / AWS / GCP / DOCKER / KUBERNETES / JENKINS / GITHUB_ACTIONS / TERRAFORM / NGINX / LINUX / UNITY / UNREAL / CPP / SOLIDITY / FIGMA / SKETCH / ADOBE_XD / PHOTOSHOP / ILLUSTRATOR / AFTER_EFFECTS / ZEPLIN / GIT / JIRA / NOTION / REST_API / GRAPHQL / SWAGGER,스킬,JAVA,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (요청)
+20. Freelancer,중첩,Skill,FreelancerConditionResponse,skillLevel,Enum,필수,BEGINNER / INTERMEDIATE / ADVANCED,숙련도,ADVANCED,GET /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (응답) / PUT /api/v1/freelancers/me/condition (요청)
+21. Client,요청,ClientProfileUpdateRequest,,companyName,String,필수,,기업명,주식회사 페어링,PATCH /api/v1/clients/me (요청)
+21. Client,요청,ClientProfileUpdateRequest,,employeeCount,Enum,필수,SIZE_1_4 / SIZE_5_9 / SIZE_10_49 / SIZE_50_299 / SIZE_300_OVER,직원수 구간,SIZE_10_49,PATCH /api/v1/clients/me (요청)
+21. Client,요청,ClientProfileUpdateRequest,,phone,String,선택,,휴대폰번호(법인폰),010-1234-5678,PATCH /api/v1/clients/me (요청)
+21. Client,요청,ClientProfileUpdateRequest,,logoFileId,Long,선택,,기업 로고 fileId,3,PATCH /api/v1/clients/me (요청)
+21. Client,요청,ClientProfileUpdateRequest,,address,String,선택,,주소,서울 강남구,PATCH /api/v1/clients/me (요청)
+21. Client,응답,ClientMyPageResponse,,accountId,Long,선택,,계정 ID,3,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,companyName,String,선택,,기업명,주식회사 페어링,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,businessNo,String,선택,,사업자등록번호(수정 불가),1234567890,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,businessField,Enum,선택,IT_CONTENTS_AI / GAME / SALES_DISTRIBUTION_LOGISTICS / MANUFACTURING / ADVANCED_SCIENCE / OTHER_SERVICE / FINANCE / EDUCATION / REAL_ESTATE / ARTS_SPORTS_LEISURE / HEALTH_WELFARE / CONSTRUCTION / LODGING_FOOD / AGRICULTURE_FISHERY / MARKETING / WATER_ENVIRONMENT / ELECTRICITY_GAS / PUBLIC_ADMIN_DEFENSE / MINING / MEDICAL_HEALTHCARE,사업 분야(수정 불가),,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,employeeCount,Enum,선택,SIZE_1_4 / SIZE_5_9 / SIZE_10_49 / SIZE_50_299 / SIZE_300_OVER,직원수 구간,,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,email,String,선택,,업무 이메일(수정 불가),owner@pairing.com,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,name,String,선택,,대표자명(수정 불가),홍길동,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,phone,String,선택,,휴대폰번호,01012345678,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,address,String,선택,,주소,,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,logoImageUrl,String,선택,,기업 로고 URL,,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,grade,Enum,선택,SILVER / GOLD / DIAMOND,등급,,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,ratingAverage,Double,선택,,평균 별점,4.2,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,reviewCount,Integer,선택,,리뷰 건수,8,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+21. Client,응답,ClientMyPageResponse,,withdrawable,Boolean,선택,,탈퇴 가능 여부,True,GET /api/v1/clients/me (응답) / PATCH /api/v1/clients/me (응답)
+30. Admin,응답,AdminDashboardResponse,,baseDate,LocalDate,선택,,기준일,,GET /api/v1/admin/dashboard (응답)
+30. Admin,응답,AdminDashboardResponse,,members,Members,선택,,회원 현황,,GET /api/v1/admin/dashboard (응답)
+30. Admin,응답,AdminDashboardResponse,,projects,Projects,선택,,프로젝트 현황,,GET /api/v1/admin/dashboard (응답)
+30. Admin,응답,AdminDashboardResponse,,negotiations,Negotiations,선택,,협상 현황,,GET /api/v1/admin/dashboard (응답)
+30. Admin,응답,AdminDashboardResponse,,settlements,Settlements,선택,,정산 현황,,GET /api/v1/admin/dashboard (응답)
+30. Admin,응답,AdminDashboardResponse,,pendingItems,List<PendingItem>,선택,,처리 대기 항목,,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Members,AdminDashboardResponse,totalCount,Long,선택,,전체,6,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Members,AdminDashboardResponse,newThisMonthCount,Long,선택,,이번 달 가입,2,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Members,AdminDashboardResponse,suspendedCount,Long,선택,,정지,1,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Negotiations,AdminDashboardResponse,inProgressCount,Long,선택,,진행 중,1,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Negotiations,AdminDashboardResponse,agreedThisMonthCount,Long,선택,,이번 달 성사,2,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Negotiations,AdminDashboardResponse,failedThisMonthCount,Long,선택,,이번 달 결렬,1,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,PendingItem,AdminDashboardResponse,type,String,선택,,구분,INQUIRY,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,PendingItem,AdminDashboardResponse,label,String,선택,,표시 문구,답변 대기 문의,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,PendingItem,AdminDashboardResponse,count,Long,선택,,건수,3,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Projects,AdminDashboardResponse,totalCount,Long,선택,,전체,12,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Projects,AdminDashboardResponse,inProgressCount,Long,선택,,진행 중,4,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Projects,AdminDashboardResponse,newThisMonthCount,Long,선택,,이번 달 등록,3,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Settlements,AdminDashboardResponse,totalRevenue,Long,선택,,총 수익(원),125000000,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Settlements,AdminDashboardResponse,thisMonthRevenue,Long,선택,,이번 달 수익(원),8400000,GET /api/v1/admin/dashboard (응답)
+30. Admin,중첩,Settlements,AdminDashboardResponse,overdueAmount,Long,선택,,미납 금액(원),450000,GET /api/v1/admin/dashboard (응답)
+99. 기타(템플릿 예제),요청,CreateExampleRequest,,name,String,필수,,예시 이름,예시 데이터,POST /api/v1/examples (요청)
+99. 기타(템플릿 예제),응답,ExampleResponse,,exampleId,Long,선택,,예시의 고유 식별자(ID),1,POST /api/v1/examples (응답) / GET /api/v1/examples/{exampleId} (응답) / POST /api/v1/examples/{exampleId}/image (응답)
+99. 기타(템플릿 예제),응답,ExampleResponse,,imageUrl,String,선택,,예시 이미지 URL (DB에는 object key로 저장되고 응답에서 절대 URL로 변환됨),https://my-bucket.s3.ap-northeast-2.amazonaws.com/examples/uuid.png,POST /api/v1/examples (응답) / GET /api/v1/examples/{exampleId} (응답) / POST /api/v1/examples/{exampleId}/image (응답)

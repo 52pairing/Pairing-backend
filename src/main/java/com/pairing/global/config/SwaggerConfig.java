@@ -3,6 +3,7 @@ package com.pairing.global.config;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ErrorResponse;
 import com.pairing.global.exception.BaseErrorCode;
+import com.pairing.global.security.CurrentAccountId;
 import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springdoc.core.customizers.OperationCustomizer;
+import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.HandlerMethod;
@@ -23,6 +25,12 @@ import java.time.Instant;
 
 @Configuration
 public class SwaggerConfig {
+
+    static {
+        // @CurrentAccountId 는 인증 토큰에서 꺼내는 값이라 클라이언트가 보내는 파라미터가 아니다.
+        // 등록하지 않으면 springdoc 이 필수 쿼리 파라미터 accountId 로 문서에 노출한다.
+        SpringDocUtils.getConfig().addAnnotationsToIgnore(CurrentAccountId.class);
+    }
 
     /**
      * @ApiErrorCodeExample 이 붙은 컨트롤러 메서드를 스캔해
@@ -110,8 +118,8 @@ public class SwaggerConfig {
 
         return new OpenAPI()
                 .info(new Info()
-                        .title("Template Server API")
-                        .description("프로젝트 기본 템플릿 API 문서")
+                        .title("Pairing API")
+                        .description("페어링 백엔드 API 문서")
                         .version("v1"))
                 .addSecurityItem(securityRequirement)
                 .components(new Components()

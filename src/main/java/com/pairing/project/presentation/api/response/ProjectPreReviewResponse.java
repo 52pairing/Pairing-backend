@@ -1,0 +1,48 @@
+package com.pairing.project.presentation.api.response;
+
+import com.pairing.meta.domain.model.JobRole;
+import io.swagger.v3.oas.annotations.media.Schema;
+
+import java.util.List;
+
+/**
+ * AI 사전 검수 결과. (요구사항 R28, R30 / 프로젝트 등록 5단계)
+ *
+ * <p>현재 프리랜서 풀 기준의 예상치다. 실제 후보 수와 매칭 성사 여부는 달라질 수 있다.
+ * 한 직군이라도 {@code matchable} 이 false 면 화면에서 조건 조정을 안내하지만, 그대로 등록할 수도 있다.
+ */
+@Schema(description = "AI 사전 검수 응답")
+public record ProjectPreReviewResponse(
+
+        @Schema(description = "전 직군이 매칭 가능한지", example = "true")
+        boolean allMatchable,
+
+        @Schema(description = "직군별 검수 결과")
+        List<Item> items,
+
+        @Schema(description = "안내 문구",
+                example = "현재 프리랜서 풀 기준 예상 결과입니다. 실제 후보 수 및 매칭 성사 여부는 달라질 수 있습니다.")
+        String notice
+) {
+
+    @Schema(description = "직군별 검수 결과")
+    public record Item(
+
+            @Schema(description = "직무") JobRole jobRole,
+
+            @Schema(description = "모집 인원", example = "2") int headcount,
+
+            @Schema(description = "예상 후보 수", example = "5") int expectedCandidateCount,
+
+            @Schema(description = "매칭 가능 여부", example = "true") boolean matchable,
+
+            @Schema(description = "불가 사유. matchable 이 true 면 null",
+                    example = "현재 조건에 맞는 백엔드 개발자 후보가 모집 인원보다 부족합니다.")
+            String message,
+
+            // 화면에 불릿으로 그대로 찍는다. matchable 이 true 면 빈 배열.
+            @Schema(description = "조건 조정 제안", example = "[\"희망 경력을 낮춰보세요.\"]")
+            List<String> suggestions
+    ) {
+    }
+}

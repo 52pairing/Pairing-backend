@@ -4,8 +4,15 @@
 
 - 성공 응답: `ApiResponse<T>` = `{ timestamp, status, code, message, data }`
 - 실패 응답: `ErrorResponse` = `{ timestamp, status, errorCode, message, traceId }`
+- 목록 응답: `PageResponse<T>` = `{ content, page, size, totalElements, totalPages, first, last }`
 - 인증: `accessToken` HttpOnly 쿠키 또는 `Authorization: Bearer {token}`
-- 공개 경로: `/api/v1/auth/**`, `/api/v1/meta/**`, `/api/v1/terms/**` (그 외는 인증 필요)
+- 공개 경로: `/api/v1/auth/**`, `/api/v1/meta/**`, `/api/v1/terms/**`, `/api/v1/home/**`, `/api/v1/grades` (그 외는 인증 필요)
+- 관리자 경로: `/api/v1/{domain}/admin/**` 은 `ROLE_ADMIN` 만 접근 가능
+- 로그인 사용자 식별자는 서버가 토큰에서 꺼낸다. 요청에 `accountId` 를 넣지 않는다.
+
+> **01~03(Auth/Meta/Terms)만 구현 완료**입니다.
+> **04 이후는 컨트롤러 + DTO 스켈레톤**으로, 계약(경로·JSON)만 고정되어 있고 내부 로직은 담당자가 채웁니다.
+> 스켈레톤 엔드포인트는 요청과 무관하게 고정 응답을 돌려줍니다.
 
 ---
 
@@ -92,12 +99,323 @@
 | GET | `/api/v1/meta/business-fields` | X | 사업 분야 코드 목록 |
 | GET | `/api/v1/meta/employee-counts` | X | 직원수 구간 코드 목록 |
 | GET | `/api/v1/meta/banks` | X | 은행 코드 목록(금융결제원 기관코드) |
+| GET | `/api/v1/meta/job-categories` | X | 직무 대분류 6종 |
+| GET | `/api/v1/meta/job-roles?category=` | X | 직무 26종. `category` 생략 시 전체 |
+| GET | `/api/v1/meta/skills?category=` | X | 기술스택 63종 |
+| GET | `/api/v1/meta/work-conditions` | X | 근무형태·근무방식·급여단위·기간단위·숙련도를 한 번에 |
+
+`job-categories` / `job-roles` / `skills` 응답 항목은 `{code, label, parentCode}` 형태로 통일했다.
+`work-conditions` 는 `{workStyles, workForms, payUnits, periodUnits, skillLevels}` 로 묶여 나온다.
 
 ## 03. Terms
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
 | GET | `/api/v1/terms?role=CLIENT` | X | 역할별 최신 약관(코드별 최신 버전) |
+
+---
+
+# 스켈레톤 도메인 (계약만 고정)
+
+## 04. File
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/files?purpose=` | O | multipart `file` 업로드 → `{fileId, fileUrl, ...}` |
+| GET | `/api/v1/files/{fileId}` | O | 파일 메타 조회 |
+| DELETE | `/api/v1/files/{fileId}` | O | 업로더 본인만 삭제 |
+
+- `purpose`: `PROFILE_IMAGE` / `COMPANY_LOGO` / `PORTFOLIO` / `PROJECT_FILE` / `SIGNATURE`.
+- 용량·확장자 제한은 purpose 별로 다르다. 초과 시 400.
+- 다른 도메인은 파일 자체가 아니라 **`fileId` 만 참조**한다. (예: `logoFileId`, `fileIds[]`, `signatureFileId`)
+- 응답의 `fileUrl` 은 CDN 절대경로로 자동 변환된다.
+
+## 05. Home (비로그인 메인)
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/home/summary` | X | 성사율·프로젝트수·협상수·프리랜서수·만족도·누적금액 |
+| GET | `/api/v1/home/site-reviews?size=` | X | 공개+홍보 설정된 사이트 후기 |
+| GET | `/api/v1/home/faqs` | X | FAQ 목록 |
+
+## 06. Account
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/accounts/me/payment-methods` | O | 등록된 카드·간편결제 목록 |
+| POST | `/api/v1/accounts/me/payment-methods` | O | body `{methodType, card{cardBrand,cardNumber,expiryMonth,expiryYear,cvc,cardHolder}}` 또는 `{methodType, easyPay{provider}}` |
+| PUT | `/api/v1/accounts/me/payment-methods/{id}/default` | O | 기본 결제수단 설정 |
+| DELETE | `/api/v1/accounts/me/payment-methods/{id}` | O | 결제수단 삭제 |
+| DELETE | `/api/v1/accounts/me` | O | body `{currentPassword, reason}` 회원 탈퇴 |
+| GET | `/api/v1/accounts/admin/summary` | ADMIN | 회원 요약 카드(전체·정상·정지·탈퇴·역할별) |
+| GET | `/api/v1/accounts/admin?role=&status=&signupType=&keyword=&page=&size=` | ADMIN | 회원 목록 |
+| GET | `/api/v1/accounts/admin/{accountId}` | ADMIN | 회원 상세 |
+| POST | `/api/v1/accounts/admin/{accountId}/suspension` | ADMIN | body `{reason, days}` 정지 |
+| DELETE | `/api/v1/accounts/admin/{accountId}/suspension` | ADMIN | 정지 해제 |
+
+- 수수료 결제수단은 **계정당 최대 3개**다. 첫 등록분이 기본 결제수단이 되고 `isDefault` 는 한 건만 true 다.
+- CVC는 등록 시 검증에만 쓰고 저장하지 않는다. 조회 응답에는 마스킹된 `displayName` 만 나간다.
+- 용역비 수령 계좌는 가입 시 한 번만 받는다. 마이페이지 결제수단 목록에는 나오지 않는다.
+- 탈퇴는 진행 중 프로젝트나 미납 요금이 있으면 거부된다. 30일 재가입 제한이 걸린다.
+- 역할별 마이페이지(조회·수정)는 20/21 도메인에 있다.
+- 관리자 회원 상세는 목록과 응답이 다르다(`AdminAccountDetailResponse`). 활동 현황 6지표와 프로젝트 이력을 함께 준다.
+
+## 10. Project
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/projects/pre-review` | CLIENT | AI 사전 검수(등록 5단계). body `{positions[]}` |
+| POST | `/api/v1/projects` | CLIENT | 프로젝트 등록 |
+| GET | `/api/v1/projects/mine?tab=&page=&size=` | CLIENT | 내 프로젝트 목록 |
+| GET | `/api/v1/projects/mine/tab-counts` | CLIENT | 탭별 건수 배지 |
+| GET | `/api/v1/projects/{projectId}` | O | 상세 |
+| PUT | `/api/v1/projects/{projectId}` | CLIENT | 수정(모집 단계까지만) |
+| POST | `/api/v1/projects/{projectId}/cancellation` | CLIENT | 등록 취소 |
+| GET | `/api/v1/projects/{projectId}/pre-review` | CLIENT | 등록 후 검수 결과 조회 |
+| POST | `/api/v1/projects/{projectId}/recruit-close` | CLIENT | 모집 종료 |
+| POST | `/api/v1/projects/{projectId}/completion` | CLIENT | 프로젝트 완료 처리 |
+| POST | `/api/v1/projects/{projectId}/termination` | CLIENT | 프로젝트 중도 종료 |
+| POST | `/api/v1/projects/{projectId}/recruit-extensions` | CLIENT | 모집 기간 연장 |
+| GET | `/api/v1/projects/admin/status-counts` | ADMIN | 상태별 건수 (관리자 탭 배지) |
+| GET | `/api/v1/projects/admin?status=&keyword=&page=&size=` | ADMIN | 전체 프로젝트 |
+| GET | `/api/v1/projects/admin/{projectId}` | ADMIN | 관리자 상세 |
+
+등록은 6단계 위저드다: 등록 안내 → 기본 정보 → 직군 모집 → 상세정보 → **AI 사전 검수** → 최종 확인.
+검수 단계에서 `POST /pre-review` 를 호출하고, 마지막 단계에서 `POST /projects` 로 한 번에 등록한다.
+
+등록 body 핵심: `{title, positions[], startDesiredDate, startNegotiable, periodValue, periodUnit, budgetAmount, workStyle, workForm, workLocation, currentSituation, mainTask, detailScope, extraNote, fileIds[], noticeAgreed}`
+`positions[]` = `{jobCategory, jobRole, minCareerYears, headcount, skills[], preferredNote}`
+
+- 급여는 포지션이 아니라 **프로젝트 단위 예산(`budgetAmount`)** 으로만 받는다.
+- 우대사항(`preferredNote`)은 스킬 코드가 아니라 자유 텍스트다.
+- `jobCategory` 는 `DEVELOPMENT` / `DESIGN` 두 가지다.
+
+`pre-review` 응답: `{allMatchable, items[{jobRole, headcount, expectedCandidateCount, matchable, message, suggestions[]}]}`
+후보가 부족해도 그대로 등록할 수 있다. 착수금 수수료를 결제해야 실제 추천과 매칭이 시작된다(결제는 15번 정산 API).
+
+`tab`(목록 탭 → 상태 묶음):
+
+| tab | 라벨 | 포함 status |
+| --- | --- | --- |
+| `REGISTERED` | 등록 완료 | REGISTERED |
+| `MATCHING` | 매칭중 | RECRUITING, NEGOTIATING, CONTRACT_PENDING |
+| `IN_PROGRESS` | 진행 중 | IN_PROGRESS |
+| `COMPLETION_PENDING` | 완료 대기 | COMPLETION_PENDING |
+| `CLOSED` | 종료 | CLOSED |
+| `CANCELED` | 취소됨 | CANCELED |
+
+상세 응답의 `freelancers[]` 가 "프리랜서 현황"(프로젝트 정보 탭)과 "진행 현황" 탭 목록을 같이 담당한다.
+진행 현황 탭 상단의 **프로젝트 완료 처리 / 중도 종료**는 계약 단위(`/contracts/{id}/completion`)가 아니라 프로젝트 단위다.
+`statusHistories[]` 는 관리자 상세("상태 이력" 표)에서만 채워진다.
+
+관리자 목록은 탭이 **상태 하나**에 대응한다(전체/등록 완료/모집중/협상중/계약 대기/진행중/완료 대기/종료/취소됨).
+클라이언트의 묶음 탭과 다르므로 `status-counts` 를 따로 쓴다.
+`projectNo`, `clientName`, `matchedFreelancerName` 은 관리자 목록 전용이고 내 프로젝트 목록에서는 null 이다.
+
+## 11. Matching
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/matchings/positions/{positionId}/candidates` | CLIENT | AI 추천 후보 목록 |
+| POST | `/api/v1/matchings/positions/{positionId}/rerecommendations` | CLIENT | body `{type, quantity}` 재추천 |
+| POST | `/api/v1/matchings/candidates/{candidateId}/rejection` | CLIENT | 추천 후보 거절 |
+| POST | `/api/v1/matchings/requests` | CLIENT | body `{positionId, candidateIds[]}` 매칭 요청 |
+| GET | `/api/v1/matchings/requests?projectId=&positionId=&status=&page=&size=` | CLIENT | 보낸 요청 |
+| GET | `/api/v1/matchings/requests/received?tab=&page=&size=` | FREELANCER | 받은 요청 (프로젝트 제안) |
+| GET | `/api/v1/matchings/requests/{requestId}` | O | 요청 상세 |
+| POST | `/api/v1/matchings/requests/{requestId}/acceptance` | FREELANCER | 수락 → 협상 시작 |
+| POST | `/api/v1/matchings/requests/{requestId}/rejection` | FREELANCER | body `{reason}` 거절 |
+
+- 후보 카드는 `fitReasons[]`(태그 칩), `fitScore`, `payUnit`/`payAmount`, `ratingAverage`, `skills[]` 로 그린다.
+- 재추천 `type`: `FREE`(무료 1회) / `PAID`(유료, 후보 1명당 10,000원). 최초 추천은 `INITIAL`. 프로젝트당 총 6회.
+- 추천 후보를 모두 거절하면 무료 재추천이 활성화된다. 거절한 후보는 다시 추천되지 않는다.
+- 매칭 요청 응답 기한은 3일이고, 거절·만료된 프리랜서는 그 프로젝트에서 재선택할 수 없다.
+- 프리랜서의 "프로젝트 제안" 목록 `tab`: `ALL`(전체) / `REVIEWING`(검토 중) / `NEGOTIATING`(협상 중) / `CLOSED`(종료됨).
+- 제안 카드는 `fitScore`, `companyName`, `companyProfile`, `skills[]`, `workLabel`, `periodLabel`,
+  `expiresAt`(D-day 배지), 협상 중이면 `currentRound`/`maxRound`(최대 15)와 `newProposalCount` 로 그린다.
+- `status`: `REQUEST_PENDING` / `REJECTED` / `ACCEPTED` / `NEGOTIATING` / `NEGOTIATION_FAILED` / `CONTRACT_PENDING` / `CONTRACTED` / `IN_PROGRESS` / `COMPLETION_PENDING` / `CLOSED` / `TERMINATED`
+
+## 12. Negotiation (A2A)
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/negotiations/mine?status=&page=&size=` | O | 내 협상 목록 |
+| GET | `/api/v1/negotiations/{negotiationId}` | O | 협상 상세(쟁점별 현재 상태) |
+| GET | `/api/v1/negotiations/{negotiationId}/messages` | O | 내가 보는 대화(내 에이전트 ↔ 나) |
+| POST | `/api/v1/negotiations/{negotiationId}/start` | O | body `{conditions[{conditionType, value}]}` 마지노선 설정 후 협상 시작 |
+| POST | `/api/v1/negotiations/{negotiationId}/answers` | O | body `{roundNo, answers[{conditionType, value, accepted}]}` |
+| POST | `/api/v1/negotiations/{negotiationId}/final-approval` | O | body `{approved}` 최종 승인/거절 |
+| POST | `/api/v1/negotiations/{negotiationId}/give-up` | O | body `{reason}` 협상 포기 |
+| GET | `/api/v1/negotiations/admin/summary` | ADMIN | AI Agent 관리 요약(세션 수·평균 라운드·평균 소요일) |
+| GET | `/api/v1/negotiations/admin?status=&keyword=&page=&size=` | ADMIN | 협상 세션 목록 |
+| GET | `/api/v1/negotiations/admin/{negotiationId}` | ADMIN | 협상 상세 (협상 로그 탭) |
+| GET | `/api/v1/negotiations/admin/{negotiationId}/raw-logs` | ADMIN | AI 원본 로그 (원본 로그 탭) |
+| GET | `/api/v1/negotiations/admin/{negotiationId}/messages` | ADMIN | 에이전트 간 전체 로그 |
+
+- 협상 당사자는 상대 에이전트와 직접 대화하지 않는다. 각자 자기 에이전트와만 주고받는다.
+- 흐름: 상대 AI 초기 제안 확인 → `start` 로 쟁점별 마지노선 설정 → 라운드마다 거절된 쟁점만 `answers` 로 재입력 → 전 쟁점 합의 시 `final-approval`.
+- 마지노선은 상대에게 노출되지 않는다. 쟁점별 값 형태가 달라 문자열로 받고 서버가 `conditionType` 에 맞춰 해석한다.
+- 관리자 상세 화면은 탭이 둘이다. **협상 로그**(라운드별 제안·응답 아코디언) / **원본 로그**(`ai_agent_log` 원문).
+- `status`: `IN_PROGRESS` / `AGREED` / `FAILED`
+
+## 13. Chat
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/chat-rooms` | O | 내 채팅방 목록 |
+| GET | `/api/v1/chat-rooms/unread-count` | O | 헤더 메시지 배지 숫자 |
+| GET | `/api/v1/chat-rooms/{chatRoomId}` | O | 채팅방 상세 |
+| GET | `/api/v1/chat-rooms/{chatRoomId}/messages?page=&size=` | O | 메시지 목록(과거 방향 페이징) |
+| POST | `/api/v1/chat-rooms/{chatRoomId}/messages` | O | body `{content}` 최대 500자 |
+| POST | `/api/v1/chat-rooms/{chatRoomId}/read` | O | 읽음 처리 |
+| POST | `/api/v1/chat-rooms/{chatRoomId}/leave` | O | 나가기 |
+
+- 채팅방은 협상 성사 후 자동 생성된다. 임의로 만들 수 없어서 생성 API 가 없다.
+- 실시간 수신은 STOMP(WebSocket)를 쓰고, 위 REST 는 이력 조회·전송 용도다.
+
+## 14. Contract
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/contracts?status=&page=&size=` | O | 내 계약 목록 |
+| GET | `/api/v1/contracts/{contractId}` | O | 계약서 상세 |
+| GET | `/api/v1/contracts/{contractId}/pdf` | O | 계약서 PDF |
+| POST | `/api/v1/contracts/{contractId}/signature` | O | body `{agreed}` 전자 서명 |
+| POST | `/api/v1/contracts/{contractId}/rejection` | O | body `{reason}` 서명 거부 |
+| POST | `/api/v1/contracts/{contractId}/completion` | O | 완료 확인 |
+| POST | `/api/v1/contracts/{contractId}/termination` | O | body `{reason, workedAmount}` 중도 파기 |
+
+- `status`: `DRAFT` / `SIGN_PENDING` / `SIGNED` / `COMPLETED` / `REJECTED` / `TERMINATED`
+- 계약서는 협상 결과로 자동 생성되므로 생성 API 가 없다.
+- 서명은 이미지 업로드 없이 **전자 서명 동의**로 처리한다. 화면은 확인 모달 하나뿐이다.
+- `signDeadline` 까지 서명하지 않으면 계약이 자동 취소될 수 있다. 화면 상단 경고 배너에 쓴다.
+- `clauses[]` 가 계약서 본문(제1조~)이다. 화면에 순서대로 나열한다.
+
+## 15. Settlement
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/settlements/mine?phase=&status=&page=&size=` | O | 내 수수료 내역 |
+| GET | `/api/v1/settlements/{settlementId}` | O | 정산 상세 |
+| POST | `/api/v1/settlements/{settlementId}/payment` | O | body `{paymentMethodId}` 수수료 결제 |
+| GET | `/api/v1/settlements/penalties/mine` | O | 내 위약금 |
+| POST | `/api/v1/settlements/penalties/{penaltyId}/payment` | O | body `{paymentMethodId}` 위약금 납부 |
+| GET | `/api/v1/settlements/admin/summary` | ADMIN | 총수익·당월수익·예정·미납·위약금 집계 |
+| GET | `/api/v1/settlements/admin?settlementNo=&payerRole=&phase=&status=&page=&size=` | ADMIN | 전체 정산 |
+
+- 플랫폼이 다루는 돈은 **수수료와 위약금뿐**이다. 용역비 자체는 플랫폼을 거치지 않는다.
+- 결제 모달에서 고른 `paymentMethodId` 를 함께 보낸다. 06번 결제수단 목록의 값이다.
+- 결제 완료 화면과 관리자 상세가 `paymentMethodLabel`, `approvalNo`, `failReason`, `overdueReason`,
+  `statusHistories[]` 를 쓴다. 상태 이력은 관리자 상세에서만 채워진다.
+- 요율(SILVER·GOLD 기준): 착수금 1억 미만 클라이언트 3% · 프리랜서 4%, 1억 이상 클라이언트 2%.
+  성공보수 1억 미만 클라이언트 7% · 프리랜서 6%, 1억 이상 클라이언트 6%. DIAMOND 는 각 1% 인하.
+- `phase`: `DEPOSIT`(착수금) / `SUCCESS_FEE`(성공보수), `status`: `PENDING` / `PAID` / `OVERDUE` / `FAILED`
+
+## 16. Review
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/reviews` | O | body `{contractId, counterpart{...}, site{...}}` |
+| GET | `/api/v1/reviews/received?page=&size=` | O | 받은 리뷰 |
+| GET | `/api/v1/reviews/written?page=&size=` | O | 작성한 리뷰 |
+| GET | `/api/v1/reviews/summary` | O | 평균 별점·건수·등급 |
+| GET | `/api/v1/reviews/pending` | O | 작성 대기 계약 |
+| GET | `/api/v1/reviews/admin/site-reviews/summary` | ADMIN | 요약 카드 + 별점 분포 |
+| GET | `/api/v1/reviews/admin/site-reviews?score=&writerRole=&visibility=&promoted=&page=&size=` | ADMIN | 사이트 후기 목록 |
+| PUT | `/api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility` | ADMIN | body `{visibility, promoted}` |
+
+- 대금 지급이 끝난 계약만 작성 가능하고, 등록 후 수정·삭제할 수 없다.
+- **상대 평가와 서비스 후기 모두 별점이 필수**다. 코멘트만 선택(각 500자)이다.
+- 상대 평가와 사이트 후기를 한 화면에서 쓰므로 등록 API 가 하나다. 사이트 후기는 기본 `PRIVATE`.
+
+## 17. Notification
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/notifications?unreadOnly=&page=&size=` | O | 알림 목록 |
+| GET | `/api/v1/notifications/unread-count` | O | 미읽음 개수(뱃지) |
+| PUT | `/api/v1/notifications/{notificationId}/read` | O | 단건 읽음 |
+| PUT | `/api/v1/notifications/read-all` | O | 전체 읽음 |
+| DELETE | `/api/v1/notifications/{notificationId}` | O | 단건 삭제 |
+| DELETE | `/api/v1/notifications` | O | 전체 삭제 |
+
+`type`: `MATCHING_*`(4) / `NEGOTIATION_*`(3) / `CONTRACT_*`(3) / `SETTLEMENT_DUE` / `INQUIRY_ANSWERED`.
+응답의 `targetType` + `targetId` 로 이동할 화면을 정한다.
+
+## 18. Support
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/support/chatbot/questions` | O | body `{sessionId, question}` (첫 질문은 sessionId 생략) |
+| GET | `/api/v1/support/chatbot/quota` | O | 잔여 한도(하루 10회, 자정 초기화) |
+| GET | `/api/v1/support/chatbot/suggested-questions` | O | 입력창 위 추천 질문 칩 |
+| GET | `/api/v1/support/chatbot/sessions/{sessionId}/messages` | O | 대화 이력 |
+| POST | `/api/v1/support/inquiries` | O | body `{category?, title, content, fileIds[]}` 1:1 문의 |
+| GET | `/api/v1/support/inquiries/mine?status=&page=&size=` | O | 내 문의 |
+| GET | `/api/v1/support/inquiries/{inquiryId}` | O | 문의 상세 |
+| GET | `/api/v1/support/admin/inquiries?status=&page=&size=` | ADMIN | 문의 목록 |
+| POST | `/api/v1/support/admin/inquiries/{inquiryId}/answer` | ADMIN | body `{answer}` |
+
+챗봇과 1:1 문의는 **서로 독립된 창구**다. 챗봇을 거쳐야 문의할 수 있는 구조가 아니다.
+
+- 작성 화면에 유형 선택 UI 가 없다. `category` 를 비워 보내면 서버가 내용으로 분류한다.
+  값: `ACCOUNT` / `PROJECT` / `MATCHING` / `NEGOTIATION` / `CONTRACT` / `PAYMENT` / `REVIEW` / `ETC`
+- 첨부파일은 04번 파일 API 로 먼저 올리고 `fileIds[]` 만 보낸다.
+- 상세 화면은 `inquiryNo`(QNA-20260805-0012), `category`, `answererName` 을 쓴다.
+
+## 20. Freelancer
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/freelancers/me` | FREELANCER | 마이페이지 |
+| PATCH | `/api/v1/freelancers/me` | FREELANCER | body `{currentPassword, profileFileId, phone, address, aiMatchingAgreed}` |
+| GET | `/api/v1/freelancers/me/condition` | FREELANCER | 내 조건 |
+| PUT | `/api/v1/freelancers/me/condition` | FREELANCER | 조건 등록/수정 |
+| GET | `/api/v1/freelancers/me/resume` | FREELANCER | **조건 + 이력서 통합 조회** (마이페이지 "내 이력서" 한 화면) |
+| PUT | `/api/v1/freelancers/me/resume` | FREELANCER | 이력서 등록/수정 |
+| GET | `/api/v1/freelancers/me/resume/pdf` | FREELANCER | 이력서 PDF URL |
+| GET | `/api/v1/freelancers/me/portfolios` | FREELANCER | 포트폴리오 목록 |
+| POST | `/api/v1/freelancers/me/portfolios` | FREELANCER | body `{title, description, fileId, linkUrl}` |
+| PUT | `/api/v1/freelancers/me/portfolios/{id}` | FREELANCER | 포트폴리오 수정 |
+| DELETE | `/api/v1/freelancers/me/portfolios/{id}` | FREELANCER | 포트폴리오 삭제 |
+| GET | `/api/v1/freelancers/me/matching-settings` | FREELANCER | 매칭 설정 조회 |
+| PUT | `/api/v1/freelancers/me/matching-settings` | FREELANCER | body `{aiMatchingAgreed, matchingPaused}` |
+
+- 이름·생년월일·이메일은 수정할 수 없다. 비밀번호 변경은 `PATCH /api/v1/auth/password`.
+- **조회는 통합, 저장은 분리**다. 마이페이지는 한 화면이라 `GET /me/resume` 하나로 `{condition, resume}` 를 함께 받고,
+  등록 위저드는 단계별 저장이 필요해 `PUT /me/condition` 과 `PUT /me/resume` 를 따로 호출한다.
+- 조건·이력서 저장 시 임베딩이 갱신된다. 필수 항목을 다 채우면 이력서가 `COMPLETED` 가 되고 매칭 대상이 된다.
+- 하위 목록(학력/경력/자격증/링크)은 **전체 교체** 방식이다.
+
+## 21. Client
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/clients/me` | CLIENT | 마이페이지 |
+| PATCH | `/api/v1/clients/me` | CLIENT | body `{companyName, employeeCount, phone, logoFileId, address}` |
+
+사업자등록번호·대표자명·업종은 수정할 수 없다.
+
+## 07. Grade
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/grades?role=CLIENT` | X | 등급 기준표(승급 조건·유지 기준·혜택·수수료율) |
+| GET | `/api/v1/grades/me` | O | 내 등급과 다음 등급까지 남은 조건 |
+
+등급은 완료 실적과 평점으로 자동 산정된다. 변경 API는 없다.
+클라이언트 `SILVER`/`GOLD`/`DIAMOND`, 프리랜서 `JUNIOR`/`SENIOR`/`MASTER`.
+클라이언트 화면은 `feeRate`(숫자 표), 프리랜서 화면은 `feeNote`(문구)를 쓴다.
+로그인 메인의 "등급별 혜택 안내" 표도 이 API를 그대로 쓴다.
+
+## 30. Admin
+
+| 메서드 | 경로 | 인증 | 설명 |
+| --- | --- | --- | --- |
+| GET | `/api/v1/admin/dashboard` | ADMIN | 회원·프로젝트·협상·정산 요약 + 처리 대기 항목 |
+
+관리자 화면은 대시보드 / 회원 관리 / 프로젝트 관리 / 거래·정산 관리 / 사이트 리뷰 관리 / AI Agent 관리 6개다.
+대시보드만 여기 있고 나머지는 각 도메인의 `/admin/**` 을 쓴다.
 
 ---
 

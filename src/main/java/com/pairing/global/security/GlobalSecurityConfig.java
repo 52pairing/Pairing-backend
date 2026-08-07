@@ -47,6 +47,10 @@ public class GlobalSecurityConfig {
                                 "/api/v1/meta/**",
                                 // 약관 조회. 회원가입 화면이 로그인 전에 호출한다.
                                 "/api/v1/terms/**",
+                                // 비로그인 메인(지표·노출 리뷰·FAQ)
+                                "/api/v1/home/**",
+                                // 등급 기준표. 비로그인 안내 화면에서 본다. (/grades/me 는 아래 authenticated)
+                                "/api/v1/grades",
                                 // 소셜 로그인 리다이렉트 경로
                                 "/oauth2/**",
                                 "/login/**",
