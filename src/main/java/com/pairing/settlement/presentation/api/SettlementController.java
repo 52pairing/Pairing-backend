@@ -3,7 +3,6 @@ package com.pairing.settlement.presentation.api;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
-import com.pairing.global.common.api.response.StatusHistoryResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.meta.domain.model.PartyRole;
@@ -143,10 +142,6 @@ public class SettlementController {
                 new BigDecimal("3.00"), new BigDecimal("0.00"), 660_000L,
                 SettlementStatus.PENDING,
                 "신한카드 **** 1234", "AP-20260804-3821", null, null,
-                List.of(new StatusHistoryResponse(LocalDateTime.now().minusDays(5), "PENDING",
-                                "결제 대기", "시스템", "정산 생성"),
-                        new StatusHistoryResponse(LocalDateTime.now(), "PAID",
-                                "결제 완료", "시스템", "상태 업데이트")),
                 LocalDate.now().plusDays(7), true, null);
     }
 

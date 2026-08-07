@@ -6,6 +6,7 @@ import com.pairing.meta.domain.model.WorkStyle;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
+import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -31,11 +32,14 @@ public record ProjectCreateRequest(
         @Size(max = 200, message = "프로젝트명은 200자 이하여야 합니다.")
         String title,
 
-        @Schema(description = "모집 인원(포지션) 목록. 최소 1건", minLength = 1)
+        @Schema(description = "모집 인원(포지션) 목록. 최소 1건")
+        @Size(max = 100, message = "모집 직군은 최대 100건입니다.")
         @NotEmpty(message = "필요 인력은 최소 1건입니다.")
         @Valid
         List<PositionRequest> positions,
 
+        @NotNull(message = "시작 희망일은 필수입니다.")
+        @FutureOrPresent(message = "시작 희망일은 오늘 이후여야 합니다.")
         @Schema(description = "시작 희망일", example = "2026-09-01")
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate startDesiredDate,
@@ -65,10 +69,6 @@ public record ProjectCreateRequest(
         @Schema(description = "근무 형태", example = "FULL_TIME")
         @NotNull(message = "근무 형태는 필수입니다.")
         WorkForm workForm,
-
-        @Schema(description = "근무 장소. 상주일 때 사용", example = "서울 강남구")
-        @Size(max = 255)
-        String workLocation,
 
         @Schema(description = "현재 프로젝트 진행 상황")
         @NotBlank(message = "진행 상황은 필수입니다.")

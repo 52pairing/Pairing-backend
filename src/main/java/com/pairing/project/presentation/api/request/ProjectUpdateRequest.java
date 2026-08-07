@@ -32,10 +32,12 @@ public record ProjectUpdateRequest(
 
         @Schema(description = "모집 인원(포지션) 목록")
         @NotEmpty(message = "필요 인력은 최소 1건입니다.")
+        @Size(max = 100, message = "모집 직군은 최대 100건입니다.")
         @Valid
-        List<PositionRequest> positions,
+        List<PositionUpdateRequest> positions,
 
         @Schema(description = "시작 희망일")
+        @NotNull(message = "시작 희망일은 필수입니다.")
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate startDesiredDate,
 
@@ -62,10 +64,6 @@ public record ProjectUpdateRequest(
         @Schema(description = "근무 형태")
         @NotNull(message = "근무 형태는 필수입니다.")
         WorkForm workForm,
-
-        @Schema(description = "근무 장소")
-        @Size(max = 255)
-        String workLocation,
 
         @Schema(description = "현재 프로젝트 진행 상황")
         @NotBlank @Size(max = 1500)
