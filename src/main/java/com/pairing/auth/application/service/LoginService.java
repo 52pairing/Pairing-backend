@@ -17,6 +17,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 /**
@@ -44,12 +47,14 @@ public class LoginService implements LoginUseCase {
     private final PasswordEncoder passwordEncoder;
     private final AuthSettings authSettings;
 
+    private static final DateTimeFormatter RETRY_AT_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
     @Override
     public LoginResult login(LoginCommand command) {
         String clientIp = command.clientIp();
 
         if (loginAttemptPort.isBlocked(clientIp)) {
-            throw new BusinessException(AuthErrorCode.LOGIN_BLOCKED);
+            throw new BusinessException(AuthErrorCode.LOGIN_BLOCKED, blockedMessage(clientIp));
         }
 
         String email = ContactPolicy.normalizeEmail(command.email());
@@ -98,6 +103,39 @@ public class LoginService implements LoginUseCase {
         Account loggedIn = accountCommandUseCase.applyLoginSuccess(account.getId());
 
         return authTokenIssuer.issue(loggedIn);
+    }
+
+    /**
+     * IP 차단 안내 문구. 언제부터 다시 되는지 알려 주지 않으면 사용자는 무한정 재시도하게 된다.
+     *
+     * <p>남은 시간은 Redis 키의 TTL 에서 읽는다. 키가 막 만료됐거나 TTL 을 못 읽으면 0 이 오는데,
+     * 그때는 시각 대신 차단 기간(기본 2시간)을 안내한다.
+     */
+    private String blockedMessage(String clientIp) {
+        Duration remaining = loginAttemptPort.blockRemaining(clientIp);
+
+        if (remaining.isZero() || remaining.isNegative()) {
+            return "%s %s 후에 다시 시도해 주세요."
+                    .formatted(AuthErrorCode.LOGIN_BLOCKED.getMessage(),
+                            humanize(authSettings.getIpBlockDuration()));
+        }
+
+        return "%s %s 이후에 다시 시도해 주세요. (약 %s 남음)"
+                .formatted(AuthErrorCode.LOGIN_BLOCKED.getMessage(),
+                        LocalDateTime.now().plus(remaining).format(RETRY_AT_FORMAT),
+                        humanize(remaining));
+    }
+
+    /** "2시간" / "1시간 30분" / "15분" 처럼 사람이 읽는 형태로. */
+    private static String humanize(Duration duration) {
+        long totalMinutes = Math.max(1, duration.toMinutes());
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
+
+        if (hours == 0) {
+            return minutes + "분";
+        }
+        return minutes == 0 ? hours + "시간" : "%d시간 %d분".formatted(hours, minutes);
     }
 
     private void recordIpFailure(String clientIp) {
