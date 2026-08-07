@@ -151,9 +151,11 @@ public class AccountRecoveryService implements AccountRecoveryUseCase {
             throw new BusinessException(AuthErrorCode.SOCIAL_ACCOUNT_NO_PASSWORD);
         }
 
-        // 현재 비밀번호 대신 이메일 인증으로 본인을 확인한다.
-        // 마커는 계정에 저장된 이메일 기준이라, 남의 이메일로 인증해도 통과할 수 없다.
-        if (!verifiedMarkerPort.isVerified(account.getEmail(), VerificationPurpose.PASSWORD_CHANGE)) {
+        // 임시 비밀번호 상태는 인증코드를 면제한다.
+        // 비밀번호 찾기 링크를 열고 임시 비밀번호 메일까지 받아 로그인한 상태라 메일 소유가 이미 두 번 증명됐다.
+        // 여기서 코드를 또 받게 하면 같은 메일함을 세 번째로 확인해야 한다.
+        if (!account.isTempPassword()
+                && !verifiedMarkerPort.isVerified(account.getEmail(), VerificationPurpose.PASSWORD_CHANGE)) {
             throw new BusinessException(AuthErrorCode.EMAIL_NOT_VERIFIED);
         }
 
