@@ -1,5 +1,6 @@
 package com.pairing.freelancer.presentation.api;
 
+import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.freelancer.domain.model.CampusType;
 import com.pairing.freelancer.domain.model.FreelancerGrade;
 import com.pairing.freelancer.domain.model.GraduationStatus;
@@ -7,13 +8,11 @@ import com.pairing.freelancer.domain.model.ResumeStatus;
 import com.pairing.freelancer.presentation.api.request.FreelancerConditionRequest;
 import com.pairing.freelancer.presentation.api.request.FreelancerProfileUpdateRequest;
 import com.pairing.freelancer.presentation.api.request.MatchingSettingsRequest;
-import com.pairing.freelancer.presentation.api.request.PortfolioRequest;
 import com.pairing.freelancer.presentation.api.request.ResumeRequest;
 import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
 import com.pairing.freelancer.presentation.api.response.FreelancerMyPageResponse;
 import com.pairing.freelancer.presentation.api.response.FreelancerResumePageResponse;
 import com.pairing.freelancer.presentation.api.response.MatchingSettingsResponse;
-import com.pairing.freelancer.presentation.api.response.PortfolioResponse;
 import com.pairing.freelancer.presentation.api.response.ResumeResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
@@ -31,14 +30,10 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -63,6 +58,8 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(name = "20. Freelancer", description = "프리랜서 마이페이지/이력서 API")
 public class FreelancerController {
+
+    private final FreelancerConditionUseCase freelancerConditionUseCase;
 
     @GetMapping("/me")
     @PreAuthorize("hasRole('FREELANCER')")
@@ -91,8 +88,10 @@ public class FreelancerController {
     public ResponseEntity<ApiResponse<FreelancerConditionResponse>> findMyCondition(
             @CurrentAccountId Long accountId
     ) {
-        // TODO: freelancer_condition + condition_skill 조회
-        return ResponseEntity.ok(ApiResponse.success("CONDITION_FOUND", "조회에 성공했습니다.", sampleCondition()));
+        FreelancerConditionResponse response = freelancerConditionUseCase.findMyCondition(accountId)
+                .map(FreelancerConditionResponse::from)
+                .orElse(null);
+        return ResponseEntity.ok(ApiResponse.success("CONDITION_FOUND", "조회에 성공했습니다.", response));
     }
 
     @PutMapping("/me/condition")
@@ -104,8 +103,9 @@ public class FreelancerController {
             @Valid @RequestBody FreelancerConditionRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: upsert 후 AI 서버에 임베딩 재생성 요청
-        return ResponseEntity.ok(ApiResponse.success("CONDITION_SAVED", "저장되었습니다.", sampleCondition()));
+        FreelancerConditionResponse response =
+                FreelancerConditionResponse.from(freelancerConditionUseCase.upsert(request.toCommand(accountId)));
+        return ResponseEntity.ok(ApiResponse.success("CONDITION_SAVED", "저장되었습니다.", response));
     }
 
     @GetMapping("/me/resume")
@@ -124,76 +124,17 @@ public class FreelancerController {
                                 + "이미 진행 중인 매칭과 협상에는 매칭 시작 당시의 정보가 기준으로 적용됩니다.")));
     }
 
-    @GetMapping("/me/resume/pdf")
-    @PreAuthorize("hasRole('FREELANCER')")
-    @Operation(summary = "내 이력서 PDF", description = "화면의 'PDF 보기' 버튼이 호출합니다. 다운로드 URL을 반환합니다.")
-    public ResponseEntity<ApiResponse<String>> findMyResumePdf(@CurrentAccountId Long accountId) {
-        // TODO: 이력서 PDF 생성 후 CDN URL 반환
-        return ResponseEntity.ok(ApiResponse.success("RESUME_PDF_ISSUED", "발급되었습니다.",
-                "https://cdn.pairing.com/resumes/sample.pdf"));
-    }
-
     @PutMapping("/me/resume")
     @PreAuthorize("hasRole('FREELANCER')")
     @Operation(summary = "내 이력서 등록/수정",
-            description = "필수 항목을 모두 채우면 상태가 COMPLETED 가 되고 매칭 대상에 포함됩니다.")
+            description = "포트폴리오 등록/삭제도 여기서 같이 처리합니다. "
+                    + "필수 항목을 모두 채우면 상태가 COMPLETED 가 되고 매칭 대상에 포함됩니다.")
     public ResponseEntity<ApiResponse<ResumeResponse>> upsertMyResume(
             @Valid @RequestBody ResumeRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 하위 목록 전체 교체 방식으로 저장 후 임베딩 재생성 요청
+        // TODO: 하위 목록(학력/경력/자격증/링크/포트폴리오) 전체 교체 방식으로 저장 후 임베딩 재생성 요청
         return ResponseEntity.ok(ApiResponse.success("RESUME_SAVED", "저장되었습니다.", sampleResume()));
-    }
-
-    // ==========================================
-    // 포트폴리오 (마이페이지 > 포트폴리오)
-    // ==========================================
-
-    @GetMapping("/me/portfolios")
-    @PreAuthorize("hasRole('FREELANCER')")
-    @Operation(summary = "내 포트폴리오 목록", description = "정렬 순서대로 반환합니다.")
-    public ResponseEntity<ApiResponse<List<PortfolioResponse>>> findMyPortfolios(
-            @CurrentAccountId Long accountId
-    ) {
-        // TODO: 삭제되지 않은 포트폴리오 조회
-        return ResponseEntity.ok(ApiResponse.success("PORTFOLIOS_FOUND", "조회에 성공했습니다.",
-                List.of(samplePortfolio())));
-    }
-
-    @PostMapping("/me/portfolios")
-    @PreAuthorize("hasRole('FREELANCER')")
-    @Operation(summary = "포트폴리오 등록", description = "파일과 링크 중 최소 하나는 필요합니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST"})
-    public ResponseEntity<ApiResponse<PortfolioResponse>> createPortfolio(
-            @Valid @RequestBody PortfolioRequest request,
-            @CurrentAccountId Long accountId
-    ) {
-        // TODO: 파일 소유 확인 후 저장
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created("PORTFOLIO_CREATED", "등록되었습니다.", samplePortfolio()));
-    }
-
-    @PutMapping("/me/portfolios/{portfolioId}")
-    @PreAuthorize("hasRole('FREELANCER')")
-    @Operation(summary = "포트폴리오 수정")
-    public ResponseEntity<ApiResponse<PortfolioResponse>> updatePortfolio(
-            @PathVariable Long portfolioId,
-            @Valid @RequestBody PortfolioRequest request,
-            @CurrentAccountId Long accountId
-    ) {
-        // TODO: 본인 소유 확인 후 수정
-        return ResponseEntity.ok(ApiResponse.success("PORTFOLIO_UPDATED", "수정되었습니다.", samplePortfolio()));
-    }
-
-    @DeleteMapping("/me/portfolios/{portfolioId}")
-    @PreAuthorize("hasRole('FREELANCER')")
-    @Operation(summary = "포트폴리오 삭제")
-    public ResponseEntity<ApiResponse<Void>> deletePortfolio(
-            @PathVariable Long portfolioId,
-            @CurrentAccountId Long accountId
-    ) {
-        // TODO: 본인 소유 확인 후 soft delete
-        return ResponseEntity.ok(ApiResponse.success("PORTFOLIO_DELETED", "삭제되었습니다."));
     }
 
     // ==========================================
@@ -240,12 +181,6 @@ public class FreelancerController {
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 5_000_000L, 4_000_000L,
                 LocalDate.now().plusWeeks(2), true, 6, PeriodUnit.MONTH, true, 5,
                 List.of(new FreelancerConditionResponse.Skill(SkillCode.JAVA, SkillLevel.ADVANCED)));
-    }
-
-    private PortfolioResponse samplePortfolio() {
-        return new PortfolioResponse(70L, "쇼핑몰 관리자 페이지 리뉴얼",
-                "React 기반 관리자 페이지를 전면 리뉴얼했습니다.", 42L, "portfolios/uuid.pdf",
-                "https://github.com/pairing/sample", 0, LocalDateTime.now());
     }
 
     private ResumeResponse sampleResume() {

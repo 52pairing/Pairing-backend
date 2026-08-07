@@ -9,6 +9,7 @@ import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.account.domain.model.BankCode;
+import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.model.PaymentMethod;
 import com.pairing.account.domain.model.Role;
@@ -153,6 +154,15 @@ public class AccountCommandService implements AccountCommandUseCase {
         Account account = loadAccount(accountId);
         account.verifyEmail();
         accountRepository.save(account);
+    }
+
+    @Override
+    public void updateClientProfile(Long accountId, String companyName, EmployeeCount employeeCount,
+                                    String address) {
+        ClientProfile profile = clientProfileRepository.findByAccountId(accountId)
+                .orElseThrow(() -> new BusinessException(AccountErrorCode.PROFILE_NOT_FOUND));
+        profile.updateCompanyInfo(companyName, employeeCount, address);
+        clientProfileRepository.save(profile);
     }
 
     private Account loadAccount(Long accountId) {
