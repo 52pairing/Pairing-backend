@@ -41,4 +41,10 @@ public class NegotiationMessageRepositoryAdapter implements NegotiationMessageRe
                         negotiationId, conditionId, NegotiationMessageType.PROPOSAL)
                 .map(mapper::toDomain);
     }
+
+    @Override
+    public Optional<String> findLatestHash(Long negotiationId) {
+        return springDataRepository.findFirstByNegotiationIdOrderByIdDesc(negotiationId)
+                .map(NegotiationMessageJpaEntity::getContentHash);
+    }
 }

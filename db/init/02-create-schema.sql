@@ -542,6 +542,9 @@ CREATE TABLE "negotiation_message" (
     "proposed_value" VARCHAR(255),
     "proposal_json" JSONB,
     "response" VARCHAR(20),
+    "acting_account_id" BIGINT,
+    "prev_hash" CHAR(64),
+    "content_hash" CHAR(64),
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
 );

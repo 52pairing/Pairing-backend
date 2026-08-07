@@ -55,12 +55,22 @@ public class NegotiationMessageJpaEntity {
     @Column(name = "response", length = 20)
     private String response;
 
+    @Column(name = "acting_account_id")
+    private Long actingAccountId;
+
+    @Column(name = "prev_hash", length = 64)
+    private String prevHash;
+
+    @Column(name = "content_hash", length = 64)
+    private String contentHash;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     public NegotiationMessageJpaEntity(Long id, Long negotiationId, Long conditionId, int roundNo,
                                        SenderType senderType, NegotiationMessageType messageType, String content,
                                        String reason, String proposedValue, String response,
+                                       Long actingAccountId, String prevHash, String contentHash,
                                        LocalDateTime createdAt) {
         this.id = id;
         this.negotiationId = negotiationId;
@@ -72,6 +82,9 @@ public class NegotiationMessageJpaEntity {
         this.reason = reason;
         this.proposedValue = proposedValue;
         this.response = response;
+        this.actingAccountId = actingAccountId;
+        this.prevHash = prevHash;
+        this.contentHash = contentHash;
         this.createdAt = createdAt;
     }
 }

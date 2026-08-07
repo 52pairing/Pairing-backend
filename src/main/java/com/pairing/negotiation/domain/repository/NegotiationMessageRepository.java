@@ -17,4 +17,7 @@ public interface NegotiationMessageRepository {
 
     /** 특정 조건의 최신 AI 제안(수락 시 락할 값 조회용). */
     Optional<NegotiationMessage> findLatestProposal(Long negotiationId, Long conditionId);
+
+    /** 체인 머리(가장 최근 로그)의 contentHash. 새 로그 seal 시 직전 해시로 쓴다. 없으면 empty. */
+    Optional<String> findLatestHash(Long negotiationId);
 }

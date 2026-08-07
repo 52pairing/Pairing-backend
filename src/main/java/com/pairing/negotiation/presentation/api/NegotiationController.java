@@ -11,6 +11,8 @@ import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
+import com.pairing.negotiation.domain.service.NegotiationLogVerifier;
+import com.pairing.negotiation.presentation.api.response.NegotiationLogIntegrityResponse;
 import com.pairing.negotiation.domain.model.NegotiationMessageType;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.SenderType;
@@ -111,6 +113,20 @@ public class NegotiationController {
                 .map(m -> NegotiationResponseFactory.message(m, typeById.get(m.getConditionId())))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success("MESSAGES_FOUND", "조회에 성공했습니다.", logs));
+    }
+
+    @GetMapping("/{negotiationId}/log-integrity")
+    @Operation(summary = "협상 로그 무결성 검증",
+            description = "협상 로그(증거)의 해시 체인을 재계산해 위변조 여부를 확인합니다. 분쟁 시 "
+                    + "로그가 조작되지 않았음을 증명하는 용도입니다.")
+    public ResponseEntity<ApiResponse<NegotiationLogIntegrityResponse>> verifyLogIntegrity(
+            @PathVariable Long negotiationId,
+            @CurrentAccountId Long accountId
+    ) {
+        NegotiationLogVerifier.Result result = negotiationQueryUseCase.verifyLog(negotiationId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("LOG_INTEGRITY_CHECKED", "검증을 완료했습니다.",
+                new NegotiationLogIntegrityResponse(
+                        result.valid(), result.brokenAtMessageId(), result.checked())));
     }
 
     @PostMapping("/{negotiationId}/start")
