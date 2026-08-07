@@ -135,6 +135,14 @@ app:
     # STOMP 핸드셰이크 경로. 바꾸면 GlobalSecurityConfig의 permitAll 경로도 함께 맞춰야 한다.
     endpoint: ${WEBSOCKET_ENDPOINT:/ws}
 
+ai:
+  pairing-python:
+    # AI 매칭 서버(Pairing-python, FastAPI) 주소. 기본값은 로컬 기동 포트(APP_PORT=8000).
+    base-url: ${AI_SERVER_BASE_URL:http://localhost:8000}
+    # Pairing-python과 공유하는 내부 호출 키(INTERNAL_API_KEY와 같은 값).
+    # jwt.secret-key와 같은 이유로 기본값을 두지 않는다.
+    internal-api-key: ${AI_INTERNAL_API_KEY:}
+
 cloud:
   aws:
     s3:

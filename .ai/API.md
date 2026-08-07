@@ -226,12 +226,12 @@
 | POST | `/api/v1/matchings/requests/{requestId}/acceptance` | FREELANCER | 수락 → 협상 시작 |
 | POST | `/api/v1/matchings/requests/{requestId}/rejection` | FREELANCER | body `{reason}` 거절 |
 
-- 후보 카드는 `fitReasons[]`(태그 칩), `fitScore`, `payUnit`/`payAmount`, `ratingAverage`, `skills[]` 로 그린다.
+- 후보 카드는 `fitReasons[]`(태그 칩), `payUnit`/`payAmount`, `ratingAverage`, `skills[]` 로 그린다. 적합도 점수 숫자는 화면에 노출하지 않는다.
 - 재추천 `type`: `FREE`(무료 1회) / `PAID`(유료, 후보 1명당 10,000원). 최초 추천은 `INITIAL`. 프로젝트당 총 6회.
 - 추천 후보를 모두 거절하면 무료 재추천이 활성화된다. 거절한 후보는 다시 추천되지 않는다.
 - 매칭 요청 응답 기한은 3일이고, 거절·만료된 프리랜서는 그 프로젝트에서 재선택할 수 없다.
 - 프리랜서의 "프로젝트 제안" 목록 `tab`: `ALL`(전체) / `REVIEWING`(검토 중) / `NEGOTIATING`(협상 중) / `CLOSED`(종료됨).
-- 제안 카드는 `fitScore`, `companyName`, `companyProfile`, `skills[]`, `workLabel`, `periodLabel`,
+- 제안 카드는 `companyName`, `companyProfile`, `skills[]`, `workLabel`, `periodLabel`,
   `expiresAt`(D-day 배지), 협상 중이면 `currentRound`/`maxRound`(최대 15)와 `newProposalCount` 로 그린다.
 - `status`: `REQUEST_PENDING` / `REJECTED` / `ACCEPTED` / `NEGOTIATING` / `NEGOTIATION_FAILED` / `CONTRACT_PENDING` / `CONTRACTED` / `IN_PROGRESS` / `COMPLETION_PENDING` / `CLOSED` / `TERMINATED`
 

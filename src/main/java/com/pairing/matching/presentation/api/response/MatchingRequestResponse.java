@@ -36,8 +36,6 @@ public record MatchingRequestResponse(
         @Schema(description = "상대 이름. 클라이언트가 보면 프리랜서명, 프리랜서가 보면 기업명", example = "홍길동")
         String counterpartName,
 
-        @Schema(description = "AI 적합도 점수(0~100)", example = "94") Double fitScore,
-
         @Schema(description = "발주 기업명", example = "주식회사 오이랩") String companyName,
         @Schema(description = "업종·직원수 표기", example = "IT/소프트웨어 · 50-100명") String companyProfile,
 

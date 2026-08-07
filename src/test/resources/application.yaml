@@ -34,6 +34,11 @@ app:
   websocket:
     endpoint: /ws
 
+ai:
+  pairing-python:
+    base-url: http://localhost:8000
+    internal-api-key: test-internal-api-key
+
 # Lettuce는 지연 연결이므로 실제 Redis 없이도 컨텍스트는 기동된다.
 # Redis를 실제로 쓰는 테스트는 로컬 Redis(또는 Testcontainers)를 띄워야 한다.
 spring.data.redis:
