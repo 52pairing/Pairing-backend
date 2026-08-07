@@ -515,6 +515,8 @@ CREATE TABLE "negotiation_condition" (
     "condition_type" VARCHAR(30) NOT NULL,
     "client_value" VARCHAR(255),
     "freelancer_value" VARCHAR(255),
+    "client_floor" VARCHAR(255),
+    "freelancer_floor" VARCHAR(255),
     "agreed_value" VARCHAR(255),
     "status" VARCHAR(20) DEFAULT 'PENDING' NOT NULL,
     "round_count" INTEGER DEFAULT 0 NOT NULL,
@@ -1419,8 +1421,10 @@ COMMENT ON COLUMN "negotiation"."end_reason" IS '종료 사유';
 COMMENT ON COLUMN "negotiation_condition"."id" IS 'PK';
 COMMENT ON COLUMN "negotiation_condition"."negotiation_id" IS '협상 FK';
 COMMENT ON COLUMN "negotiation_condition"."condition_type" IS 'AMOUNT / PERIOD / START_DATE / WORK_STYLE / WORK_FORM / CAREER / SKILL';
-COMMENT ON COLUMN "negotiation_condition"."client_value" IS '클라이언트 조건값';
-COMMENT ON COLUMN "negotiation_condition"."freelancer_value" IS '프리랜서 조건값';
+COMMENT ON COLUMN "negotiation_condition"."client_value" IS '클라이언트 희망값(공개·고정). 초기 제안 카드·상대 희망 힌트용. 마지노선 아님';
+COMMENT ON COLUMN "negotiation_condition"."freelancer_value" IS '프리랜서 희망값(공개·고정). 마지노선 아님';
+COMMENT ON COLUMN "negotiation_condition"."client_floor" IS '클라이언트 마지노선(비공개). 응답엔 뷰어 본인 것만 myFloor로';
+COMMENT ON COLUMN "negotiation_condition"."freelancer_floor" IS '프리랜서 마지노선(비공개). 응답엔 뷰어 본인 것만 myFloor로';
 COMMENT ON COLUMN "negotiation_condition"."agreed_value" IS '합의된 값';
 COMMENT ON COLUMN "negotiation_condition"."status" IS 'PENDING / IN_PROGRESS / AGREED / FAILED';
 COMMENT ON COLUMN "negotiation_condition"."round_count" IS '해당 조건 협상 라운드 수';
