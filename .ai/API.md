@@ -147,9 +147,12 @@
 | DELETE | `/api/v1/files/{fileId}` | O | 업로더 본인만 삭제 |
 
 - `purpose`: `PROFILE_IMAGE` / `COMPANY_LOGO` / `PORTFOLIO` / `PROJECT_FILE` / `SIGNATURE`.
-- 용량·확장자 제한은 purpose 별로 다르다. 초과 시 400.
+- 용량·확장자 제한은 purpose 별로 다르다. 초과/불일치 시 400(`GLOBAL_008` / `FI_003`).
 - 다른 도메인은 파일 자체가 아니라 **`fileId` 만 참조**한다. (예: `logoFileId`, `fileIds[]`, `signatureFileId`)
 - 응답의 `fileUrl` 은 CDN 절대경로로 자동 변환된다.
+- 삭제는 업로더 본인만 가능(`FI_002`), 조회는 다른 도메인 응답에도 쓰이므로 소유자 제한이 없다.
+- 다른 도메인은 presentation DTO가 아니라 `FileQueryUseCase.findObjectKey(fileId)` (application 포트)로
+  object key 를 가져와 자기 응답의 `~Url` 필드에 담는다.
 
 ## 05. Home (비로그인 메인)
 
@@ -402,6 +405,9 @@
 - 조건·이력서 저장 시 임베딩이 갱신된다. 필수 항목을 다 채우면 이력서가 `COMPLETED` 가 되고 매칭 대상이 된다.
 - 하위 목록(학력/경력/자격증/링크/포트폴리오)은 **전체 교체** 방식이다. 포트폴리오는 별도 CRUD 없이
   `PUT /me/resume` 안에서 파일/링크로 함께 등록·삭제된다. 이력서 PDF 발급 API는 없다.
+- `PUT /me/resume` 는 `agreements{profileCollectionAgreed, profileProvisionAgreed, aiAnalysisAgreed,
+  careerPortfolioUsageAgreed}` 를 필수로 받는다(넷 다 true, 미동의 시 `FR_004`). 회원가입 약관(`terms`)과는
+  별개이며 최초 등록 시 한 번만 받고 이후 수정은 이 값에 영향을 주지 않는다.
 
 ## 21. Client
 
@@ -467,3 +473,9 @@
 | AC_001 ~ AC_005 | - | 계정 조회/상태 오류 |
 | AC_006 | 400 | 지원하지 않는 은행 코드 |
 | TM_002 / TM_003 | 400 | 필수 약관 미동의 / 알 수 없는 약관 포함 |
+| FI_001 | 404 | 파일을 찾을 수 없음 |
+| FI_002 | 403 | 업로더 본인이 아님(삭제 시도) |
+| FI_003 | 400 | 허용 용량 초과 |
+| FR_001 ~ FR_003 | - | 프리랜서 조건/이력서 조회·검증 오류 |
+| FR_004 | 400 | 이력서 등록 필수 동의 4종 중 미동의 |
+| FR_005 | 404 | 존재하지 않는 프리랜서(freelancer_profile.id) |

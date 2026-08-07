@@ -1,5 +1,6 @@
 package com.pairing.file.presentation.api.response;
 
+import com.pairing.file.application.result.FileResult;
 import com.pairing.global.infrastructure.s3.CdnMappable;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -26,4 +27,9 @@ public record FileResponse(
         @Schema(description = "크기(byte)", example = "1048576")
         Long sizeBytes
 ) implements CdnMappable {
+
+    public static FileResponse from(FileResult result) {
+        return new FileResponse(result.fileId(), result.originalName(), result.objectKey(), result.mimeType(),
+                result.sizeBytes());
+    }
 }
