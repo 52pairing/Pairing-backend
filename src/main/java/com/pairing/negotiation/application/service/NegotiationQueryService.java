@@ -8,8 +8,10 @@ import com.pairing.negotiation.application.port.out.ProjectReaderPort.ProjectVie
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.Negotiation;
+import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.PartyRole;
+import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ import java.util.Optional;
 public class NegotiationQueryService implements NegotiationQueryUseCase {
 
     private final NegotiationRepository negotiationRepository;
+    private final NegotiationMessageRepository messageRepository;
     private final ProjectReaderPort projectReaderPort;
     private final PartyProfilePort partyProfilePort;
     private final PartyNameReaderPort partyNameReaderPort;
@@ -42,6 +45,17 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
         String title = project.map(ProjectView::title).orElse(null);
 
         return toView(negotiation, role, title, clientProfileId);
+    }
+
+    @Override
+    public List<NegotiationMessage> findMessages(Long negotiationId, Long accountId) {
+        Negotiation negotiation = negotiationRepository.findById(negotiationId)
+                .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NEGOTIATION_NOT_FOUND));
+        Long clientProfileId = projectReaderPort.findById(negotiation.getProjectId())
+                .map(ProjectView::clientProfileId).orElse(null);
+        viewerResolver.resolve(accountId, negotiation.getFreelancerId(), clientProfileId);  // 당사자 검증(NG_002)
+
+        return messageRepository.findByNegotiationId(negotiationId);
     }
 
     @Override

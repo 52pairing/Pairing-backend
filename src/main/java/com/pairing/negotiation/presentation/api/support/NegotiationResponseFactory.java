@@ -1,9 +1,12 @@
 package com.pairing.negotiation.presentation.api.support;
 
 import com.pairing.negotiation.application.result.NegotiationView;
+import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
+import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.PartyRole;
+import com.pairing.negotiation.presentation.api.response.NegotiationMessageResponse;
 import com.pairing.negotiation.presentation.api.response.NegotiationResponse;
 import com.pairing.negotiation.presentation.api.response.NegotiationSummaryResponse;
 
@@ -68,6 +71,13 @@ public final class NegotiationResponseFactory {
                 n.getStartedAt(),
                 n.getEndedAt()
         );
+    }
+
+    /** 협상 로그 1건. conditionType 은 conditionId → 조건 타입 매핑에서 넘겨받는다(시스템 안내는 null). */
+    public static NegotiationMessageResponse message(NegotiationMessage m, ConditionType conditionType) {
+        return new NegotiationMessageResponse(
+                m.getId(), m.getRoundNo(), m.getSenderType(), m.getMessageType(), conditionType,
+                m.getContent(), m.getReason(), m.getProposedValue(), m.getResponse(), m.getCreatedAt());
     }
 
     /** 뷰어 기준 상대 이름: 클라가 보면 프리 이름, 프리가 보면 클라 회사명. */

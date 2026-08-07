@@ -1,6 +1,7 @@
 package com.pairing.negotiation.application.usecase;
 
 import com.pairing.negotiation.application.result.NegotiationView;
+import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 
 import java.util.List;
@@ -20,4 +21,7 @@ public interface NegotiationQueryUseCase {
      * status 가 있으면 해당 상태로 필터한다.
      */
     List<NegotiationView> findMine(Long accountId, Long projectId, NegotiationStatus status);
+
+    /** 협상 로그(라운드순). 당사자만 조회 가능(아니면 NG_002), 없으면 NG_001. */
+    List<NegotiationMessage> findMessages(Long negotiationId, Long accountId);
 }
