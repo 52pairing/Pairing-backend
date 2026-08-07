@@ -6,7 +6,8 @@ import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SignupType;
 import com.pairing.account.presentation.api.request.AccountSuspendRequest;
 import com.pairing.account.presentation.api.request.AccountWithdrawRequest;
-import com.pairing.account.presentation.api.request.PaymentMethodCreateRequest;
+import com.pairing.account.presentation.api.request.BankAccountUpdateRequest;
+import com.pairing.account.presentation.api.request.CardUpdateRequest;
 import com.pairing.account.presentation.api.response.AdminAccountDetailResponse;
 import com.pairing.account.presentation.api.response.AdminAccountResponse;
 import com.pairing.account.presentation.api.response.AdminAccountSummaryResponse;
@@ -20,7 +21,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -50,61 +50,45 @@ import java.util.List;
 @Tag(name = "06. Account", description = "계정 공통 API")
 public class AccountController {
 
-    /** 계정당 등록 가능한 수수료 결제수단 수. 마이페이지 안내 문구와 같은 값이다. */
-    private static final int MAX_PAYMENT_METHOD_COUNT = 3;
-
     // ==========================================
     // 결제수단 (마이페이지 > 결제수단)
     // ==========================================
 
     @GetMapping("/me/payment-methods")
     @Operation(summary = "결제수단 목록",
-            description = "수수료 결제에 쓰는 카드·간편결제 목록입니다. 기본 결제수단이 맨 앞에 옵니다.")
+            description = "수수료 결제 카드 1건 + 용역비 수령 계좌 1건을 반환합니다. 둘 다 가입 시 만들어진다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED"})
     public ResponseEntity<ApiResponse<List<PaymentMethodResponse>>> findMyPaymentMethods(
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 삭제되지 않은 결제수단 조회 (기본 결제수단 우선 정렬)
+        // TODO: 카드 + 계좌 조회
         return ResponseEntity.ok(ApiResponse.success("PAYMENT_METHODS_FOUND", "조회에 성공했습니다.",
-                List.of(sampleCard(), sampleEasyPay())));
+                List.of(sampleCard(), sampleBankAccount())));
     }
 
-    @PostMapping("/me/payment-methods")
-    @Operation(summary = "결제수단 등록",
-            description = "최대 " + MAX_PAYMENT_METHOD_COUNT + "개까지 등록할 수 있습니다. 첫 등록분이 기본 결제수단이 됩니다. "
-                    + "CVC는 저장하지 않습니다.")
+    @PutMapping("/me/payment-methods/card")
+    @Operation(summary = "카드 정보 수정",
+            description = "가입 시 등록된 카드를 수정합니다. 신규 등록·삭제 API는 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "UNAUTHORIZED"})
-    public ResponseEntity<ApiResponse<PaymentMethodResponse>> addPaymentMethod(
-            @Valid @RequestBody PaymentMethodCreateRequest request,
+    public ResponseEntity<ApiResponse<PaymentMethodResponse>> updateCard(
+            @Valid @RequestBody CardUpdateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 등록 개수 확인 -> methodType 별 필수값 검증 -> 숫자만 정규화 후 암호화 저장
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created("PAYMENT_METHOD_ADDED", "결제수단을 등록했습니다.", sampleCard()));
+        // TODO: 숫자만 정규화 후 암호화 저장
+        return ResponseEntity.ok(ApiResponse.success("CARD_UPDATED", "카드 정보를 수정했습니다.", sampleCard()));
     }
 
-    @PutMapping("/me/payment-methods/{paymentMethodId}/default")
-    @Operation(summary = "기본 결제수단 설정", description = "기존 기본 결제수단은 자동으로 해제됩니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"API_NOT_FOUND", "ACCESS_DENIED"})
-    public ResponseEntity<ApiResponse<List<PaymentMethodResponse>>> setDefaultPaymentMethod(
-            @PathVariable Long paymentMethodId,
+    @PutMapping("/me/payment-methods/bank-account")
+    @Operation(summary = "계좌 정보 수정",
+            description = "가입 시 등록된 계좌를 수정합니다. 신규 등록·삭제 API는 없습니다.")
+    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "UNAUTHORIZED"})
+    public ResponseEntity<ApiResponse<PaymentMethodResponse>> updateBankAccount(
+            @Valid @RequestBody BankAccountUpdateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 본인 소유 확인 -> 기존 기본 해제 -> 대상 기본 설정
-        return ResponseEntity.ok(ApiResponse.success("DEFAULT_PAYMENT_METHOD_CHANGED", "기본 결제수단을 변경했습니다.",
-                List.of(sampleCard(), sampleEasyPay())));
-    }
-
-    @DeleteMapping("/me/payment-methods/{paymentMethodId}")
-    @Operation(summary = "결제수단 삭제",
-            description = "미납 정산이 남아 있는 기본 결제수단은 삭제할 수 없습니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "ACCESS_DENIED"})
-    public ResponseEntity<ApiResponse<Void>> deletePaymentMethod(
-            @PathVariable Long paymentMethodId,
-            @CurrentAccountId Long accountId
-    ) {
-        // TODO: 본인 소유 확인 -> 미납 정산 확인 -> soft delete -> 기본이었다면 다음 수단으로 승계
-        return ResponseEntity.ok(ApiResponse.success("PAYMENT_METHOD_DELETED", "결제수단을 삭제했습니다."));
+        // TODO: 은행 코드 검증 -> 숫자만 정규화 후 암호화 저장
+        return ResponseEntity.ok(ApiResponse.success("BANK_ACCOUNT_UPDATED", "계좌 정보를 수정했습니다.",
+                sampleBankAccount()));
     }
 
     // ==========================================
@@ -185,12 +169,12 @@ public class AccountController {
 
     private PaymentMethodResponse sampleCard() {
         return new PaymentMethodResponse(300L, PaymentMethodType.CARD, "신한카드 **** 1234",
-                "신한카드", "1234", "09/28", "김개발", true);
+                "신한카드", "1234", "김개발", null, null, null);
     }
 
-    private PaymentMethodResponse sampleEasyPay() {
-        return new PaymentMethodResponse(301L, PaymentMethodType.EASY_PAY, "카카오페이 · 계좌 연동",
-                null, null, null, null, false);
+    private PaymentMethodResponse sampleBankAccount() {
+        return new PaymentMethodResponse(301L, PaymentMethodType.BANK_ACCOUNT, "신한은행 **** 6789",
+                null, null, null, "신한은행", "6789", "김개발");
     }
 
     private AdminAccountDetailResponse sampleAdminAccountDetail() {

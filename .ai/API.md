@@ -163,10 +163,9 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/accounts/me/payment-methods` | O | 등록된 카드·간편결제 목록 |
-| POST | `/api/v1/accounts/me/payment-methods` | O | body `{methodType, card{cardBrand,cardNumber,expiryMonth,expiryYear,cvc,cardHolder}}` 또는 `{methodType, easyPay{provider}}` |
-| PUT | `/api/v1/accounts/me/payment-methods/{id}/default` | O | 기본 결제수단 설정 |
-| DELETE | `/api/v1/accounts/me/payment-methods/{id}` | O | 결제수단 삭제 |
+| GET | `/api/v1/accounts/me/payment-methods` | O | 카드·계좌 목록(각 1건, `methodType` 으로 구분: CARD/BANK_ACCOUNT) |
+| PUT | `/api/v1/accounts/me/payment-methods/card` | O | body `{cardBrand, cardNumber, cardHolder}` 카드 정보 수정 |
+| PUT | `/api/v1/accounts/me/payment-methods/bank-account` | O | body `{bankCode, accountNo, accountHolder}` 계좌 정보 수정 |
 | DELETE | `/api/v1/accounts/me` | O | body `{currentPassword, reason}` 회원 탈퇴 |
 | GET | `/api/v1/accounts/admin/summary` | ADMIN | 회원 요약 카드(전체·정상·정지·탈퇴·역할별) |
 | GET | `/api/v1/accounts/admin?role=&status=&signupType=&keyword=&page=&size=` | ADMIN | 회원 목록 |
@@ -174,9 +173,9 @@
 | POST | `/api/v1/accounts/admin/{accountId}/suspension` | ADMIN | body `{reason, days}` 정지 |
 | DELETE | `/api/v1/accounts/admin/{accountId}/suspension` | ADMIN | 정지 해제 |
 
-- 수수료 결제수단은 **계정당 최대 3개**다. 첫 등록분이 기본 결제수단이 되고 `isDefault` 는 한 건만 true 다.
-- CVC는 등록 시 검증에만 쓰고 저장하지 않는다. 조회 응답에는 마스킹된 `displayName` 만 나간다.
-- 용역비 수령 계좌는 가입 시 한 번만 받는다. 마이페이지 결제수단 목록에는 나오지 않는다.
+- 카드(수수료 결제) 1개 + 계좌(용역비 수령) 1개, 가입 시 각각 하나씩 만들어진다. 마이페이지에서는 **기존 값을 수정만** 한다.
+  신규 등록·삭제·기본 결제수단 지정 API는 없다(둘 다 필수 항목이라 삭제 개념이 없음).
+- 카드번호·계좌번호는 하이픈을 넣어도 되며 서버가 숫자만 남겨 암호화 저장한다. 조회 응답에는 마스킹된 `displayName` 만 나간다.
 - 탈퇴는 진행 중 프로젝트나 미납 요금이 있으면 거부된다. 30일 재가입 제한이 걸린다.
 - 역할별 마이페이지(조회·수정)는 20/21 도메인에 있다.
 - 관리자 회원 상세는 목록과 응답이 다르다(`AdminAccountDetailResponse`). 활동 현황 6지표와 프로젝트 이력을 함께 준다.
@@ -393,12 +392,7 @@
 | GET | `/api/v1/freelancers/me/condition` | FREELANCER | 내 조건 |
 | PUT | `/api/v1/freelancers/me/condition` | FREELANCER | 조건 등록/수정 |
 | GET | `/api/v1/freelancers/me/resume` | FREELANCER | **조건 + 이력서 통합 조회** (마이페이지 "내 이력서" 한 화면) |
-| PUT | `/api/v1/freelancers/me/resume` | FREELANCER | 이력서 등록/수정 |
-| GET | `/api/v1/freelancers/me/resume/pdf` | FREELANCER | 이력서 PDF URL |
-| GET | `/api/v1/freelancers/me/portfolios` | FREELANCER | 포트폴리오 목록 |
-| POST | `/api/v1/freelancers/me/portfolios` | FREELANCER | body `{title, description, fileId, linkUrl}` |
-| PUT | `/api/v1/freelancers/me/portfolios/{id}` | FREELANCER | 포트폴리오 수정 |
-| DELETE | `/api/v1/freelancers/me/portfolios/{id}` | FREELANCER | 포트폴리오 삭제 |
+| PUT | `/api/v1/freelancers/me/resume` | FREELANCER | 이력서 등록/수정 (포트폴리오 등록/삭제도 여기서 같이 처리) |
 | GET | `/api/v1/freelancers/me/matching-settings` | FREELANCER | 매칭 설정 조회 |
 | PUT | `/api/v1/freelancers/me/matching-settings` | FREELANCER | body `{aiMatchingAgreed, matchingPaused}` |
 
@@ -406,16 +400,18 @@
 - **조회는 통합, 저장은 분리**다. 마이페이지는 한 화면이라 `GET /me/resume` 하나로 `{condition, resume}` 를 함께 받고,
   등록 위저드는 단계별 저장이 필요해 `PUT /me/condition` 과 `PUT /me/resume` 를 따로 호출한다.
 - 조건·이력서 저장 시 임베딩이 갱신된다. 필수 항목을 다 채우면 이력서가 `COMPLETED` 가 되고 매칭 대상이 된다.
-- 하위 목록(학력/경력/자격증/링크)은 **전체 교체** 방식이다.
+- 하위 목록(학력/경력/자격증/링크/포트폴리오)은 **전체 교체** 방식이다. 포트폴리오는 별도 CRUD 없이
+  `PUT /me/resume` 안에서 파일/링크로 함께 등록·삭제된다. 이력서 PDF 발급 API는 없다.
 
 ## 21. Client
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/clients/me` | CLIENT | 마이페이지 |
-| PATCH | `/api/v1/clients/me` | CLIENT | body `{companyName, employeeCount, phone, logoFileId, address}` |
+| GET | `/api/v1/clients/me` | CLIENT | 기업정보 조회(사업분야·사업자등록번호·회사명·직원수·담당자명·주소) |
+| PATCH | `/api/v1/clients/me` | CLIENT | body `{companyName, employeeCount, address}` 기업정보 수정 |
 
-사업자등록번호·대표자명·업종은 수정할 수 없다.
+사업자등록번호·사업 분야·담당자명(대표자명)·업무이메일은 수정할 수 없다.
+전화번호·기업 로고는 계정 공통 화면("기본 정보" 탭, 06번 계정 도메인)에서 다루며 이 도메인 책임이 아니다.
 
 ## 07. Grade
 
