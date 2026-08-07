@@ -6,9 +6,11 @@ import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
+import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.AnswerInput;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.FloorInput;
+import com.pairing.negotiation.domain.service.NegotiationProposalStub;
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
@@ -23,6 +25,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +40,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @Transactional
 class NegotiationLoopServiceTest {
+
+    /** 파이썬 HTTP 호출 없이 결정적으로 돌리기 위한 stub 제안 포트(폴백과 동일한 중간값 규칙). */
+    @TestConfiguration
+    static class StubProposalConfig {
+        @Bean
+        @Primary
+        NegotiationProposalPort stubProposalPort() {
+            return context -> context.conditions().stream()
+                    .map(c -> {
+                        NegotiationProposalStub.Proposal p =
+                                NegotiationProposalStub.propose(c.clientValue(), c.freelancerValue());
+                        return new NegotiationProposalPort.Proposal(
+                                c.conditionId(), p.value(), p.content(), p.reason());
+                    })
+                    .toList();
+        }
+    }
 
     @Autowired
     private NegotiationLoopUseCase loopUseCase;
