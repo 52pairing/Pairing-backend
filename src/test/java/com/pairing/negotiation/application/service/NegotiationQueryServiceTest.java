@@ -1,9 +1,12 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.FreelancerProfile;
+import com.pairing.account.domain.model.Role;
+import com.pairing.account.domain.repository.AccountRepository;
 import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
 import com.pairing.global.exception.BusinessException;
@@ -48,23 +51,28 @@ class NegotiationQueryServiceTest {
     @Autowired
     private FreelancerProfileRepository freelancerProfileRepository;
     @Autowired
+    private AccountRepository accountRepository;
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private static final Long CLIENT_ACCOUNT_ID = 1001L;
-    private static final Long FREELANCER_ACCOUNT_ID = 1002L;
-    private static final Long STRANGER_ACCOUNT_ID = 1003L;
+    private static final Long CLIENT_ACCOUNT_ID = 900_001L;   // client 판정은 client_profile.account_id 로만 하므로 account 행 불필요
+    private static final Long STRANGER_ACCOUNT_ID = 900_003L;
     private static final Long PROJECT_ID = 7000L;
 
+    private Long freelancerAccountId;   // account 행이 있어야 프리 이름(account.name)이 해석됨
     private Long freelancerProfileId;
     private Long negotiationId;
 
     @BeforeEach
     void setUp() {
+        freelancerAccountId = accountRepository.save(Account.createByEmail(
+                "freelancer@pairing.test", "hash", Role.FREELANCER, "김프리", "01011112222")).getId();
+
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 CLIENT_ACCOUNT_ID, "삼성전자", "1234567890",
                 BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299)).getId();
         freelancerProfileId = freelancerProfileRepository.save(
-                FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1))).getId();
+                FreelancerProfile.create(freelancerAccountId, LocalDate.of(1990, 1, 1))).getId();
 
         // project 는 협상 소유의 읽기 전용 엔티티(id/client_id/title)만 매핑되므로 직접 삽입한다.
         jdbcTemplate.update("INSERT INTO project (id, client_id, title) VALUES (?, ?, ?)",
@@ -79,12 +87,14 @@ class NegotiationQueryServiceTest {
     }
 
     @Test
-    @DisplayName("프리랜서가 상세를 열면 role=FREELANCER, 내 마지노선(3800000)만 노출된다")
+    @DisplayName("프리랜서가 상세를 열면 role=FREELANCER, 내 마지노선(3800000)만·상대 이름=회사명")
     void detailAsFreelancer() {
-        NegotiationView view = queryUseCase.getDetail(negotiationId, FREELANCER_ACCOUNT_ID);
+        NegotiationView view = queryUseCase.getDetail(negotiationId, freelancerAccountId);
         assertThat(view.viewerRole()).isEqualTo(PartyRole.FREELANCER);
 
-        NegotiationResponse.Condition condition = NegotiationResponseFactory.detail(view).conditions().get(0);
+        NegotiationResponse response = NegotiationResponseFactory.detail(view);
+        assertThat(response.counterpartName()).isEqualTo("삼성전자");   // 프리가 보면 상대=클라 회사명
+        NegotiationResponse.Condition condition = response.conditions().get(0);
         assertThat(condition.myFloor()).isEqualTo("3800000");
         // 희망값은 양측 공개
         assertThat(condition.clientValue()).isEqualTo("3200000");
@@ -92,14 +102,15 @@ class NegotiationQueryServiceTest {
     }
 
     @Test
-    @DisplayName("클라이언트가 상세를 열면 role=CLIENT, 내 마지노선(3500000)만 노출된다")
+    @DisplayName("클라이언트가 상세를 열면 role=CLIENT, 내 마지노선(3500000)만·상대 이름=프리 이름")
     void detailAsClient() {
         NegotiationView view = queryUseCase.getDetail(negotiationId, CLIENT_ACCOUNT_ID);
         assertThat(view.viewerRole()).isEqualTo(PartyRole.CLIENT);
         assertThat(view.projectTitle()).isEqualTo("페어링 웹 리뉴얼");
 
-        NegotiationResponse.Condition condition = NegotiationResponseFactory.detail(view).conditions().get(0);
-        assertThat(condition.myFloor()).isEqualTo("3500000");
+        NegotiationResponse response = NegotiationResponseFactory.detail(view);
+        assertThat(response.counterpartName()).isEqualTo("김프리");   // 클라가 보면 상대=프리 이름
+        assertThat(response.conditions().get(0).myFloor()).isEqualTo("3500000");
     }
 
     @Test
@@ -114,19 +125,22 @@ class NegotiationQueryServiceTest {
     @Test
     @DisplayName("없는 협상 상세는 NG_001")
     void detailNotFoundThrows() {
-        assertThatThrownBy(() -> queryUseCase.getDetail(999_999L, FREELANCER_ACCOUNT_ID))
+        assertThatThrownBy(() -> queryUseCase.getDetail(999_999L, freelancerAccountId))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(NegotiationErrorCode.NEGOTIATION_NOT_FOUND);
     }
 
     @Test
-    @DisplayName("프리랜서 목록(projectId 없음)은 내가 프리인 협상을 CLIENT 아닌 FREELANCER 관점으로 반환")
+    @DisplayName("프리랜서 목록(projectId 없음)은 FREELANCER 관점 + 회사명·프리 이름이 채워진다")
     void findMineAsFreelancer() {
-        List<NegotiationView> result = queryUseCase.findMine(FREELANCER_ACCOUNT_ID, null, null);
+        List<NegotiationView> result = queryUseCase.findMine(freelancerAccountId, null, null);
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).viewerRole()).isEqualTo(PartyRole.FREELANCER);
-        assertThat(result.get(0).negotiation().getId()).isEqualTo(negotiationId);
+        NegotiationView view = result.get(0);
+        assertThat(view.viewerRole()).isEqualTo(PartyRole.FREELANCER);
+        assertThat(view.negotiation().getId()).isEqualTo(negotiationId);
+        assertThat(view.clientName()).isEqualTo("삼성전자");
+        assertThat(view.freelancerName()).isEqualTo("김프리");
     }
 
     @Test
