@@ -6,6 +6,9 @@ import java.util.List;
 
 public interface TermsQueryUseCase {
 
-    /** 역할별로 지금 보여줘야 하는 약관(코드별 최신 버전) 목록. */
+    /** 가입 화면에 노출할 동의 항목. 게시용 문서(개인정보 처리방침)는 빠진다. */
     List<Terms> findLatestByRole(String targetRole);
+
+    /** 푸터 등에서 전문을 열람하는 문서 목록. 동의 항목과 게시용 문서를 모두 포함한다. */
+    List<Terms> findLatestDocuments(String targetRole);
 }

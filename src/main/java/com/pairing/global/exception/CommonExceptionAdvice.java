@@ -77,11 +77,15 @@ public interface CommonExceptionAdvice {
         String traceId = getOrCreateTraceId();
         BaseErrorCode errorCode = e.getErrorCode();
 
+        // 예외가 들고 온 문구를 우선한다. 기본 생성자는 errorCode 문구를 그대로 담으므로 동작이 같고,
+        // 상황별 문구(예: IP 차단 해제 시각)를 넘긴 경우에만 달라진다.
+        String message = e.getMessage() != null ? e.getMessage() : errorCode.getMessage();
+
         getLogger().warn("[BusinessException] traceId: {}, code: {}, message: {}",
-                traceId, errorCode.getCode(), errorCode.getMessage());
+                traceId, errorCode.getCode(), message);
         recordApiError("business");
 
-        return toResponse(errorCode, errorCode.getMessage(), traceId);
+        return toResponse(errorCode, message, traceId);
     }
 
     // 2. @Valid 어노테이션 유효성 검사 실패

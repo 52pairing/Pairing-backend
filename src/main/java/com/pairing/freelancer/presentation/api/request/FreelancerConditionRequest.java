@@ -1,5 +1,6 @@
 package com.pairing.freelancer.presentation.api.request;
 
+import com.pairing.freelancer.application.command.UpsertConditionCommand;
 import com.pairing.meta.domain.model.JobCategory;
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.PayUnit;
@@ -71,9 +72,9 @@ public record FreelancerConditionRequest(
         @Schema(description = "시작일 협의 가능 여부", example = "true")
         boolean startNegotiable,
 
-        @Schema(description = "희망 프로젝트 기간 값. 최대 24", example = "6")
+        @Schema(description = "희망 프로젝트 기간 값. 최대 24. 선택 입력(협의 가능이면 비워둘 수 있음)", example = "6")
         @Min(1) @Max(24)
-        int periodValue,
+        Integer periodValue,
 
         @Schema(description = "기간 단위")
         @NotNull(message = "기간 단위는 필수입니다.")
@@ -94,7 +95,17 @@ public record FreelancerConditionRequest(
         List<Skill> skills
 ) {
 
-    @Schema(description = "보유 스킬")
+    public UpsertConditionCommand toCommand(Long accountId) {
+        return new UpsertConditionCommand(
+                accountId, jobCategory, jobRole, affiliation, workStyle, workForm, payUnit, payAmount,
+                minAcceptAmount, availableFrom, startNegotiable, periodValue, periodUnit,
+                hasFreelanceExperience, careerYears,
+                skills.stream().map(skill -> new UpsertConditionCommand.Skill(skill.skillCode(), skill.skillLevel()))
+                        .toList()
+        );
+    }
+
+    @Schema(name = "ConditionSkillRequest", description = "보유 스킬")
     public record Skill(
             @Schema(description = "스킬", example = "JAVA")
             @NotNull(message = "스킬은 필수입니다.")

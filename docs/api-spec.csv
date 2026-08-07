@@ -122,7 +122,7 @@ A. 공통·기반,,01. Auth,사용자,POST,/api/v1/auth/find-email,아이디(이
 A. 공통·기반,,01. Auth,사용자,POST,/api/v1/auth/login,이메일 로그인,비로그인,,,"LoginRequest: email*, password*, role*",LoginResponse,성공 시 accessToken/refreshToken 쿠키가 발급됩니다. 이전 기기의 세션은 즉시 끊깁니다.,구현 완료,-,AuthController
 A. 공통·기반,,01. Auth,사용자,POST,/api/v1/auth/logout,로그아웃,비로그인,,,,없음,Redis의 리프레시 토큰과 세션을 지우고 쿠키를 만료시킵니다.,구현 완료,-,AuthController
 A. 공통·기반,,01. Auth,사용자,GET,/api/v1/auth/me,현재 로그인 사용자 조회,비로그인,,,,MeResponse,,구현 완료,-,AuthController
-A. 공통·기반,,01. Auth,사용자,PATCH,/api/v1/auth/password,비밀번호 변경,비로그인,,,"ChangePasswordRequest: currentPassword*, newPassword*, newPasswordConfirm*",없음,임시 비밀번호로 로그인한 뒤 새 비밀번호를 등록합니다. 변경 후에는 모든 세션이 끊겨 재로그인이 필요합니다.,구현 완료,-,AccountRecoveryController
+A. 공통·기반,,01. Auth,사용자,PATCH,/api/v1/auth/password,비밀번호 변경 (마이페이지),비로그인,,,"ChangePasswordRequest: newPassword*, newPasswordConfirm*",없음,이메일 인증코드를 purpose=PASSWORD_CHANGE 로 먼저 확인한 뒤 호출합니다. 현재 비밀번호는 받지 않고 새 비밀번호와 확인만 받습니다. 변경 후에는 모든 세션이 끊겨 재로그인이 필요합니다.,구현 완료,-,AccountRecoveryController
 A. 공통·기반,,01. Auth,사용자,POST,/api/v1/auth/password/reset-confirm,재설정 링크 확인 및 임시 비밀번호 발급,비로그인,,,PasswordResetConfirmRequest: token*,없음,링크의 토큰을 확인하고 임시 비밀번호를 메일로 보냅니다. 기존 로그인 세션은 모두 끊깁니다.,구현 완료,-,AccountRecoveryController
 A. 공통·기반,,01. Auth,사용자,POST,/api/v1/auth/password/reset-requests,비밀번호 재설정 링크 요청,비로그인,,,"PasswordResetRequest: email*, role*, name*, phone",없음,이메일/이름/전화번호가 모두 일치하면 3분짜리 링크를 보냅니다. 계정 열거를 막기 위해 일치하지 않아도 동일하게 응답합니다.,구현 완료,-,AccountRecoveryController
 A. 공통·기반,,01. Auth,사용자,POST,/api/v1/auth/refresh,액세스 토큰 재발급,비로그인,,,,LoginResponse,refreshToken 쿠키로 재발급합니다. 다른 기기가 로그인했다면 AU_015로 실패합니다.,구현 완료,-,AuthController
@@ -139,7 +139,8 @@ A. 공통·기반,,02. Meta,사용자,GET,/api/v1/meta/job-categories,직군 목
 A. 공통·기반,,02. Meta,사용자,GET,/api/v1/meta/job-roles,직무 목록,비로그인,,,,CodeItemResponse[],parentCode 로 직군이 함께 내려갑니다. 직군 선택 시 필터링에 쓰세요.,구현 완료,-,CodeController
 A. 공통·기반,,02. Meta,사용자,GET,/api/v1/meta/skills,스킬 목록,비로그인,,,,CodeItemResponse[],,구현 완료,-,CodeController
 A. 공통·기반,,02. Meta,사용자,GET,/api/v1/meta/work-conditions,근무 조건 코드 묶음,비로그인,,,,Map,근무 방식·근무 형태·급여 단위·기간 단위·스킬 숙련도를 한 번에 내려줍니다. 화면 하나에서 같이 쓰이므로 묶었습니다.,구현 완료,-,CodeController
-A. 공통·기반,,03. Terms,사용자,GET,/api/v1/terms,역할별 최신 약관 목록,비로그인,,role*,,TermsResponse[],가입 화면에 노출할 약관을 코드별 최신 버전으로 반환합니다.,구현 완료,-,TermsController
+A. 공통·기반,,03. Terms,사용자,GET,/api/v1/terms,가입 동의 항목 조회,비로그인,,role*,,TermsResponse[],가입 화면에 노출할 동의 항목을 코드별 최신 버전으로 반환합니다. 개인정보 처리방침은 동의 대상이 아니라 여기 포함되지 않습니다.,구현 완료,-,TermsController
+A. 공통·기반,,03. Terms,사용자,GET,/api/v1/terms/documents,약관·방침 전문 조회,비로그인,,role*,,TermsResponse[],푸터의 문서 링크용입니다. 동의 항목 전문과 개인정보 처리방침을 함께 반환합니다.,구현 완료,-,TermsController
 -,9,99. 기타(템플릿 예제),사용자,POST,/api/v1/examples,예시 데이터 생성,로그인,,,CreateExampleRequest: name*,ExampleResponse,새로운 예시 데이터를 생성합니다.,삭제 예정,-,ExampleController
 -,9,99. 기타(템플릿 예제),사용자,GET,/api/v1/examples/{exampleId},예시 데이터 단건 조회,로그인,exampleId*,,,ExampleResponse,ID로 예시 데이터를 조회합니다.,삭제 예정,-,ExampleController
 -,9,99. 기타(템플릿 예제),사용자,POST,/api/v1/examples/{exampleId}/image,예시 이미지 업로드,로그인,exampleId*,,multipart: image,ExampleResponse,이미지를 스토리지에 업로드하고 예시 데이터에 연결합니다.,삭제 예정,-,ExampleController

@@ -22,10 +22,11 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| POST | `/api/v1/auth/email-verifications` | X | 인증코드 발송. body `{email, purpose}` (purpose: SIGNUP/UNLOCK/PROFILE_UPDATE) |
+| POST | `/api/v1/auth/email-verifications` | X | 인증코드 발송. body `{email, purpose}` (purpose: SIGNUP/UNLOCK/PASSWORD_CHANGE/PROFILE_UPDATE) |
 | POST | `/api/v1/auth/email-verifications/confirm` | X | 코드 확인. body `{email, purpose, code}` |
 
 - 코드 유효 3분, 입력 시도 5회, 발송 1시간 15회.
+- `purpose`: `SIGNUP` / `UNLOCK` / `PASSWORD_CHANGE` / `PROFILE_UPDATE`. 용도가 다르면 코드도 다르다.
 - 발송 응답 data: `{expiresAt, remainingSendCount}` — 프론트 타이머와 재발송 안내에 사용.
 - 확인 성공 후 30분 안에 가입을 제출해야 한다.
 
@@ -83,12 +84,18 @@
 | POST | `/api/v1/auth/find-email` | X | body `{name, phone}` → `accounts[{role, maskedEmail}]` |
 | POST | `/api/v1/auth/password/reset-requests` | X | body `{email, role, name, phone}` → 3분 링크 메일 |
 | POST | `/api/v1/auth/password/reset-confirm` | X | body `{token}` → 임시 비밀번호 메일 |
-| PATCH | `/api/v1/auth/password` | O | body `{currentPassword, newPassword, newPasswordConfirm}` |
+| PATCH | `/api/v1/auth/password` | O | body `{newPassword, newPasswordConfirm}` (마이페이지 변경, 인증코드 선행) |
 | POST | `/api/v1/auth/unlock` | X | body `{email, role, code}` (UNLOCK 인증코드) |
 
 - 아이디 찾기는 두 역할로 가입했다면 두 건을 반환한다. 사용자가 어느 탭으로 로그인할지 고를 수 있어야 한다.
 - `reset-requests`는 계정 열거 방지를 위해 일치하지 않아도 200을 반환한다.
 - 비밀번호 변경 후 모든 세션이 끊기므로 재로그인이 필요하다.
+- **로그인 전 "비밀번호 찾기"와 로그인 후 "비밀번호 변경"은 방식이 다르다.**
+  찾기는 메일 링크 → 임시 비밀번호 발급, 변경은 메일 인증코드 → 사용자가 새 비밀번호 직접 입력.
+  변경은 현재 비밀번호를 받지 않는다.
+- `PATCH /auth/password` 는 두 화면이 함께 쓰며 인증 요구만 다르다.
+  마이페이지 변경은 `purpose=PASSWORD_CHANGE` 인증을 먼저 통과해야 하고(미인증 시 `AU_006`),
+  **임시 비밀번호로 로그인한 직후에는 인증코드 없이** 바로 호출한다. 서버가 `tempPassword` 상태를 보고 가른다.
 
 ---
 
@@ -111,7 +118,21 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/terms?role=CLIENT` | X | 역할별 최신 약관(코드별 최신 버전) |
+| GET | `/api/v1/terms?role=CLIENT` | X | 가입 동의 항목 3개 (코드별 최신 버전) |
+| GET | `/api/v1/terms/documents?role=CLIENT` | X | 약관 전문 + 개인정보 처리방침 (푸터 링크용) |
+
+가입 화면 동의 항목은 셋으로 고정한다.
+
+| code | 제목 | 필수 | 대상 | 근거 |
+| --- | --- | --- | --- | --- |
+| `SERVICE` | 서비스 이용약관 동의 | 필수 | 역할별로 내용이 다름 | 계약 |
+| `PRIVACY_CONSENT` | 개인정보 수집 및 이용 동의 | 필수 | 공통 | 개인정보 보호법 §15①1 |
+| `MARKETING` | 마케팅 정보 수신 동의 | **선택** | 공통 | 보호법 §15①1 + 정보통신망법 §50 |
+
+`PRIVACY_POLICY`(개인정보 처리방침)는 **동의 대상이 아니다.** 보호법 §30상 수립·공개 의무라
+`/documents` 에만 나오고 `GET /terms` 에는 포함되지 않는다. 가입 화면에 체크박스로 넣으면 안 된다.
+
+응답의 `type` 이 `AGREEMENT` 인 항목만 `agreements[]` 에 넣는다.
 
 ---
 
@@ -142,10 +163,9 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/accounts/me/payment-methods` | O | 등록된 카드·간편결제 목록 |
-| POST | `/api/v1/accounts/me/payment-methods` | O | body `{methodType, card{cardBrand,cardNumber,expiryMonth,expiryYear,cvc,cardHolder}}` 또는 `{methodType, easyPay{provider}}` |
-| PUT | `/api/v1/accounts/me/payment-methods/{id}/default` | O | 기본 결제수단 설정 |
-| DELETE | `/api/v1/accounts/me/payment-methods/{id}` | O | 결제수단 삭제 |
+| GET | `/api/v1/accounts/me/payment-methods` | O | 카드·계좌 목록(각 1건, `methodType` 으로 구분: CARD/BANK_ACCOUNT) |
+| PUT | `/api/v1/accounts/me/payment-methods/card` | O | body `{cardBrand, cardNumber, cardHolder}` 카드 정보 수정 |
+| PUT | `/api/v1/accounts/me/payment-methods/bank-account` | O | body `{bankCode, accountNo, accountHolder}` 계좌 정보 수정 |
 | DELETE | `/api/v1/accounts/me` | O | body `{currentPassword, reason}` 회원 탈퇴 |
 | GET | `/api/v1/accounts/admin/summary` | ADMIN | 회원 요약 카드(전체·정상·정지·탈퇴·역할별) |
 | GET | `/api/v1/accounts/admin?role=&status=&signupType=&keyword=&page=&size=` | ADMIN | 회원 목록 |
@@ -153,9 +173,9 @@
 | POST | `/api/v1/accounts/admin/{accountId}/suspension` | ADMIN | body `{reason, days}` 정지 |
 | DELETE | `/api/v1/accounts/admin/{accountId}/suspension` | ADMIN | 정지 해제 |
 
-- 수수료 결제수단은 **계정당 최대 3개**다. 첫 등록분이 기본 결제수단이 되고 `isDefault` 는 한 건만 true 다.
-- CVC는 등록 시 검증에만 쓰고 저장하지 않는다. 조회 응답에는 마스킹된 `displayName` 만 나간다.
-- 용역비 수령 계좌는 가입 시 한 번만 받는다. 마이페이지 결제수단 목록에는 나오지 않는다.
+- 카드(수수료 결제) 1개 + 계좌(용역비 수령) 1개, 가입 시 각각 하나씩 만들어진다. 마이페이지에서는 **기존 값을 수정만** 한다.
+  신규 등록·삭제·기본 결제수단 지정 API는 없다(둘 다 필수 항목이라 삭제 개념이 없음).
+- 카드번호·계좌번호는 하이픈을 넣어도 되며 서버가 숫자만 남겨 암호화 저장한다. 조회 응답에는 마스킹된 `displayName` 만 나간다.
 - 탈퇴는 진행 중 프로젝트나 미납 요금이 있으면 거부된다. 30일 재가입 제한이 걸린다.
 - 역할별 마이페이지(조회·수정)는 20/21 도메인에 있다.
 - 관리자 회원 상세는 목록과 응답이 다르다(`AdminAccountDetailResponse`). 활동 현황 6지표와 프로젝트 이력을 함께 준다.
@@ -372,12 +392,7 @@
 | GET | `/api/v1/freelancers/me/condition` | FREELANCER | 내 조건 |
 | PUT | `/api/v1/freelancers/me/condition` | FREELANCER | 조건 등록/수정 |
 | GET | `/api/v1/freelancers/me/resume` | FREELANCER | **조건 + 이력서 통합 조회** (마이페이지 "내 이력서" 한 화면) |
-| PUT | `/api/v1/freelancers/me/resume` | FREELANCER | 이력서 등록/수정 |
-| GET | `/api/v1/freelancers/me/resume/pdf` | FREELANCER | 이력서 PDF URL |
-| GET | `/api/v1/freelancers/me/portfolios` | FREELANCER | 포트폴리오 목록 |
-| POST | `/api/v1/freelancers/me/portfolios` | FREELANCER | body `{title, description, fileId, linkUrl}` |
-| PUT | `/api/v1/freelancers/me/portfolios/{id}` | FREELANCER | 포트폴리오 수정 |
-| DELETE | `/api/v1/freelancers/me/portfolios/{id}` | FREELANCER | 포트폴리오 삭제 |
+| PUT | `/api/v1/freelancers/me/resume` | FREELANCER | 이력서 등록/수정 (포트폴리오 등록/삭제도 여기서 같이 처리) |
 | GET | `/api/v1/freelancers/me/matching-settings` | FREELANCER | 매칭 설정 조회 |
 | PUT | `/api/v1/freelancers/me/matching-settings` | FREELANCER | body `{aiMatchingAgreed, matchingPaused}` |
 
@@ -385,16 +400,18 @@
 - **조회는 통합, 저장은 분리**다. 마이페이지는 한 화면이라 `GET /me/resume` 하나로 `{condition, resume}` 를 함께 받고,
   등록 위저드는 단계별 저장이 필요해 `PUT /me/condition` 과 `PUT /me/resume` 를 따로 호출한다.
 - 조건·이력서 저장 시 임베딩이 갱신된다. 필수 항목을 다 채우면 이력서가 `COMPLETED` 가 되고 매칭 대상이 된다.
-- 하위 목록(학력/경력/자격증/링크)은 **전체 교체** 방식이다.
+- 하위 목록(학력/경력/자격증/링크/포트폴리오)은 **전체 교체** 방식이다. 포트폴리오는 별도 CRUD 없이
+  `PUT /me/resume` 안에서 파일/링크로 함께 등록·삭제된다. 이력서 PDF 발급 API는 없다.
 
 ## 21. Client
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/clients/me` | CLIENT | 마이페이지 |
-| PATCH | `/api/v1/clients/me` | CLIENT | body `{companyName, employeeCount, phone, logoFileId, address}` |
+| GET | `/api/v1/clients/me` | CLIENT | 기업정보 조회(사업분야·사업자등록번호·회사명·직원수·담당자명·주소) |
+| PATCH | `/api/v1/clients/me` | CLIENT | body `{companyName, employeeCount, address}` 기업정보 수정 |
 
-사업자등록번호·대표자명·업종은 수정할 수 없다.
+사업자등록번호·사업 분야·담당자명(대표자명)·업무이메일은 수정할 수 없다.
+전화번호·기업 로고는 계정 공통 화면("기본 정보" 탭, 06번 계정 도메인)에서 다루며 이 도메인 책임이 아니다.
 
 ## 07. Grade
 
@@ -435,7 +452,7 @@
 | AU_007 / AU_008 / AU_009 | 409 | 이메일 / 휴대폰 / 사업자등록번호 중복 |
 | AU_010 / AU_011 | 400 | 비밀번호 형식 / 확인 불일치 |
 | AU_013 | 400 | 약관 동의 목록 누락 |
-| AU_014 | 429 | IP 차단 (1시간 20회 → 2시간) |
+| AU_014 | 429 | IP 차단 (1시간 20회 → 2시간). message 에 재시도 가능 시각 포함 |
 | AU_015 | 401 | 재발급 시 다른 기기 로그인 감지 |
 | AU_016 | 401 | 리프레시 토큰 없음/무효 |
 | AU_017 | 403 | 임시 비밀번호 상태 |
@@ -446,6 +463,7 @@
 | AU_025 | 400 | 만 18세 미만 |
 | AU_026 | 500 | 메일 발송 실패 |
 | AU_027 / AU_028 | 400 | 재설정 링크 무효 / 기존 비밀번호와 동일 |
+| AU_029 | 400 | 소셜 전용 계정이라 비밀번호 변경 불가 |
 | AC_001 ~ AC_005 | - | 계정 조회/상태 오류 |
 | AC_006 | 400 | 지원하지 않는 은행 코드 |
 | TM_002 / TM_003 | 400 | 필수 약관 미동의 / 알 수 없는 약관 포함 |

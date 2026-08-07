@@ -1,6 +1,7 @@
 package com.pairing.negotiation.presentation.api.response;
 
 import com.pairing.negotiation.domain.model.NegotiationStatus;
+import com.pairing.negotiation.domain.model.SenderType;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
@@ -19,6 +20,8 @@ public record NegotiationSummaryResponse(
         @Schema(description = "상태") NegotiationStatus status,
         @Schema(description = "진행 라운드 수", example = "3") int totalRound,
         @Schema(description = "내 응답 대기 여부", example = "true") boolean waitingForMe,
+        @Schema(description = "마지막 제안 주체. 협상 탭 카드 '마지막 제안: OO' 표시") SenderType lastProposalBy,
+        @Schema(description = "마지막 제안 시각. '30분 전' 계산용") LocalDateTime lastProposalAt,
         @Schema(description = "시작 시각") LocalDateTime startedAt,
         @Schema(description = "종료 시각") LocalDateTime endedAt
 ) {

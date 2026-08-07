@@ -28,7 +28,7 @@ fetch(`${API_BASE}/api/v1/auth/login`, {
 const api = axios.create({ baseURL: API_BASE, withCredentials: true });
 ```
 
-서버에는 프론트 오리진이 등록돼 있어야 합니다. 로컬 기본값은 `http://localhost:3000`, `http://127.0.0.1:3000`이고
+서버에는 프론트 오리진이 등록돼 있어야 합니다. 로컬 기본값은 `http://localhost:17000`, `http://127.0.0.1:17000`이고
 다른 포트를 쓰면 백엔드에 `CORS_ALLOWED_ORIGINS` 추가를 요청하세요. (와일드카드 `*`는 쿠키 방식과 함께 쓸 수 없습니다)
 
 ### 0-2. 공통 응답 형식

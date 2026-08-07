@@ -83,10 +83,15 @@ public class AccountRecoveryController {
     @PatchMapping("/password")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "비밀번호 변경",
-            description = "임시 비밀번호로 로그인한 뒤 새 비밀번호를 등록합니다. 변경 후에는 모든 세션이 끊겨 재로그인이 필요합니다.")
+            description = "새 비밀번호와 확인만 받습니다. 현재 비밀번호는 받지 않습니다. "
+                    + "두 경우에 쓰이며 인증 요구가 다릅니다. "
+                    + "(1) 마이페이지 변경: 이메일 인증코드를 purpose=PASSWORD_CHANGE 로 먼저 확인해야 합니다. "
+                    + "(2) 임시 비밀번호로 로그인한 직후: 인증코드 없이 바로 호출합니다. "
+                    + "변경 후에는 모든 세션이 끊겨 재로그인이 필요합니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED"})
     @ApiErrorCodeExample(domain = AuthErrorCode.class, value = {
-            "LOGIN_FAILED", "INVALID_PASSWORD_FORMAT", "PASSWORD_CONFIRM_MISMATCH", "SAME_AS_CURRENT_PASSWORD"})
+            "EMAIL_NOT_VERIFIED", "INVALID_PASSWORD_FORMAT", "PASSWORD_CONFIRM_MISMATCH",
+            "SAME_AS_CURRENT_PASSWORD", "SOCIAL_ACCOUNT_NO_PASSWORD"})
     public ResponseEntity<ApiResponse<Void>> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
             @CurrentAccountId Long accountId,
@@ -94,7 +99,6 @@ public class AccountRecoveryController {
     ) {
         accountRecoveryUseCase.changePassword(new ChangePasswordCommand(
                 accountId,
-                request.currentPassword(),
                 request.newPassword(),
                 request.newPasswordConfirm()
         ));

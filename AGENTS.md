@@ -13,6 +13,8 @@
 - 코드 변경 후에는 가능한 범위에서 검증 명령을 실행합니다.
 - 시크릿, 토큰, 비밀번호, 개인키, 실제 인증정보 값을 코드나 문서에 쓰지 않습니다.
 - 코드와 주석에 이모지를 쓰지 않습니다.
+- 다른 도메인의 파일을 수정해야 하면, 진행하기 전에 담당자와 사용자에게 먼저 알립니다.
+- 개발을 시작하기 전에 feature 브랜치를 먼저 만듭니다. main/develop에서 직접 작업하지 않습니다.
 
 ## 요청 라우팅
 
@@ -23,6 +25,14 @@ Java, Spring Boot, JPA, Controller, Service, Repository, Entity, Mapper, ErrorCo
 - `docs/ai/backend-convention.md`를 읽습니다.
 - API 계약이 바뀌면 `.ai/API.md`도 읽고 갱신합니다.
 - 검증이 필요하면 `docs/ai/testing-guide.md`를 읽습니다.
+
+### 내 도메인 문서
+
+자기 담당 도메인에서 처음 작업하거나 도메인 구조(엔티티, 상태, 에러코드, 경계)가 바뀌는 작업:
+
+- `docs/ai/domain-guide.md`를 읽습니다.
+- 자기 도메인의 `src/main/java/com/pairing/{도메인}/README.md`가 있으면 먼저 읽고, 없으면 템플릿대로 만듭니다.
+- 작업이 끝나면 그 README를 갱신합니다. 다른 도메인의 README는 건드리지 않습니다.
 
 ### API 계약 작업
 

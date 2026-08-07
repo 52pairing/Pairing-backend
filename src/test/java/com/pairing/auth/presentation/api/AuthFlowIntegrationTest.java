@@ -119,10 +119,11 @@ class AuthFlowIntegrationTest {
         accountRepository.deleteAll();
         termsRepository.deleteAll();
 
-        clientTermsId = saveTerms(TermsCode.SERVICE_CLIENT, "클라이언트 이용약관", true, "CLIENT");
-        freelancerTermsId = saveTerms(TermsCode.SERVICE_FREELANCER, "프리랜서 이용약관", true, "FREELANCER");
-        privacyTermsId = saveTerms(TermsCode.PRIVACY, "개인정보 수집·이용 동의", true, null);
-        marketingTermsId = saveTerms(TermsCode.MARKETING, "마케팅 수신 동의", false, null);
+        // 서비스 이용약관은 같은 코드로 역할별 두 행을 둔다. 화면에는 하나만 노출된다.
+        clientTermsId = saveTerms(TermsCode.SERVICE, "서비스 이용약관 동의", true, "CLIENT");
+        freelancerTermsId = saveTerms(TermsCode.SERVICE, "서비스 이용약관 동의", true, "FREELANCER");
+        privacyTermsId = saveTerms(TermsCode.PRIVACY_CONSENT, "개인정보 수집 및 이용 동의", true, null);
+        marketingTermsId = saveTerms(TermsCode.MARKETING, "마케팅 정보 수신 동의", false, null);
 
         // 이메일 인증과 세션 판정은 Redis 담당이므로 통과하도록 둔다.
         given(verifiedMarkerPort.isVerified(anyString(), any())).willReturn(true);
@@ -131,7 +132,8 @@ class AuthFlowIntegrationTest {
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {
         return termsRepository.save(new TermsJpaEntity(
-                null, code, "v1.0", title, "본문", required, targetRole, LocalDateTime.now().minusDays(1)
+                null, code, code.getType(), "v1.0", title, "본문", required, targetRole,
+                LocalDateTime.now().minusDays(1)
         )).getId();
     }
 
@@ -181,12 +183,27 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
-    @DisplayName("약관 조회는 역할별 최신 버전만 내려준다")
+    @DisplayName("가입 동의 항목은 세 개이며 게시용 문서는 빠진다")
     void findTermsByRole() throws Exception {
+        saveTerms(TermsCode.PRIVACY_POLICY, "개인정보 처리방침", false, null);
+
         mockMvc.perform(get("/api/v1/terms").param("role", "CLIENT"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(3))
-                .andExpect(jsonPath("$.data[?(@.code == 'SERVICE_FREELANCER')]").isEmpty());
+                .andExpect(jsonPath("$.data[?(@.code == 'PRIVACY_POLICY')]").isEmpty())
+                .andExpect(jsonPath("$.data[?(@.type == 'POLICY')]").isEmpty())
+                .andExpect(jsonPath("$.data[?(@.code == 'MARKETING')].required").value(false));
+    }
+
+    @Test
+    @DisplayName("문서 조회는 개인정보 처리방침까지 함께 내려준다")
+    void findTermsDocuments() throws Exception {
+        saveTerms(TermsCode.PRIVACY_POLICY, "개인정보 처리방침", false, null);
+
+        mockMvc.perform(get("/api/v1/terms/documents").param("role", "CLIENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(4))
+                .andExpect(jsonPath("$.data[?(@.code == 'PRIVACY_POLICY')]").isNotEmpty());
     }
 
     @Test

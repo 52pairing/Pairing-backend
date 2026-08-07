@@ -186,7 +186,8 @@ public interface AccountRecoveryUseCase {
 | `PaymentMethodType` | CARD, BANK_ACCOUNT | payment_method.method_type(20) |
 | `VerificationPurpose` | SIGNUP, UNLOCK, PROFILE_UPDATE | email_verification.purpose(30) |
 | `EmployeeCount` | SIZE_1_4, SIZE_5_9, SIZE_10_49, SIZE_50_299, SIZE_300_OVER | client_profile.employee_count(30) |
-| `TermsCode` | SERVICE_CLIENT, SERVICE_FREELANCER, PRIVACY, REVIEW_EXPOSURE, FEE_NOTICE, MARKETING | terms.code(50) |
+| `TermsCode` | SERVICE, PRIVACY_CONSENT, MARKETING, PRIVACY_POLICY | terms.code(50) |
+| `TermsType` | AGREEMENT, POLICY | terms.terms_type(20) |
 
 `BusinessField`(client_profile.business_field, VARCHAR(40)) 20종:
 

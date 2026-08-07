@@ -25,7 +25,7 @@ public record ProjectPreReviewResponse(
         String notice
 ) {
 
-    @Schema(description = "포지션별 검수 결과")
+    @Schema(name = "PreReviewItem", description = "포지션별 검수 결과")
     public record Item(
 
             @Schema(description = "요청 positions 배열의 순서(0-based). 화면 카드 매핑용", example = "0")

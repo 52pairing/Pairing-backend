@@ -146,9 +146,17 @@ public class AccountRecoveryService implements AccountRecoveryUseCase {
     public void changePassword(ChangePasswordCommand command) {
         Account account = accountQueryUseCase.getById(command.accountId());
 
-        if (account.isSocialOnly()
-                || !passwordEncoder.matches(command.currentPassword(), account.getPasswordHash())) {
-            throw new BusinessException(AuthErrorCode.LOGIN_FAILED);
+        // 비밀번호가 없는 계정이라 변경 대상이 아니다.
+        if (account.isSocialOnly()) {
+            throw new BusinessException(AuthErrorCode.SOCIAL_ACCOUNT_NO_PASSWORD);
+        }
+
+        // 임시 비밀번호 상태는 인증코드를 면제한다.
+        // 비밀번호 찾기 링크를 열고 임시 비밀번호 메일까지 받아 로그인한 상태라 메일 소유가 이미 두 번 증명됐다.
+        // 여기서 코드를 또 받게 하면 같은 메일함을 세 번째로 확인해야 한다.
+        if (!account.isTempPassword()
+                && !verifiedMarkerPort.isVerified(account.getEmail(), VerificationPurpose.PASSWORD_CHANGE)) {
+            throw new BusinessException(AuthErrorCode.EMAIL_NOT_VERIFIED);
         }
 
         PasswordPolicy.validate(command.newPassword());
@@ -160,6 +168,9 @@ public class AccountRecoveryService implements AccountRecoveryUseCase {
 
         accountCommandUseCase.changePassword(
                 account.getId(), passwordEncoder.encode(command.newPassword()), false);
+
+        // 인증 마커는 1회용이다. 남겨 두면 같은 인증으로 여러 번 바꿀 수 있다.
+        verifiedMarkerPort.clear(account.getEmail(), VerificationPurpose.PASSWORD_CHANGE);
 
         // 비밀번호가 바뀌면 기존 토큰은 무효로 본다. 프론트는 재로그인 화면으로 보낸다.
         tokenStorePort.delete(account.getId());

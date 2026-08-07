@@ -1,6 +1,7 @@
 package com.pairing.terms.infrastructure.persistence;
 
 import com.pairing.terms.domain.model.TermsCode;
+import com.pairing.terms.domain.model.TermsType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -30,6 +31,10 @@ public class TermsJpaEntity {
     @Column(name = "code", nullable = false, length = 50)
     private TermsCode code;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "terms_type", nullable = false, length = 20)
+    private TermsType type;
+
     @Column(name = "version", nullable = false, length = 20)
     private String version;
 
@@ -48,10 +53,11 @@ public class TermsJpaEntity {
     @Column(name = "effective_at", nullable = false)
     private LocalDateTime effectiveAt;
 
-    public TermsJpaEntity(Long id, TermsCode code, String version, String title, String content, boolean required,
-                          String targetRole, LocalDateTime effectiveAt) {
+    public TermsJpaEntity(Long id, TermsCode code, TermsType type, String version, String title, String content,
+                          boolean required, String targetRole, LocalDateTime effectiveAt) {
         this.id = id;
         this.code = code;
+        this.type = type;
         this.version = version;
         this.title = title;
         this.content = content;

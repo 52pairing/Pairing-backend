@@ -64,4 +64,14 @@ public class ClientProfile {
         return new ClientProfile(id, accountId, companyName, businessNo, businessField, employeeCount,
                 address, logoFileId, grade, gradeCheckedAt, deletedAt);
     }
+
+    /** 마이페이지 기업정보 수정. 사업자등록번호·사업 분야는 여기서 바꿀 수 없다. */
+    public void updateCompanyInfo(String companyName, EmployeeCount employeeCount, String address) {
+        if (companyName == null || companyName.isBlank() || employeeCount == null) {
+            throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
+        }
+        this.companyName = companyName;
+        this.employeeCount = employeeCount;
+        this.address = address;
+    }
 }

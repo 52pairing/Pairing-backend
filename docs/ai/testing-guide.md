@@ -77,6 +77,19 @@ docker compose up -d
 - mock 호출 여부만 확인하는 껍데기 테스트는 그것이 검증 대상일 때만 작성합니다.
 - 네이밍은 기존 스타일을 따릅니다.
 
+## PR 전 API 계약 검증 (프론트 연동)
+
+API를 추가하거나 바꾼 PR은 자동 테스트만으로 끝내지 않습니다. 프론트가 한 번에 붙도록 실제 호출로 확인합니다.
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+- Swagger UI(`http://localhost:8080/swagger-ui/index.html`)에서 바뀐 엔드포인트를 실제로 호출합니다.
+- 요청/응답 형태, 상태코드, 에러코드가 `.ai/API.md` 계약과 일치하는지 확인합니다.
+- 인증이 필요한 API는 로그인으로 `accessToken` 쿠키를 얻은 뒤 호출합니다.
+- 확인 결과를 PR 본문 `Verification` 섹션에 적습니다.
+
 ## 자주 나오는 로컬 문제
 
 ### Redis 연결 실패
