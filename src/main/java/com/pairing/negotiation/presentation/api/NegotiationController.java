@@ -6,9 +6,11 @@ import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.negotiation.application.result.NegotiationView;
+import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
+import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessageType;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.SenderType;
@@ -39,6 +41,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * A2A 협상. (요구사항 R06~R12, R41)
@@ -55,6 +59,7 @@ import java.util.List;
 public class NegotiationController {
 
     private final NegotiationQueryUseCase negotiationQueryUseCase;
+    private final NegotiationLoopUseCase negotiationLoopUseCase;
 
     @GetMapping("/mine")
     @Operation(summary = "내 협상 목록",
@@ -94,8 +99,16 @@ public class NegotiationController {
             @PathVariable Long negotiationId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 협상 메시지 전체 조회 (라운드 오름차순)
-        return ResponseEntity.ok(ApiResponse.success("MESSAGES_FOUND", "조회에 성공했습니다.", List.of(sampleMessage())));
+        // 당사자 검증 + 조건 타입 매핑을 위해 상세를 먼저 얻는다(로그의 conditionType 해석용).
+        NegotiationView view = negotiationQueryUseCase.getDetail(negotiationId, accountId);
+        Map<Long, ConditionType> typeById = view.negotiation().getConditions().stream()
+                .collect(Collectors.toMap(NegotiationCondition::getId, NegotiationCondition::getConditionType));
+
+        List<NegotiationMessageResponse> logs = negotiationQueryUseCase.findMessages(negotiationId, accountId)
+                .stream()
+                .map(m -> NegotiationResponseFactory.message(m, typeById.get(m.getConditionId())))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success("MESSAGES_FOUND", "조회에 성공했습니다.", logs));
     }
 
     @PostMapping("/{negotiationId}/start")
@@ -108,8 +121,12 @@ public class NegotiationController {
             @Valid @RequestBody NegotiationStartRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 당사자 확인 -> 마지노선 저장 -> AI 서버에 협상 라운드 요청
-        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_STARTED", "협상을 시작했습니다.", sampleDetail()));
+        List<NegotiationLoopUseCase.FloorInput> floors = request.conditions().stream()
+                .map(c -> new NegotiationLoopUseCase.FloorInput(c.conditionType(), c.value()))
+                .toList();
+        negotiationLoopUseCase.start(negotiationId, accountId, floors);
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_STARTED", "협상을 시작했습니다.",
+                NegotiationResponseFactory.detail(negotiationQueryUseCase.getDetail(negotiationId, accountId))));
     }
 
     @PostMapping("/{negotiationId}/answers")
@@ -121,8 +138,12 @@ public class NegotiationController {
             @Valid @RequestBody NegotiationAnswerRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 라운드 검증(상한 15) -> 응답 저장 -> AI 재제안 또는 합의 처리
-        return ResponseEntity.ok(ApiResponse.success("ANSWER_SUBMITTED", "응답을 제출했습니다.", sampleDetail()));
+        List<NegotiationLoopUseCase.AnswerInput> answers = request.answers().stream()
+                .map(a -> new NegotiationLoopUseCase.AnswerInput(a.conditionId(), a.accepted(), a.proposedValue()))
+                .toList();
+        negotiationLoopUseCase.answer(negotiationId, accountId, request.roundNo(), answers);
+        return ResponseEntity.ok(ApiResponse.success("ANSWER_SUBMITTED", "응답을 제출했습니다.",
+                NegotiationResponseFactory.detail(negotiationQueryUseCase.getDetail(negotiationId, accountId))));
     }
 
     @Hidden
@@ -147,8 +168,9 @@ public class NegotiationController {
             @Valid @RequestBody NegotiationGiveUpRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 상태 FAILED, 매칭 상태 NEGOTIATION_FAILED, 상대 알림
-        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_GAVE_UP", "협상을 종료했습니다.", sampleDetail()));
+        negotiationLoopUseCase.giveUp(negotiationId, accountId, request.reason());
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_GAVE_UP", "협상을 종료했습니다.",
+                NegotiationResponseFactory.detail(negotiationQueryUseCase.getDetail(negotiationId, accountId))));
     }
 
     // ==========================================
