@@ -15,6 +15,9 @@ public class ProjectReaderAdapter implements ProjectReaderPort {
     @Override
     public Optional<ProjectView> findById(Long projectId) {
         return projectReadRepository.findById(projectId)
-                .map(p -> new ProjectView(p.getId(), p.getClientId(), p.getTitle()));
+                .map(p -> new ProjectView(p.getId(), p.getClientId(), p.getTitle(),
+                        p.getBudgetAmount(), p.getWorkStyle(), p.getWorkForm(),
+                        p.getStartDesiredDate(), p.isStartNegotiable(),
+                        p.getPeriodValue(), p.getPeriodUnit()));
     }
 }
