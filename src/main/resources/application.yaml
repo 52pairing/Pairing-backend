@@ -138,6 +138,14 @@ app:
     # STOMP 핸드셰이크 경로. 바꾸면 GlobalSecurityConfig의 permitAll 경로도 함께 맞춰야 한다.
     endpoint: ${WEBSOCKET_ENDPOINT:/ws}
 
+  ai:
+    # 내부 AI 서버(FastAPI, pairing-python). 외부에 노출하지 않고 스프링만 호출한다.
+    base-url: ${AI_BASE_URL:http://localhost:8000}
+    # 파이썬과 공유하는 내부 호출 키(X-Internal-Api-Key). 값은 환경변수로만 주입한다.
+    internal-api-key: ${AI_INTERNAL_API_KEY:}
+    # 호출 타임아웃(ms). 초과·실패 시 협상 루프는 stub 제안으로 폴백한다.
+    timeout-ms: ${AI_TIMEOUT_MS:20000}
+
 cloud:
   aws:
     s3:
