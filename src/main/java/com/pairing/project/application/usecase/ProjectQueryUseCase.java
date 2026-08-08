@@ -3,6 +3,7 @@ package com.pairing.project.application.usecase;
 import com.pairing.project.application.result.ProjectDetail;
 import com.pairing.project.application.result.ProjectPositionSummary;
 import com.pairing.project.domain.model.Project;
+import com.pairing.project.domain.model.ProjectStatus;
 
 import java.util.List;
 
@@ -28,7 +29,16 @@ public interface ProjectQueryUseCase {
 
     int findHeadcount(Long positionId);
 
+    /** 취소·모집 종료된 프로젝트에 매칭이 계속 도는 것을 막을 때 쓴다. 없으면 PJ_001. */
+    ProjectStatus findStatus(Long projectId);
+
     ProjectPositionSummary findProjectPositionSummary(Long projectId, Long positionId);
+
+    /** projectId 를 모르는 호출자용. 포지션이 없으면 PJ_002. */
+    ProjectPositionSummary findProjectPositionSummary(Long positionId);
+
+    /** 프로젝트의 모든 포지션 요약. positionNo 오름차순. 결제 후 포지션별로 추천을 돌릴 때 쓴다. */
+    List<ProjectPositionSummary> findPositionSummaries(Long projectId);
 
     /** 상세 조회. 없으면 PJ_001. */
     Project getById(Long projectId);
