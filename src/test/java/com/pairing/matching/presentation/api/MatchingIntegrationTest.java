@@ -17,6 +17,8 @@ import com.pairing.auth.application.port.SessionRegistryPort;
 import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
+import com.pairing.global.ratelimit.RateLimitPolicy;
+import com.pairing.global.ratelimit.RateLimitProvider;
 import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.RankedFreelancer;
@@ -32,6 +34,8 @@ import com.pairing.terms.domain.model.TermsCode;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsAgreementRepository;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsRepository;
 import com.pairing.terms.infrastructure.persistence.TermsJpaEntity;
+import io.github.bucket4j.Bandwidth;
+import io.github.bucket4j.Bucket;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,6 +49,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -132,6 +137,8 @@ class MatchingIntegrationTest {
     private PasswordResetTokenPort passwordResetTokenPort;
     @MockitoBean
     private MatchingPort matchingPort;
+    @MockitoBean
+    private RateLimitProvider rateLimitProvider;
 
     private Long clientTermsId;
     private Long freelancerTermsId;
@@ -170,6 +177,11 @@ class MatchingIntegrationTest {
 
         given(verifiedMarkerPort.isVerified(anyString(), any())).willReturn(true);
         given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
+        // 재추천 엔드포인트의 레이트리밋은 Redis 기반(RateLimitProvider -> lettuceProxyManager)이라
+        // Redis가 없는 CI/H2 테스트 환경에서는 실제로 호출하면 연결 실패로 500이 난다. 로컬은 Redis가
+        // 떠 있어서 우연히 통과했었다(CI에서 처음 발견). 여기서는 항상 허용하는 로컬 버킷으로 대체한다.
+        given(rateLimitProvider.getBucket(any(RateLimitPolicy.class), anyString()))
+                .willReturn(Bucket.builder().addLimit(Bandwidth.simple(1000, Duration.ofMinutes(1))).build());
 
         signUpAndLoginClient();
         signUpAndLoginFreelancer();
