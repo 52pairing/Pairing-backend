@@ -63,13 +63,21 @@
   - **버그 발견·수정 2 (재발 방지 필요)**: 처음엔 리스너 한 클래스 안에서 `@TransactionalEventListener`가 `this.method()`로 `@Transactional(REQUIRES_NEW)` 메서드를 자체 호출(self-invocation)하도록 짰는데, 스프링 프록시를 안 거쳐서 트랜잭션이 조용히 무시되고 라운드 저장이 안 되는 걸 테스트로 재현·발견함. `RecruitingStartedEventListener`(이벤트 수신+포지션 목록 순회)와 `RecruitingStartedPositionHandler`(포지션 1건 처리, 실제 REQUIRES_NEW 적용)로 빈을 분리해서 해결.
 - `ProjectDirectoryPort.findPositionIds(projectId)` 신규 추가 — project 도메인의 `findPositionSummaries`가 positionId를 안 내려줘서(포지션 여러 개일 때 어떤 요약이 어떤 포지션 건지 구분 불가), 대신 `ProjectQueryUseCase.getById(projectId).getPositions()`로 직접 포지션 ID 목록을 얻어오게 함. project 쪽에 `positionId` 필드 추가를 요청하면 나중에 더 가벼운 방식으로 교체 가능.
 - 3번에게 회신 정리해서 전달함(B①②③ 확인 결과 + C 구현 완료 알림 + WEEK 환산 규칙 질문).
+- **이슈·PR 생성**: 이 컴퓨터에 GitHub CLI(`gh`)가 안 깔려 있고 git 로그인 정보로는 API 쓰기 권한이 없어서(읽기 GET은 됨, 이슈/PR 생성 같은 POST는 401) AI가 직접 만들지 못함. 이슈·PR 제목/본문을 `docs/ai/git-issue-pr-guide.md` 템플릿대로 작성해서 사용자에게 전달했고, 사용자가 직접 GitHub에서 생성함 → **PR #51** (`feature/matching-directory-adapters` → `develop`), 제목 "[Feat] 매칭 스텁 어댑터 교체 + budgetCap 버그 수정 + 결제 완료 이벤트 리스너".
+- **develop 재동기화(2차)**: 리뷰 도메인 완성 후속 연결 4건 merge(`ClientQueryService`, `FreelancerCandidateSummaryResult`/`Service`, `ResumeService`, `SiteReviewAdminService`) — 매칭이 쓰는 `FreelancerCandidateSummaryResult`는 필드 모양 그대로라 우리 쪽 코드 변경 불필요, 테스트 재확인만 함.
+- **PR #51 CI 실패 진단·수정**: push 직후 CI(`ubuntu-latest`, Redis 없음)에서 `MatchingIntegrationTest`의 재추천 테스트만 500으로 실패. 로컬(Redis 켜져 있음)에서는 항상 통과해서 재현이 안 됨 → `gh` CLI 없이 **GitHub Actions REST API를 git 자격증명(자격증명 관리자에 이미 저장된 OAuth 토큰, `git credential fill`로 재사용)으로 직접 호출**해서 실패한 job의 로그와 `test-report` 아티팩트(HTML)를 내려받아 원인 특정.
+  - **원인**: `/api/v1/matchings/positions/{id}/rerecommendations`에만 걸려있는 `MatchingRateLimitInterceptor`가 요청마다 `RateLimitProvider`(Redis 기반 `lettuceProxyManager`, `@Lazy`라 첫 실제 사용 시점에 연결)를 타는데, Redis가 없는 CI에서는 그 시점에 연결 실패로 500이 남. 로컬은 Redis 컨테이너가 떠 있어서 우연히 통과했었고, 재추천 엔드포인트를 실제로 호출하는 테스트가 이번에 처음 생기면서(`MatchingIntegrationTest`) 처음 드러남 — 8/8~8/9 세션 초반에 "고쳤다"고 기록한 Redis 이슈와는 결이 다름(그건 컨텍스트 기동 자체가 깨지던 것, 이번 건 기동은 되고 실제 호출 시점에만 터지는 것).
+  - **수정**: `MatchingIntegrationTest`에 `RateLimitProvider`를 `@MockitoBean`으로 교체하고 항상 허용하는 로컬 Bucket4j 버킷을 반환하도록 스텁. 로컬 `./gradlew clean build` 전체 통과 확인 후 커밋·push.
+- **프론트 전달용 문서 검토**: 사용자가 데스크탑에 만든 `AI매칭_API_화면매핑_최신본.md`(레포 밖 파일, 프론트 공유용)를 실제 코드와 대조 검증. 대부분 정확했고, 실제 오류 1건 발견: 재추천 API 에러표에 `MT_009`(추천 후보 없음)를 넣었는데, 코드상 `CANDIDATE_POOL_EMPTY`는 enum에 정의만 있고 실제로 던지는 곳이 없음 — 후보가 없으면 에러가 아니라 `candidates: []`로 201 성공 응답이 내려감(라운드는 EXHAUSTED). 문서 앞부분의 "후보 없을 때 권장 문구" 설명과 모순되니 재추천 섹션 에러표에서 MT_009 제거 권장. 추가로 `RerecommendRequest.quantity`가 PAID일 때 `@NotNull` 검증이 없어서, quantity 없이 PAID를 보내면 400이 아니라 500(NPE)이 날 수 있다는 점도 안내함 — 이 두 가지는 사용자가 문서에 반영할지 아직 확인 안 됨(다음 세션에서 문서 재확인).
 
 ## 다음 세션에서 할 일
 
-1. `feature/matching-directory-adapters`에 이슈·PR 생성 (`docs/ai/git-issue-pr-guide.md` 규칙: 브랜치명 `feature/short-task-name` 컨벤션 확인함). PR Verification 섹션에는 Swagger 대신 `MatchingIntegrationTest`/`RecruitingStartedEventListenerTest` 통과 결과를 근거로 기록.
+1. **PR #51 CI 결과 확인** — 레이트리밋 목 처리 커밋(마지막 push)까지 반영된 CI가 초록인지 확인. 초록이면 팀원 리뷰/머지 대기(머지는 4번이 직접 하지 않음).
 2. `MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 인터페이스 정의 + `MatchingRequestService`에 구현 추가. 5번 쪽 구현과 맞춰야 함.
 3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
 4. budgetCap의 WEEK→개월 환산 규칙 3번 답변 오면 `BudgetCapCalculator` 임시값(4주=1개월) 교체.
 5. `resolveFreelancerId`/`findCondition`(freelancerId 기준) — 1번의 account_id↔freelancer_profile.id 조회 메서드 승인되면 `FreelancerDirectoryAdapter` 마저 완전 교체.
 6. `.ai/HANDOFF.md`의 "3일차" 나머지 항목: Pairing-python `_build_prompt` 실구현 + 하드필터 + Stage F 실제 배분 알고리즘 + 등급 타이브레이커 + 통합테스트/문서 동기화.
 7. 임베딩 텍스트(`RecruitingStartedPositionHandler.buildEmbeddingText`)에 mainTask/currentSituation/업무범위/우대사항 추가 — 3번 항목(위 3번)이 정해지고 매칭 쪽 요약에 필드가 생기면 같이 반영.
+8. `C:\Users\user\Desktop\AI매칭_API_화면매핑_최신본.md`(레포 밖, 프론트 공유용) — MT_009 에러표 제거, PAID+quantity 필수 안내 추가를 사용자가 반영했는지 확인.
+9. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.

@@ -55,6 +55,8 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
   - 멱등 가드(`countByPositionId > 0`)와 포지션 단위 예외 격리(한 포지션 실패해도 나머지 포지션은 계속 처리) 적용.
   - 임베딩 텍스트는 지금 매칭 쪽 요약에 있는 필드(제목/직무/스킬/경력/근무조건/기간)로만 구성한다. mainTask/currentSituation/업무범위/우대사항은 아직 매칭 쪽 요약에 없어서(Task #4 결정 대기) 못 넣었다 — 결정되면 `RecruitingStartedPositionHandler.buildEmbeddingText`만 채우면 됨.
 - `com.pairing.matching.presentation.api.MatchingIntegrationTest`(H2 통합테스트, 9개)와 `com.pairing.matching.application.service.RecruitingStartedEventListenerTest`(2개) 신규 작성 — 스텁 어댑터 교체·오늘 버그 수정·이벤트 리스너를 전부 실제 요청/이벤트로 검증. 이 과정에서 `MatchingRoundCreationService.persistCandidates`의 `applyGuard`/`applyGradeWeight` 호출 순서가 뒤바뀌어 있던 것도 별도로 발견해 수정함(실제 추천 라운드 생성 시 매번 예외가 나는 상태였음).
+- **PR #51 오픈** (`feature/matching-directory-adapters` → `develop`). 첫 push 때 CI가 재추천 테스트에서만 500으로 실패 — 원인은 `/rerecommendations`에 걸린 레이트리밋(`RateLimitProvider`)이 Redis 없는 CI에서 실제 연결을 시도해서였음(로컬은 Redis가 떠 있어 안 드러남). 테스트에서 `RateLimitProvider`를 목 처리해서 해결, 커밋·push 완료. 상세는 `.ai/WORKLOG.md` 2026-08-09 참고.
+- **참고**: 이 개발 환경에 GitHub CLI(`gh`)가 없어서 이슈/PR 생성은 AI가 텍스트(제목/본문)만 만들어주고 사용자가 GitHub 웹에서 직접 생성하는 방식으로 진행 중.
 
 ## 확정된 설계 결정 (요약, 상세 근거는 각 요구사항 R01~R05/정책 P02~P09 참고)
 
@@ -80,3 +82,11 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 | 프로젝트 등록에 인원별 예산 배분 필드 존재 여부 | 없으면 지금처럼 순예산 전체 조합으로만 판단 |
 | `currentSituation`(프로젝트 현재 상황)/`mainTask`(주요 담당 업무)를 프리랜서의 "받은 매칭 요청" 카드에 노출할지 | 2026-08-08 팀에 질문 전달, 답 대기 중. 데이터는 이미 `ProjectQueryUseCase`에서 옴, 노출하려면 `MatchingRequestResponse`에 필드 2개만 추가하면 됨 |
 | budgetCap 계산 시 기간이 WEEK 단위면 몇 주를 1개월로 칠지 | 2026-08-09 3번에게 질문 전달, 답 대기 중. 그 전까지 `BudgetCapCalculator`가 4주=1개월로 임시 처리 |
+
+## 프론트 공유 문서 (레포 밖)
+
+`C:\Users\user\Desktop\AI매칭_API_화면매핑_최신본.md` — 사용자가 관리하는 프론트 전달용 API-화면 매핑 문서(이 레포에는 없음). 2026-08-09에 실제 코드와 대조 검증함:
+
+- **실제 오류 발견**: 재추천 API 에러표의 `MT_009`(추천 후보 없음)는 코드에서 실제로 던지는 곳이 없음(enum 정의만 있고 미사용, dead code). 후보가 없으면 에러가 아니라 `candidates: []`로 201 성공 응답이 내려간다. 문서에서 해당 항목 제거 필요(사용자에게 안내함, 반영 여부 다음 세션에서 확인).
+- **참고 안내**: `RerecommendRequest.quantity`는 PAID일 때 필수인데 `@NotNull` 검증이 없어서, 빠뜨리면 400이 아니라 500(NPE)이 날 수 있음. 문서에 안내 추가 권장(반영 여부 미확인).
+- 나머지(공통 래퍼, PageResponse, 엔드포인트별 요청/응답 필드, enum 값, 에러코드 전체 목록, meta API 경로)는 전부 코드와 일치 확인함.

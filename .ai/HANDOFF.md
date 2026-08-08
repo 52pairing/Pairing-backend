@@ -8,9 +8,11 @@
 (스켈레톤 고정 응답 없음). PR #34로 develop에 merge 완료.
 
 **스텁 어댑터 3개 중 2개 완전 교체, 1개 부분 교체 완료** (`feature/matching-directory-adapters` 브랜치,
-아직 이슈·PR 안 만듦 — 다음에 할 일). `ProjectDirectoryPort`/`NegotiationPort`는 실제 구현으로 완전히
+**PR #51 오픈 중, develop 대상**). `ProjectDirectoryPort`/`NegotiationPort`는 실제 구현으로 완전히
 바뀌었고, `FreelancerDirectoryPort`는 카드 요약만 실구현이고 `resolveFreelancerId`/`findCondition`은
-account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 상세는 `.ai/STATE.md` 참고.
+account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 같은 브랜치에 budgetCap 버그 수정(2건)과
+결제 완료 → 매칭 초기 추천 이벤트 리스너 신규 구현도 같이 들어가 있다. 상세는 `.ai/STATE.md` 참고.
+이 컴퓨터에 `gh` CLI가 없어서 이슈/PR은 AI가 텍스트만 만들고 사용자가 GitHub 웹에서 직접 생성한다.
 
 ## 지금 당장 할 일 (순서대로)
 
@@ -39,7 +41,7 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 상�
 9. `Pairing-python/app/domains/matching/service.py`의 `_build_prompt` 실제 구현: 포지션 요구조건(직군/직무/스킬/경력/예산 등) + 프리랜서 이력서 원문(자기소개, 경력사항)을 프롬프트에 채움. **지금 스텁은 임베딩 유사도를 그대로 프롬프트에 넣고 있는데, 이건 빼야 함** (우리 결정: LLM은 원문만 보고 판단, 유사도는 추리는 용도로만 씀). **추가**: fit_reason을 `"|"`로 이어붙인 문자열로 내려주도록 응답 스키마/프롬프트 맞추기(Spring `CandidateResponseAssembler`가 이 구분자로 다시 나눔).
 10. `Pairing-python`의 `search_similar_freelancers`에 하드필터 추가(직군/직무/AI매칭 동의/일정/단가) — 지금은 조건 없이 순수 벡터 검색만 함. 이전에 노출된 프리랜서 제외도 지금은 Spring 쪽에서 결과 받은 뒤 후처리로 거르고 있음(`MatchingRoundCreationService.excludePreviouslySurfaced`) — Pairing-python이 검색 전에 미리 제외하도록 옮기면 풀 크기가 줄어드는 문제가 해결됨.
 11. `budgetCap`을 1단계 단순 공식(구현 완료, `BudgetCapCalculator`)에서 Stage F 정확한 배분 알고리즘(포지션별 1순위 조합 → 초과시 비싼 포지션을 다음 순위로 교체)으로 교체. 지금 Stage F 가드(`MatchingRoundCreationService`의 `applyGuard(true, null)`)도 항상 통과 처리인 placeholder라 같이 실제 검증으로 교체.
-12. ~~freelancer/project/negotiation 도메인이 실제로 만들어지면 스텁 어댑터 3개 교체~~ — 2026-08-08, `feature/matching-directory-adapters` 브랜치에서 완료(Project/Negotiation 완전 교체, Freelancer는 카드 요약만). **이 브랜치 이슈·PR 아직 안 만듦 — 다음 세션 최우선.** PR 올리기 전에 `local` 프로파일로 서버 띄워 Swagger에서 실제 호출 확인하고 `Verification` 섹션에 기록할 것(지난 PR 때 빠뜨렸던 절차).
+12. ~~freelancer/project/negotiation 도메인이 실제로 만들어지면 스텁 어댑터 3개 교체~~ — 2026-08-08, `feature/matching-directory-adapters` 브랜치에서 완료(Project/Negotiation 완전 교체, Freelancer는 카드 요약만). ~~이슈·PR 생성~~ — 2026-08-09 **PR #51** 오픈 완료(develop 대상). 첫 push 때 CI가 재추천 테스트에서만 500 실패 → `/rerecommendations`의 레이트리밋이 Redis 없는 CI에서 실제 연결을 시도해서였음, 테스트에서 `RateLimitProvider` 목 처리로 해결·재push 완료. **다음 세션 최우선: CI 그린 확인하고 팀원 리뷰/머지 대기.**
     - 프리랜서 등급 타이브레이커(base_score 동점 시 마스터>시니어>주니어)는 아직 랭킹 로직에 미반영.
     - `resolveFreelancerId`/`findCondition`(freelancerId 기준)은 account 도메인의 account_id↔freelancer_profile.id 조회 메서드가 나와야 완전 교체 가능(2번이 1번에게 승인 요청, 대기 중).
     - `src/test/java/com/pairing/matching/presentation/api/MatchingIntegrationTest.java`(H2 통합테스트, 후보조회/거절/요청발송/조회/수락/거절/재추천 9개 케이스)로 검증 완료 — Swagger 수동 클릭 대신 이 테스트를 돌려서 확인하면 됨. PR Verification 섹션에 이 테스트 통과를 근거로 적을 것.
@@ -48,6 +50,8 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 상�
 15. `currentSituation`/`mainTask`(프로젝트 현재 상황/담당 업무) 노출 여부 팀 답변 오면 `MatchingRequestResponse`에 필드 2개 추가 여부 결정.
 16. ~~budgetCap이 포지션 인원/총액 단위로 잘못 계산되던 버그 2건(3번 리포트)~~ — 2026-08-09 수정 완료. `position.headcount()`→`totalHeadcount()`, budgetAmount를 개월 수로도 나누도록 수정. WEEK 기간 주→개월 환산 규칙만 3번에게 확인 대기 중(현재 4주=1개월 임시값).
 17. **(참고, 재발 방지)** `@TransactionalEventListener` 안에서 `@Transactional(REQUIRES_NEW)` 메서드를 "같은 빈 안에서 `this.method()`로" 부르면 스프링 프록시를 안 거쳐 트랜잭션이 조용히 무시된다(자체 호출 self-invocation 문제). 실제로 이 버그로 라운드 저장이 안 되는 걸 테스트로 재현해서 발견 — 새 트랜잭션이 꼭 필요한 메서드는 반드시 별도 빈으로 분리해서 호출할 것(`RecruitingStartedEventListener`/`RecruitingStartedPositionHandler` 참고).
+18. **(참고, 재발 방지)** 재추천 엔드포인트의 레이트리밋(`RateLimitProvider`)은 Redis가 실제로 있어야 동작한다. 이 엔드포인트를 호출하는 테스트를 새로 짤 땐 `RateLimitProvider`를 `@MockitoBean`으로 목 처리해야 Redis 없는 CI에서도 통과한다(`MatchingIntegrationTest` 참고). 로컬은 Redis 컨테이너가 떠 있어서 이 문제가 안 드러나니 착각하지 말 것.
+19. `C:\Users\user\Desktop\AI매칭_API_화면매핑_최신본.md`(레포 밖, 프론트 공유용 문서) 검토 결과 전달함 — 재추천 에러표의 `MT_009`(실제로는 안 던져지는 dead code, 후보 없으면 에러가 아니라 빈 배열로 201 성공) 제거 필요, `RerecommendRequest.quantity`가 PAID일 때 필수인데 검증이 없어 누락 시 500(NPE)이 날 수 있다는 점 안내함. 사용자가 문서에 반영했는지 다음 세션에서 확인.
 
 ## 열려있는 결정/블로커 (건드리기 전에 확인)
 
@@ -59,3 +63,4 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 상�
 - Pairing-python 계약 문서: `C:\52_Pairing\Pairing-python\README.md`
 - Spring↔AI서버 연동 참고 구현: `C:\Algoga_V3_backend`의 `com.kidmily.algoga_server.chatbot` 도메인 (Port/Adapter/서킷브레이커/레이트리밋/내부API 전부 실제 코드로 있음)
 - 매칭 DTO 계약: `com.pairing.matching.presentation.api.*` (이미 확정, 필드 변경 시 `.ai/API.md`와 `docs/api-dto.csv` 같이 갱신)
+- 프론트 전달용 API-화면 매핑 문서(레포 밖, 사용자가 직접 관리): `C:\Users\user\Desktop\AI매칭_API_화면매핑_최신본.md`
