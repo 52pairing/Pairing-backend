@@ -171,6 +171,18 @@ public class NegotiationController {
                 NegotiationResponseFactory.detail(negotiationQueryUseCase.getDetail(negotiationId, accountId))));
     }
 
+    @PostMapping("/{negotiationId}/read")
+    @Operation(summary = "협상 읽음 처리",
+            description = "협상 상세를 열람했음을 기록합니다. 매칭 요청 카드의 '확인하지 않은 새 제안 수' 배지 기준선이"
+                    + " 현재로 갱신됩니다. 채팅 읽음 처리와 같은 패턴입니다(상세 조회와 분리된 명시적 호출).")
+    public ResponseEntity<ApiResponse<Void>> markRead(
+            @PathVariable Long negotiationId,
+            @CurrentAccountId Long accountId
+    ) {
+        negotiationLoopUseCase.markRead(negotiationId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_READ", "읽음 처리했습니다."));
+    }
+
     // ==========================================
     // 관리자 (R41)
     // ==========================================

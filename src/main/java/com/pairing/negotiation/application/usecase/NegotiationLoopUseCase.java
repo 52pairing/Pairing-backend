@@ -22,6 +22,12 @@ public interface NegotiationLoopUseCase {
 
     void giveUp(Long negotiationId, Long accountId, String reason);
 
+    /**
+     * 협상 읽음 처리. 요청자 본인 쪽의 "마지막 읽은 시각"을 현재로 갱신한다.
+     * "확인하지 않은 새 제안 수" 배지의 기준선이 된다(채팅 읽음 처리와 같은 패턴).
+     */
+    void markRead(Long negotiationId, Long accountId);
+
     /** 쟁점별 마지노선(요청자 본인 것). */
     record FloorInput(ConditionType conditionType, String value) {
     }

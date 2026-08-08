@@ -18,6 +18,7 @@ import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationMessageType;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
+import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -182,5 +183,15 @@ class NegotiationLoopServiceTest {
         Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.FAILED);
         assertThat(reloaded.getEndReason()).isEqualTo("예산이 맞지 않습니다.");
+    }
+
+    @Test
+    @DisplayName("markRead: 요청자(프리) 쪽 마지막 읽음만 갱신되고 상대(클라)는 그대로")
+    void markReadUpdatesRequesterSideOnly() {
+        loopUseCase.markRead(negotiationId, FREELANCER_ACCOUNT_ID);
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.lastReadAt(PartyRole.FREELANCER)).isNotNull();
+        assertThat(reloaded.lastReadAt(PartyRole.CLIENT)).isNull();
     }
 }

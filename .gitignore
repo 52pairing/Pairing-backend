@@ -1,6 +1,7 @@
 HELP.md
 CLAUDE.md
 .claude/
+docs/personal/
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar

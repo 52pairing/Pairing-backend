@@ -60,6 +60,12 @@ public class NegotiationJpaEntity {
     @Column(name = "end_reason")
     private String endReason;
 
+    @Column(name = "client_last_read_at")
+    private LocalDateTime clientLastReadAt;
+
+    @Column(name = "freelancer_last_read_at")
+    private LocalDateTime freelancerLastReadAt;
+
     // 애그리거트: 조건은 협상과 생명주기를 함께한다(cascade + orphanRemoval).
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JoinColumn(name = "negotiation_id")
@@ -68,7 +74,8 @@ public class NegotiationJpaEntity {
     public NegotiationJpaEntity(Long id, Long requestId, Long projectId, Long positionId, Long freelancerId,
                                 NegotiationStatus status, int totalRound, Long agreedAmount, Long budgetCap,
                                 Long floorAmount, LocalDateTime aiOutAt, LocalDateTime startedAt,
-                                LocalDateTime endedAt, String endReason,
+                                LocalDateTime endedAt, String endReason, LocalDateTime clientLastReadAt,
+                                LocalDateTime freelancerLastReadAt,
                                 List<NegotiationConditionJpaEntity> conditions) {
         this.id = id;
         this.requestId = requestId;
@@ -84,6 +91,8 @@ public class NegotiationJpaEntity {
         this.startedAt = startedAt;
         this.endedAt = endedAt;
         this.endReason = endReason;
+        this.clientLastReadAt = clientLastReadAt;
+        this.freelancerLastReadAt = freelancerLastReadAt;
         this.conditions = conditions != null ? conditions : new ArrayList<>();
     }
 }
