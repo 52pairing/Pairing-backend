@@ -53,7 +53,7 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 같�
     - 단위 테스트 `MatchingNegotiationOutcomeServiceTest`(4개: 타결/결렬/요청없음/상태불일치) 작성, `./gradlew build` 통과 확인.
     - **아직 남은 것(negotiation/5번 쪽 작업)**: `NegotiationLoopService.agree()`(94번 줄)/`.fail()`(122, 149번 줄)이 각각 `Negotiation.agree()`/`.fail()` 호출 직후 `MatchingNegotiationOutcomeUseCase.markNegotiationAgreed(negotiation.getRequestId())`/`.markNegotiationFailed(...)`를 호출하도록 5번이 이어서 구현해야 한다 — 이건 negotiation 도메인 코드라 매칭(4번)이 대신 건드리지 않았다. 같은 트랜잭션 안에서 부르는 걸 전제로 설계함(매칭이 `accept()`에서 negotiation을 동기 호출하는 것과 대칭).
 15. `currentSituation`/`mainTask`(프로젝트 현재 상황/담당 업무) 노출 여부 팀 답변 오면 `MatchingRequestResponse`에 필드 2개 추가 여부 결정.
-16. ~~budgetCap이 포지션 인원/총액 단위로 잘못 계산되던 버그 2건(3번 리포트)~~ — 2026-08-09 수정 완료. `position.headcount()`→`totalHeadcount()`, budgetAmount를 개월 수로도 나누도록 수정. WEEK 기간 주→개월 환산 규칙만 3번에게 확인 대기 중(현재 4주=1개월 임시값).
+16. ~~budgetCap이 포지션 인원/총액 단위로 잘못 계산되던 버그 2건(3번 리포트)~~ — 2026-08-09 수정 완료. `position.headcount()`→`totalHeadcount()`, budgetAmount를 개월 수로도 나누도록 수정. ~~WEEK 기간 주→개월 환산 규칙~~ — 2026-08-09 **4주=1개월로 확정**(사용자 확인). `negotiation` 도메인의 `NegotiationConditionCalculator`도 이미 같은 값(4주=1개월)을 쓰고 있어서 두 도메인 계산 기준이 일치함을 재확인. `BudgetCapCalculator`의 `TEMP_WEEKS_PER_MONTH`(임시값 표기)를 `WEEKS_PER_MONTH`로 정리.
 17. **(참고, 재발 방지)** `@TransactionalEventListener` 안에서 `@Transactional(REQUIRES_NEW)` 메서드를 "같은 빈 안에서 `this.method()`로" 부르면 스프링 프록시를 안 거쳐 트랜잭션이 조용히 무시된다(자체 호출 self-invocation 문제). 실제로 이 버그로 라운드 저장이 안 되는 걸 테스트로 재현해서 발견 — 새 트랜잭션이 꼭 필요한 메서드는 반드시 별도 빈으로 분리해서 호출할 것(`RecruitingStartedEventListener`/`RecruitingStartedPositionHandler` 참고).
 18. **(참고, 재발 방지)** 재추천 엔드포인트의 레이트리밋(`RateLimitProvider`)은 Redis가 실제로 있어야 동작한다. 이 엔드포인트를 호출하는 테스트를 새로 짤 땐 `RateLimitProvider`를 `@MockitoBean`으로 목 처리해야 Redis 없는 CI에서도 통과한다(`MatchingIntegrationTest` 참고). 로컬은 Redis 컨테이너가 떠 있어서 이 문제가 안 드러나니 착각하지 말 것.
 19. ~~`AI매칭_API_화면매핑_최신본.md`(레포 밖, 프론트 공유용 문서) 검토~~ — 2026-08-09 완료. MT_009(dead code, 실제론 201+빈 배열) 제거, `RerecommendRequest.quantity` PAID 필수·검증 없음 경고를 사용자가 문서에 반영, 재검토까지 끝남.
@@ -62,7 +62,7 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 같�
 ## 열려있는 결정/블로커 (건드리기 전에 확인)
 
 - `resolveFreelancerId`/`findCondition`(freelancerId 기준) — account 도메인 메서드 대기 중이라 여전히 placeholder.
-- 적합도 점수 스케일 0~100 여부, 골드 등급 수수료 할인, 프로젝트 인원별 예산배분 필드 존재 여부, `currentSituation`/`mainTask` 노출 여부, budgetCap의 WEEK→개월 환산 규칙 — `.ai/STATE.md` 하단 표 참고, 팀 확인 대기 중이라 확정 전까지는 가정값으로 진행.
+- 적합도 점수 스케일 0~100 여부, 골드 등급 수수료 할인, 프로젝트 인원별 예산배분 필드 존재 여부, `currentSituation`/`mainTask` 노출 여부 — `.ai/STATE.md` 하단 표 참고, 팀 확인 대기 중이라 확정 전까지는 가정값으로 진행. (budgetCap의 WEEK→개월 환산 규칙은 2026-08-09 4주=1개월로 확정됨, 더 이상 대기 항목 아님)
 
 ## 참고할 실제 파일
 

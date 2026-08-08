@@ -48,7 +48,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 3번이 project 쪽에 매칭 연동용 포트 3개(`findPositionSummaries`/`findProjectPositionSummary(positionId)`/`findStatus`, `ProjectPositionSummary.totalHeadcount` 추가, `RecruitingStartedEvent` 발행)를 올리면서 버그 리포트도 같이 줬다. 코드로 하나씩 확인한 결과:
 
 - **budgetCap이 포지션 인원으로 나뉘던 버그(실제 버그, 수정함)**: `MatchingRequestService.accept()`가 `position.headcount()`(이 포지션만의 인원)를 넘기고 있었는데, `BudgetCapCalculator`는 프로젝트 전체 순예산을 나누는 거라 `totalHeadcount`(프로젝트 전체 포지션 인원 합)로 나눠야 맞다. 매칭 쪽 `ProjectPositionSummary`(application.result)에 `totalHeadcount` 필드 추가하고 `ProjectDirectoryAdapter`가 채워주도록 수정.
-- **budgetAmount 단위 불일치 버그(실제 버그, 수정함)**: `budgetAmount`는 계약 기간 "전체 총액"인데 `BudgetCapCalculator`가 개월 수로 안 나누고 있어서, 협상 쪽이 월급과 비교할 때 상한이 실제보다 수배 크게 잡히는 문제가 있었다. `periodValue`/`periodUnit`을 매칭 쪽 `ProjectPositionSummary`에 raw 필드로 추가(기존 `periodLabel`은 화면 표기용이라 계산에 못 씀)하고, `BudgetCapCalculator.calculate()`가 개월 수로 한 번 더 나누도록 수정. **WEEK 단위 기간의 주→개월 환산 규칙은 아직 팀이 정하지 않아** 4주=1개월로 임시 처리(코드에 TODO 명시, 아래 표에도 추가).
+- **budgetAmount 단위 불일치 버그(실제 버그, 수정함)**: `budgetAmount`는 계약 기간 "전체 총액"인데 `BudgetCapCalculator`가 개월 수로 안 나누고 있어서, 협상 쪽이 월급과 비교할 때 상한이 실제보다 수배 크게 잡히는 문제가 있었다. `periodValue`/`periodUnit`을 매칭 쪽 `ProjectPositionSummary`에 raw 필드로 추가(기존 `periodLabel`은 화면 표기용이라 계산에 못 씀)하고, `BudgetCapCalculator.calculate()`가 개월 수로 한 번 더 나누도록 수정. **WEEK 단위 기간의 주→개월 환산 규칙은 2026-08-09 4주=1개월로 확정**(사용자 확인, 코드의 임시값 표기 제거). `negotiation` 도메인의 `NegotiationConditionCalculator`도 동일하게 4주=1개월을 쓰고 있어서 두 도메인 계산 기준이 원래부터 일치했음을 확인.
 - **findClientAccountId 관련 버그 리포트(확인 결과 문제 없음)**: 3번은 이 포트가 client_profile.id를 그대로 반환하는 걸로 오해했으나, 우리 `ProjectDirectoryAdapter.findClientAccountId`는 이미 account 도메인의 `findClientProfileById`로 한 번 더 조회해서 진짜 accountId로 변환해 돌려주고 있다(`ClientGradeResolver`가 정상 동작). 포트 이름 변경 불필요.
 - **결제→매칭 이벤트 리스너 신규 구현**: `RecruitingStartedEvent(projectId)`(project 도메인이 착수금 결제 커밋 후 발행)를 받아 포지션별로 ①스냅샷 동결(`MatchingSnapshot` PROJECT/POSITION 타입, 기존에 정의만 되고 안 쓰이던 것을 처음 사용) → ②임베딩 upsert(`MatchingPort.upsertPositionEmbedding`, Pairing-python의 `PUT /embeddings/positions` 신규 연동) → ③최초 추천 라운드 생성(`MatchingRoundCreationService.createRound` 재사용) 순서로 처리.
   - `RecruitingStartedEventListener`(포지션 목록 조회 + 포지션 단위 예외 격리) / `RecruitingStartedPositionHandler`(포지션 1건 처리, `@Transactional(REQUIRES_NEW)`)로 클래스를 분리했다 — 같은 빈 안에서 `this.method()`로 자기 자신을 호출하면 스프링 프록시를 안 거쳐서 `@Transactional`이 조용히 무시되는 문제(자체 호출 self-invocation)가 실제로 발생해서(테스트로 재현·확인함), 별도 빈으로 쪼개 진짜 프록시 호출이 되게 했다. `@TransactionalEventListener(AFTER_COMMIT)` 쓸 때 이 문제를 특히 조심해야 한다.
@@ -81,7 +81,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 | 골드 등급 수수료 할인 여부 | 다이아만 정책에 명시됨, 확인 필요 |
 | 프로젝트 등록에 인원별 예산 배분 필드 존재 여부 | 없으면 지금처럼 순예산 전체 조합으로만 판단 |
 | `currentSituation`(프로젝트 현재 상황)/`mainTask`(주요 담당 업무)를 프리랜서의 "받은 매칭 요청" 카드에 노출할지 | 2026-08-08 팀에 질문 전달, 답 대기 중. 데이터는 이미 `ProjectQueryUseCase`에서 옴, 노출하려면 `MatchingRequestResponse`에 필드 2개만 추가하면 됨 |
-| budgetCap 계산 시 기간이 WEEK 단위면 몇 주를 1개월로 칠지 | 2026-08-09 3번에게 질문 전달, 답 대기 중. 그 전까지 `BudgetCapCalculator`가 4주=1개월로 임시 처리 |
+| ~~budgetCap 계산 시 기간이 WEEK 단위면 몇 주를 1개월로 칠지~~ | **2026-08-09 확정: 4주=1개월.** `BudgetCapCalculator` 코드 정리 완료 |
 
 ## 프론트 공유 문서 (레포 밖)
 
