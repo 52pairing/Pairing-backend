@@ -17,8 +17,11 @@ import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.FreelancerConditionSnapshot;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
+import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
+import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
+import com.pairing.negotiation.domain.service.NegotiationLogVerifier;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,6 +31,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -44,6 +48,8 @@ class NegotiationCommandServiceTest {
     private NegotiationCommandUseCase commandUseCase;
     @Autowired
     private NegotiationRepository negotiationRepository;
+    @Autowired
+    private NegotiationMessageRepository messageRepository;
     @Autowired
     private ChatRoomRepository chatRoomRepository;
     @Autowired
@@ -115,6 +121,12 @@ class NegotiationCommandServiceTest {
         assertThat(saved.getStatus()).isEqualTo(NegotiationStatus.AGREED);
         assertThat(saved.getAgreedAmount()).isEqualTo(5_000_000L);
         assertThat(chatRoomRepository.findByNegotiationId(id)).isPresent();
+
+        // 최종 조건이 해시체인 로그에 봉인되고, 그 체인이 유효하다(증거).
+        List<NegotiationMessage> logs = messageRepository.findByNegotiationId(id);
+        assertThat(logs).anyMatch(m -> m.getContent().contains("봉인")
+                && m.getContent().contains("agreedAmount=5000000"));
+        assertThat(NegotiationLogVerifier.verify(logs).valid()).isTrue();
     }
 
     @Test

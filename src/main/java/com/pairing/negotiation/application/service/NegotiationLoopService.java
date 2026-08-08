@@ -91,8 +91,9 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
 
         if (negotiation.allConditionsAgreed()) {
             negotiation.agree(finalAmount(negotiation));
+            // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
             messages.add(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
-                    "모든 조건이 합의되어 협상이 타결되었습니다."));
+                    "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
         } else {
             advanceOrFail(negotiation, messages);
         }

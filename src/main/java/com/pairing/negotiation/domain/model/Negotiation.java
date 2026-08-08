@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
@@ -130,6 +131,18 @@ public class Negotiation {
         this.agreedAmount = agreedAmount;
         this.aiOutAt = LocalDateTime.now();
         this.endedAt = this.aiOutAt;
+    }
+
+    /**
+     * 타결 시점 최종 합의 조건 스냅샷(정렬 고정 = 결정적 문자열). 분쟁 대비 증거로 해시체인 로그에 봉인한다.
+     * 타결(AGREED) 상태에서 호출한다. 조건이 없으면 금액만 남는다(무협상 즉시 타결).
+     */
+    public String finalTermsSnapshot() {
+        StringBuilder sb = new StringBuilder("agreedAmount=").append(agreedAmount);
+        conditions.stream()
+                .sorted(Comparator.comparingInt(NegotiationCondition::getSortOrder))
+                .forEach(c -> sb.append('|').append(c.getConditionType()).append('=').append(c.getAgreedValue()));
+        return sb.toString();
     }
 
     /** 결렬(포기 / 15회 소진). */
