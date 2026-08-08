@@ -33,7 +33,7 @@ public record NegotiationResponse(
         @Schema(description = "진행 라운드 수", example = "3")
         int totalRound,
 
-        @Schema(description = "라운드 상한. 넘으면 최종 승인 단계로 간다.", example = "15")
+        @Schema(description = "라운드 상한. 소진 시 자동 결렬된다.", example = "15")
         int maxRound,
 
         @Schema(description = "합의 금액(원). 타결 전에는 null", example = "22000000")
