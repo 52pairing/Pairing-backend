@@ -76,6 +76,28 @@ public class ProjectMapper {
         return entity;
     }
 
+    /**
+     * 영속 엔티티에 상태 전이 결과만 덮어쓴다.
+     *
+     * <p>등록은 {@link #toJpaEntity} 로 새 그래프를 만들지만, 상태 전이는 그 방식을 쓸 수 없다.
+     * 자식 컬렉션이 detached 로 들어가면서 재삽입되기 때문이다.
+     */
+    public void applyState(ProjectJpaEntity entity, Project domain) {
+        entity.applyState(
+                domain.getStatus(),
+                domain.getPaymentStatus(),
+                domain.getTotalHeadcount(),
+                domain.getConfirmedHeadcount(),
+                domain.getRecruitStartedAt(),
+                domain.getRecruitDeadline(),
+                domain.getExtensionCount(),
+                domain.getFreeRerecommendUsed(),
+                domain.getPaidRerecommendUsed(),
+                domain.getCanceledAt(),
+                domain.getClosedAt(),
+                domain.getRetentionUntil());
+    }
+
     public Project toDomain(ProjectJpaEntity entity) {
         if (entity == null) {
             return null;

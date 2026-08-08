@@ -1,5 +1,7 @@
 package com.pairing.project.application.port;
 
+import com.pairing.client.domain.model.ClientGrade;
+
 /**
  * 클라이언트 프로필 읽기 포트(프로젝트 소유).
  *
@@ -12,10 +14,11 @@ public interface ClientProfileReaderPort {
 
     ClientProfileView getByAccountId(Long accountId);
 
-    /** 프로젝트가 필요로 하는 클라이언트 최소 조회 모델. */
+    /** 프로젝트가 필요로 하는 클라이언트 최소 조회 모델. grade 는 착수금 수수료 할인에 쓴다. */
     record ClientProfileView(
             Long clientProfileId,
-            String address
+            String address,
+            ClientGrade grade
     ) {
     }
 }

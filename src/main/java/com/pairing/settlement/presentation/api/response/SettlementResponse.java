@@ -1,6 +1,7 @@
 package com.pairing.settlement.presentation.api.response;
 
 import com.pairing.meta.domain.model.PartyRole;
+import com.pairing.settlement.application.result.SettlementResult;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -44,4 +45,36 @@ public record SettlementResponse(
         @Schema(description = "결제 가능 여부. false 면 결제 버튼을 비활성화한다.", example = "true") boolean payable,
         @Schema(description = "완료 시각") LocalDateTime paidAt
 ) {
+
+    /**
+     * 정산 + 다른 도메인 값 -> 응답.
+     *
+     * <p>projectTitle 은 project 도메인, payerName 은 account 도메인 값이라 조립하는 쪽이 넘긴다.
+     * 정산 조회 서비스가 직접 읽으면 project -> settlement 방향과 맞물려 순환이 된다.
+     *
+     * <p>paymentMethodLabel 은 아직 null 이다. 결제수단 조회 API 가 스켈레톤이다.
+     */
+    public static SettlementResponse from(SettlementResult result, String projectTitle, String payerName) {
+        return new SettlementResponse(
+                result.settlementId(),
+                result.settlementNo(),
+                result.projectId(),
+                projectTitle,
+                result.contractId(),
+                result.payerRole(),
+                payerName,
+                result.phase(),
+                result.baseAmount(),
+                result.feeRate(),
+                result.gradeDiscount(),
+                result.feeAmount(),
+                result.status(),
+                null,
+                result.approvalNo(),
+                result.failReason(),
+                result.overdueReason(),
+                result.dueDate(),
+                result.payable(),
+                result.paidAt());
+    }
 }
