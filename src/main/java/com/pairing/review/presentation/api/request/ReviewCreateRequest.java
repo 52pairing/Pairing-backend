@@ -1,5 +1,6 @@
 package com.pairing.review.presentation.api.request;
 
+import com.pairing.review.application.command.CreateReviewCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -14,6 +15,10 @@ import jakarta.validation.constraints.Size;
  * 상대 평가는 필수, 사이트 후기는 선택이다. 별점은 필수이고 리뷰 글은 선택이다.
  *
  * <p>작성 후 수정·삭제할 수 없다. 프론트에서 확인 문구를 먼저 보여줘야 한다.
+ *
+ * <p>{@code projectId}/{@code revieweeAccountId} 는 원래 {@code contractId} 로 계약 도메인에서
+ * 유도해야 하지만, 그 도메인이 아직 스켈레톤이라 임시로 요청에서 직접 받는다.
+ * (contract 도메인이 갖춰지면 제거하고 서버에서 유도하도록 바꾼다.)
  */
 @Schema(description = "리뷰 작성 요청")
 public record ReviewCreateRequest(
@@ -21,6 +26,14 @@ public record ReviewCreateRequest(
         @Schema(description = "계약 ID. 어느 거래에 대한 평가인지", example = "600")
         @NotNull(message = "계약 ID는 필수입니다.")
         Long contractId,
+
+        @Schema(description = "프로젝트 ID (임시 필드. contract 도메인 완성되면 제거 예정)", example = "1")
+        @NotNull(message = "프로젝트 ID는 필수입니다.")
+        Long projectId,
+
+        @Schema(description = "리뷰 대상(상대방) 계정 ID (임시 필드. contract 도메인 완성되면 제거 예정)", example = "300")
+        @NotNull(message = "리뷰 대상은 필수입니다.")
+        Long revieweeAccountId,
 
         @Schema(description = "상대에 대한 평가(필수)")
         @NotNull(message = "상대 평가는 필수입니다.")
@@ -32,6 +45,14 @@ public record ReviewCreateRequest(
         @Valid
         Rating site
 ) {
+
+    public CreateReviewCommand toCommand(Long reviewerAccountId) {
+        return new CreateReviewCommand(
+                contractId, projectId, reviewerAccountId, revieweeAccountId,
+                counterpart.score(), counterpart.content(),
+                site.score(), site.content()
+        );
+    }
 
     @Schema(description = "별점과 리뷰")
     public record Rating(

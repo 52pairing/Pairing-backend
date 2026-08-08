@@ -1,6 +1,7 @@
 package com.pairing.review.presentation.api.response;
 
 import com.pairing.meta.domain.model.PartyRole;
+import com.pairing.review.application.result.ReviewResult;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
@@ -18,4 +19,10 @@ public record ReviewResponse(
         @Schema(description = "리뷰 내용") String content,
         @Schema(description = "작성 시각") LocalDateTime createdAt
 ) {
+
+    public static ReviewResponse from(ReviewResult result) {
+        return new ReviewResponse(result.reviewId(), result.contractId(), result.projectTitle(),
+                result.reviewerName(), result.reviewerRole(), result.score(), result.content(),
+                result.createdAt());
+    }
 }
