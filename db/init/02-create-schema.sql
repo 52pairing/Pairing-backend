@@ -507,6 +507,8 @@ CREATE TABLE "negotiation" (
     "started_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "ended_at" TIMESTAMP,
     "end_reason" VARCHAR(255),
+    "client_last_read_at" TIMESTAMP,
+    "freelancer_last_read_at" TIMESTAMP,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")

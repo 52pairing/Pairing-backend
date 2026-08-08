@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -122,6 +123,14 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
                 "협상이 종료되었습니다: " + endReason)));
         publish(negotiation, NegotiationEventType.FAILED);
+    }
+
+    @Override
+    public void markRead(Long negotiationId, Long accountId) {
+        Negotiation negotiation = load(negotiationId);
+        PartyRole role = resolveRole(negotiation, accountId);   // 당사자 검증(NG_002) 포함
+        negotiation.markRead(role, LocalDateTime.now());
+        negotiationRepository.save(negotiation);
     }
 
     // ----- helpers -----
