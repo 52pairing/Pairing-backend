@@ -47,6 +47,9 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
             recruitCount = position.headcount();
             costAmount = 0L;
         } else {
+            if (quantity == null) {
+                throw new BusinessException(MatchingErrorCode.QUANTITY_REQUIRED);
+            }
             assertPaidAvailable(projectId);
             recruitCount = quantity;
             costAmount = quantity * PAID_COST_PER_HEAD;
