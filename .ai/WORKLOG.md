@@ -69,13 +69,19 @@
   - **원인**: `/api/v1/matchings/positions/{id}/rerecommendations`에만 걸려있는 `MatchingRateLimitInterceptor`가 요청마다 `RateLimitProvider`(Redis 기반 `lettuceProxyManager`, `@Lazy`라 첫 실제 사용 시점에 연결)를 타는데, Redis가 없는 CI에서는 그 시점에 연결 실패로 500이 남. 로컬은 Redis 컨테이너가 떠 있어서 우연히 통과했었고, 재추천 엔드포인트를 실제로 호출하는 테스트가 이번에 처음 생기면서(`MatchingIntegrationTest`) 처음 드러남 — 8/8~8/9 세션 초반에 "고쳤다"고 기록한 Redis 이슈와는 결이 다름(그건 컨텍스트 기동 자체가 깨지던 것, 이번 건 기동은 되고 실제 호출 시점에만 터지는 것).
   - **수정**: `MatchingIntegrationTest`에 `RateLimitProvider`를 `@MockitoBean`으로 교체하고 항상 허용하는 로컬 Bucket4j 버킷을 반환하도록 스텁. 로컬 `./gradlew clean build` 전체 통과 확인 후 커밋·push.
 - **프론트 전달용 문서 검토 (완료)**: 사용자가 데스크탑에 만든 `AI매칭_API_화면매핑_최신본.md`(레포 밖 파일, 프론트 공유용)를 실제 코드와 대조 검증. 실제 오류 1건 발견: 재추천 API 에러표에 `MT_009`(추천 후보 없음)를 넣었는데, 코드상 `CANDIDATE_POOL_EMPTY`는 enum에 정의만 있고 실제로 던지는 곳이 없음 — 후보가 없으면 에러가 아니라 `candidates: []`로 201 성공 응답이 내려감(라운드는 EXHAUSTED). 추가로 `RerecommendRequest.quantity`가 PAID일 때 `@NotNull` 검증이 없어서 누락 시 500(NPE) 위험이 있다는 점도 안내함. **사용자가 문서에 바로 반영함**(재추천 에러표에서 MT_009 제거, "후보 없으면 201+빈 배열" 문구 추가, quantity PAID 필수·검증 없음 경고 추가, "아직 확정/수정 필요" 표에 행 추가) → 재검토해서 전부 정확하게 반영된 것 확인 완료. 이 문서 관련 후속 작업 없음.
+- **PR #51 merge 완료** — 사용자가 CI 그린 확인 후 develop에 merge.
+- **`RerecommendRequest.quantity` NPE 수정** (HANDOFF 20번, `fix/rerecommend-quantity-validation` 브랜치, PR #53 오픈) — `MatchingErrorCode.QUANTITY_REQUIRED`(MT_012) 추가, PAID+quantity null이면 400으로 응답하도록 수정. 이슈 #52도 같이 생성.
+- **budgetCap WEEK→개월 환산 4주=1개월 확정** (`docs/budgetcap-week-conversion-confirmed` 브랜치) — 사용자 확인. `negotiation` 도메인의 `NegotiationConditionCalculator`도 이미 같은 값을 쓰고 있어서 두 도메인 계산 기준이 원래부터 일치했음을 확인. `BudgetCapCalculator`의 임시값 표기 제거.
+- **`MatchingNegotiationOutcomeUseCase` 구현** (HANDOFF 14번, `feature/matching-negotiation-outcome` 브랜치) — 매칭 쪽 인바운드 포트 신규 작성, `MatchingRequestService`가 구현체. `markNegotiationAgreed`는 신규 도메인 메서드 `MatchingRequest.agreeNegotiation()`(기존 `failNegotiation()`과 대칭, NEGOTIATING일 때만 허용)을 거쳐 `CONTRACT_PENDING`으로, `markNegotiationFailed`는 기존 `failNegotiation()`으로 `NEGOTIATION_FAILED`로 전환. 단위 테스트 4개(`MatchingNegotiationOutcomeServiceTest`) 작성, `./gradlew build` 통과 확인. **negotiation(5번) 쪽에 남은 일**: `NegotiationLoopService.agree()`/`.fail()`이 이 포트를 호출하도록 이어붙이는 작업 — negotiation 도메인 코드라 매칭이 대신 하지 않음, 5번에게 전달 필요.
+- **참고**: 위 3개 브랜치(`fix/rerecommend-quantity-validation`, `docs/budgetcap-week-conversion-confirmed`, `feature/matching-negotiation-outcome`)가 전부 develop에서 독립적으로 분기돼 아직 서로 merge 안 된 상태라, `.ai/*.md` 문서 쪽에서 merge 시 충돌이 날 수 있음(코드 충돌은 아님, 서로 다른 파일/메서드 건드림). 문서 충돌은 내용 합치면 되는 수준.
 
 ## 다음 세션에서 할 일
 
-1. **PR #51 CI 결과 확인** — 레이트리밋 목 처리 커밋(마지막 push)까지 반영된 CI가 초록인지 확인. 초록이면 팀원 리뷰/머지 대기(머지는 4번이 직접 하지 않음).
-2. `MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 인터페이스 정의 + `MatchingRequestService`에 구현 추가. 5번 쪽 구현과 맞춰야 함.
+1. ~~PR #51 CI 결과 확인~~ — develop에 merge 완료.
+1-1. **오픈된 PR 3개 리뷰/머지 대기** — `fix/rerecommend-quantity-validation`(PR #53), `docs/budgetcap-week-conversion-confirmed`, `feature/matching-negotiation-outcome`(PR 생성 대기). 전부 develop에서 독립 분기라 `.ai/*.md` merge 충돌 가능성 있음(위 참고 항목).
+2. ~~`MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 구현~~ — 매칭 쪽 완료. **5번에게 전달할 것**: `NegotiationLoopService.agree()`/`.fail()`에서 이 포트 호출하도록 이어붙이는 작업 필요.
 3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
-4. budgetCap의 WEEK→개월 환산 규칙 3번 답변 오면 `BudgetCapCalculator` 임시값(4주=1개월) 교체.
+4. ~~budgetCap의 WEEK→개월 환산 규칙~~ — 4주=1개월로 확정, 반영 완료.
 5. `resolveFreelancerId`/`findCondition`(freelancerId 기준) — 1번의 account_id↔freelancer_profile.id 조회 메서드 승인되면 `FreelancerDirectoryAdapter` 마저 완전 교체.
 6. `.ai/HANDOFF.md`의 "3일차" 나머지 항목: Pairing-python `_build_prompt` 실구현 + 하드필터 + Stage F 실제 배분 알고리즘 + 등급 타이브레이커 + 통합테스트/문서 동기화.
 7. 임베딩 텍스트(`RecruitingStartedPositionHandler.buildEmbeddingText`)에 mainTask/currentSituation/업무범위/우대사항 추가 — 3번 항목(위 3번)이 정해지고 매칭 쪽 요약에 필드가 생기면 같이 반영.

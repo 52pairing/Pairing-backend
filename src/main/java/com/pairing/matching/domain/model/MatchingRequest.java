@@ -97,6 +97,14 @@ public class MatchingRequest {
         this.rejectReason = RejectReason.NEGOTIATION_FAILED;
     }
 
+    /** 협상 타결로 계약 대기 단계로 넘어감을 반영한다(협상 도메인이 호출). */
+    public void agreeNegotiation() {
+        if (this.status != MatchingStatus.NEGOTIATING) {
+            throw new BusinessException(MatchingErrorCode.INVALID_MATCHING_STATE);
+        }
+        this.status = MatchingStatus.CONTRACT_PENDING;
+    }
+
     /** 협상/계약 도메인이 다음 단계로 넘어갔음을 반영할 때 쓴다(예: ACCEPTED -&gt; NEGOTIATING). */
     public void advanceStatus(MatchingStatus next) {
         if (isTerminal(this.status)) {

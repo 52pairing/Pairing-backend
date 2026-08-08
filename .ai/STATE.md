@@ -40,7 +40,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 - **로컬 개발 환경에서 발견·수정한 버그 2건** (코드 정상, 인프라/설정 문제였음):
   - `global/ratelimit/RedisRateLimitConfig`가 빈 생성 시 즉시 Redis에 연결해서 Redis 없는 환경(CI)에서 전체 컨텍스트 로딩이 실패 → `@Lazy`(빈 + 생성자 주입 지점 둘 다)로 지연 연결하도록 수정.
   - `matching_candidate`/`matching_round`의 NUMERIC 컬럼(similarity/base_score/grade_weight/fit_score/cost_amount)에 JPA 엔티티가 `columnDefinition`을 안 줘서 스키마 검증 실패 → 명시해서 해결.
-- **협상(5번) 연동 — 아직 남은 것**: 협상이 타결(AGREED)/결렬(FAILED)되는 시점에 매칭 쪽 상태(`MatchingRequest.advanceStatus`/`failNegotiation`)를 갱신해줄 통로가 없다. `MatchingNegotiationOutcomeUseCase.markNegotiationAgreed(requestId)`/`.markNegotiationFailed(requestId)` 시그니처를 5번에게 전달했고, **양쪽 다 아직 구현 전**.
+- **협상(5번) 연동 — 매칭 쪽 완료, negotiation 쪽 대기**: 협상 타결(AGREED)/결렬(FAILED) 통보용 `MatchingNegotiationOutcomeUseCase`를 2026-08-09 매칭 쪽에서 구현 완료(`MatchingRequestService`가 구현). `markNegotiationAgreed(requestId)`는 신규 도메인 메서드 `MatchingRequest.agreeNegotiation()`(NEGOTIATING일 때만 허용, 기존 `failNegotiation()`과 대칭 설계)을 호출해 `CONTRACT_PENDING`으로 전환하고, `markNegotiationFailed(requestId)`는 기존 `failNegotiation()`을 그대로 쓴다. **negotiation 쪽(5번)이 아직 안 한 것**: `NegotiationLoopService.agree()`/`.fail()`이 이 인바운드 포트를 호출하도록 이어붙이는 작업 — negotiation 도메인 코드라 매칭이 대신 구현하지 않았다.
 - `newProposalCount`(협상 진행조회 응답)는 "클라가 마지막으로 읽은 시점 이후 온 새 제안 수"로 정의 확정. 실제 반영은 5번의 `feature/negotiation-unread-proposals` 브랜치가 develop에 merge된 뒤 자동 적용됨(우리 코드 수정 불필요).
 
 ## 2026-08-09 갱신 — 3번 연동 버그 수정 + 결제→매칭 이벤트 리스너
