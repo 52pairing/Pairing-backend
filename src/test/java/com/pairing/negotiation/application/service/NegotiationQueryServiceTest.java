@@ -10,6 +10,10 @@ import com.pairing.account.domain.repository.AccountRepository;
 import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
 import com.pairing.global.exception.BusinessException;
+import com.pairing.meta.domain.model.PeriodUnit;
+import com.pairing.meta.domain.model.WorkForm;
+import com.pairing.meta.domain.model.WorkStyle;
+import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.ConditionType;
@@ -28,15 +32,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
 
 /**
  * 협상 조회 전환 검증. 핵심은 "로그인 계정(account.id) → 명함 ID 번역 → role 판정"이 맞는지,
@@ -58,8 +64,8 @@ class NegotiationQueryServiceTest {
     private FreelancerProfileRepository freelancerProfileRepository;
     @Autowired
     private AccountRepository accountRepository;
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+    @MockBean
+    private ProjectReaderPort projectReaderPort;
 
     private static final Long CLIENT_ACCOUNT_ID = 900_001L;   // client 판정은 client_profile.account_id 로만 하므로 account 행 불필요
     private static final Long STRANGER_ACCOUNT_ID = 900_003L;
@@ -81,18 +87,12 @@ class NegotiationQueryServiceTest {
         freelancerProfileId = freelancerProfileRepository.save(
                 FreelancerProfile.create(freelancerAccountId, LocalDate.of(1990, 1, 1))).getId();
 
-        // project 는 협상 소유의 읽기 전용 엔티티만 매핑되므로 직접 삽입한다.
-        // start_negotiable 은 NOT NULL(primitive)이라 반드시 채운다.
-        // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.
-        jdbcTemplate.update("INSERT INTO project "
-                        + "(id, client_id, title, start_negotiable, "
-                        + "period_value, period_unit, budget_amount, work_style, work_form, "
-                        + "status, payment_status, total_headcount, confirmed_headcount, "
-                        + "extension_count, free_rerecommend_used, paid_rerecommend_used) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true,
-                6, "MONTH", 50_000_000L, "REMOTE", "FULL_TIME",
-                "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
+        // project 는 project 도메인 소유다. 여기선 그 조회 포트를 목킹해 협상 조회 로직만 검증한다
+        // (project 테이블 스키마 변화에 협상 테스트가 흔들리지 않게).
+        when(projectReaderPort.findById(PROJECT_ID)).thenReturn(Optional.of(
+                new ProjectReaderPort.ProjectView(PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼",
+                        50_000_000L, WorkStyle.REMOTE, WorkForm.FULL_TIME,
+                        LocalDate.of(2026, 1, 1), true, 6, PeriodUnit.MONTH)));
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
                 50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));
