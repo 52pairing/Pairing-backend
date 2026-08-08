@@ -6,9 +6,10 @@ import com.pairing.matching.application.result.FreelancerCardSummary;
 /**
  * freelancer 도메인 조회 포트. 매칭은 이 인터페이스로만 프리랜서 정보를 읽는다.
  *
- * <p><b>임시 스텁 상태(2026-08-07)</b>: freelancer 도메인에 아직 실제 영속 계층이 없어
- * {@code infrastructure.directory.StubFreelancerDirectoryAdapter}가 고정값을 돌려준다.
- * freelancer 도메인이 실제 구현되면 이 어댑터 하나만 실제 조회 코드로 교체하면 된다.
+ * <p>{@code infrastructure.directory.FreelancerDirectoryAdapter}가 구현한다.
+ * {@code findCardSummary}는 실제 조회로 교체됨. {@code resolveFreelancerId}/{@code findCondition}은
+ * account_id ↔ freelancer_profile.id 양방향 조회가 account 도메인에 아직 없어 스텁으로 남아있다
+ * (어댑터 클래스의 Javadoc 참고).
  */
 public interface FreelancerDirectoryPort {
 

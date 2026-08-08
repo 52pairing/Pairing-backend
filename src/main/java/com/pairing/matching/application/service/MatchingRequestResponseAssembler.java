@@ -26,7 +26,8 @@ class MatchingRequestResponseAssembler {
 
     MatchingRequestResponse build(MatchingRequest request, Long viewerAccountId) {
         Account viewer = accountQueryUseCase.getById(viewerAccountId);
-        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(request.getPositionId());
+        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(request.getProjectId(),
+                request.getPositionId());
         FreelancerCardSummary freelancer = freelancerDirectoryPort.findCardSummary(request.getFreelancerId());
         String counterpartName = viewer.getRole() == Role.CLIENT ? freelancer.name() : position.companyName();
 

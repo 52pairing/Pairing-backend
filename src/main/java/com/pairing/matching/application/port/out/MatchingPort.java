@@ -17,4 +17,10 @@ public interface MatchingPort {
 
     /** Stage E: 1차 후보 풀을 LLM에 넘겨 최종 순위·근거를 받는다. */
     MatchingRecommendation recommend(Long positionId, int recruitCount, int poolMultiplier);
+
+    /**
+     * 포지션 임베딩을 upsert한다(PUT /embeddings/positions). 착수금 결제 완료로 모집이 시작될 때
+     * 딱 1번 호출한다(프로젝트는 등록 후 수정 불가능이라 재계산 불필요).
+     */
+    void upsertPositionEmbedding(Long positionId, String text);
 }
