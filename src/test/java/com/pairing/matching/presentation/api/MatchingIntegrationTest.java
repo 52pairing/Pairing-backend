@@ -455,4 +455,32 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.candidates.length()").value(1))
                 .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
     }
+
+    @Test
+    @DisplayName("유료 재추천인데 quantity가 없으면 500이 아니라 400으로 응답한다")
+    void rerecommendPaidWithoutQuantityReturnsBadRequest() throws Exception {
+        seedRound(2);
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_012"));
+    }
+
+    @Test
+    @DisplayName("재추천 종류로 INITIAL을 보내면 400으로 거부한다")
+    void rerecommendWithInitialTypeReturnsBadRequest() throws Exception {
+        seedRound(2);
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"INITIAL","quantity":3}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_013"));
+    }
 }

@@ -32,6 +32,9 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
     @Transactional
     public CandidateListResponse rerecommend(Long positionId, RecommendationType type, Integer quantity,
                                              Long accountId) {
+        if (type != RecommendationType.FREE && type != RecommendationType.PAID) {
+            throw new BusinessException(MatchingErrorCode.INVALID_RERECOMMEND_TYPE);
+        }
         MatchingRound latestRound = matchingRoundRepository.findLatestByPositionId(positionId)
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.ROUND_NOT_FOUND));
         Long projectId = latestRound.getProjectId();
@@ -47,6 +50,9 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
             recruitCount = position.headcount();
             costAmount = 0L;
         } else {
+            if (quantity == null) {
+                throw new BusinessException(MatchingErrorCode.QUANTITY_REQUIRED);
+            }
             assertPaidAvailable(projectId);
             recruitCount = quantity;
             costAmount = quantity * PAID_COST_PER_HEAD;
