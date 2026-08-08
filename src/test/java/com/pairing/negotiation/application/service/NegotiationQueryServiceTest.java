@@ -83,8 +83,16 @@ class NegotiationQueryServiceTest {
 
         // project 는 협상 소유의 읽기 전용 엔티티만 매핑되므로 직접 삽입한다.
         // start_negotiable 은 NOT NULL(primitive)이라 반드시 채운다.
-        jdbcTemplate.update("INSERT INTO project (id, client_id, title, start_negotiable) VALUES (?, ?, ?, ?)",
-                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true);
+        // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.
+        jdbcTemplate.update("INSERT INTO project "
+                        + "(id, client_id, title, start_negotiable, "
+                        + "period_value, period_unit, budget_amount, work_style, work_form, "
+                        + "status, payment_status, total_headcount, confirmed_headcount, "
+                        + "extension_count, free_rerecommend_used, paid_rerecommend_used) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true,
+                6, "MONTH", 50_000_000L, "REMOTE", "FULL_TIME",
+                "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
                 50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));
