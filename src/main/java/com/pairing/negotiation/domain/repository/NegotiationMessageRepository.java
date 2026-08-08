@@ -20,4 +20,7 @@ public interface NegotiationMessageRepository {
 
     /** 체인 머리(가장 최근 로그)의 contentHash. 새 로그 seal 시 직전 해시로 쓴다. 없으면 empty. */
     Optional<String> findLatestHash(Long negotiationId);
+
+    /** 특정 라운드의 AI 제안(PROPOSAL) 개수. 진행조회의 "새 제안 개수"(응답 대기 제안)에 쓴다. */
+    int countProposalsInRound(Long negotiationId, int roundNo);
 }

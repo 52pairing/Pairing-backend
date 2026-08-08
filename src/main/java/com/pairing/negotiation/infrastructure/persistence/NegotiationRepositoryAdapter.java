@@ -31,6 +31,13 @@ public class NegotiationRepositoryAdapter implements NegotiationRepository {
     }
 
     @Override
+    public Optional<Negotiation> findByRequestId(Long requestId) {
+        // 요약 매핑(조건 미로드) — 진행조회는 라운드·상태만 필요하다.
+        return springDataRepository.findByRequestId(requestId)
+                .map(negotiationMapper::toDomainSummary);
+    }
+
+    @Override
     public Page<Negotiation> findByFreelancerId(Long freelancerProfileId, NegotiationStatus status,
                                                 Pageable pageable) {
         return springDataRepository.findByFreelancerId(freelancerProfileId, status, pageable)
