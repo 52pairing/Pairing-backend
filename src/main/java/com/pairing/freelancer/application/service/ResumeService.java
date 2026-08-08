@@ -2,6 +2,7 @@ package com.pairing.freelancer.application.service;
 
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.file.application.usecase.FileQueryUseCase;
 import com.pairing.freelancer.application.command.UpsertResumeCommand;
 import com.pairing.freelancer.application.result.ResumeResult;
@@ -17,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -73,6 +75,9 @@ public class ResumeService implements ResumeUseCase {
 
     private ResumeResult toResult(Long accountId, Resume resume) {
         Account account = accountQueryUseCase.getById(accountId);
+        LocalDate birthDate = accountQueryUseCase.findFreelancerProfileByAccountId(accountId)
+                .map(FreelancerProfile::getBirthDate)
+                .orElse(null);
 
         // 연락처를 비워두면 계정 값을 그대로 보여준다. 계정 값이 바뀌면 다음 조회부터 자동으로 반영된다.
         String contactPhone = isBlank(resume.getContactPhone()) ? account.getPhone() : resume.getContactPhone();
@@ -82,8 +87,7 @@ public class ResumeService implements ResumeUseCase {
                 resume.getId(),
                 resume.getStatus(),
                 account.getName(),
-                // TODO: account 도메인에 FreelancerProfile 조회 포트 추가되면 생년월일 연결
-                null,
+                birthDate,
                 contactPhone,
                 contactEmail,
                 resume.getAddress(),

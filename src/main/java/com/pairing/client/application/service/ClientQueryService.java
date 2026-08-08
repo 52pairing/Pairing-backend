@@ -6,6 +6,8 @@ import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.client.application.result.ClientMyPageResult;
 import com.pairing.client.application.usecase.ClientQueryUseCase;
 import com.pairing.client.domain.model.ClientGrade;
+import com.pairing.review.application.result.ReviewSummaryResult;
+import com.pairing.review.application.usecase.ReviewUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,15 +18,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class ClientQueryService implements ClientQueryUseCase {
 
     private final AccountQueryUseCase accountQueryUseCase;
+    private final ReviewUseCase reviewUseCase;
 
     @Override
     public ClientMyPageResult findMyPage(Long accountId) {
         Account account = accountQueryUseCase.getById(accountId);
         ClientProfile profile = accountQueryUseCase.getClientProfile(accountId);
-        return toResult(account, profile);
-    }
+        ReviewSummaryResult reviewSummary = reviewUseCase.getSummary(accountId);
 
-    static ClientMyPageResult toResult(Account account, ClientProfile profile) {
         return new ClientMyPageResult(
                 account.getId(),
                 profile.getCompanyName(),
@@ -35,9 +36,8 @@ public class ClientQueryService implements ClientQueryUseCase {
                 account.getName(),
                 profile.getAddress(),
                 ClientGrade.valueOf(profile.getGrade()),
-                // TODO: review 도메인 구현 후 연결
-                null,
-                0,
+                reviewSummary.averageScore(),
+                reviewSummary.reviewCount(),
                 // TODO: project/settlement 도메인 구현 후 진행 중 프로젝트·미납 요금 확인
                 true
         );

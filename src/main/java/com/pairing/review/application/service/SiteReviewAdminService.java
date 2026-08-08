@@ -1,5 +1,6 @@
 package com.pairing.review.application.service;
 
+import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.review.application.result.SiteReviewResult;
@@ -32,6 +33,7 @@ public class SiteReviewAdminService implements SiteReviewAdminUseCase {
 
     private final SiteReviewRepository siteReviewRepository;
     private final ProjectQueryUseCase projectQueryUseCase;
+    private final AccountQueryUseCase accountQueryUseCase;
 
     @Override
     @Transactional(readOnly = true)
@@ -96,7 +98,28 @@ public class SiteReviewAdminService implements SiteReviewAdminUseCase {
     }
 
     private String maskedWriterName(SiteReview siteReview) {
-        // TODO: 계정 이름/회사명을 조회해 마스킹(예: "고**") 처리. 지금은 작성자 구분만 노출한다.
-        return siteReview.getWriterRole() == PartyRole.CLIENT ? "클라이언트" : "프리랜서";
+        String name = resolveWriterName(siteReview);
+        if (name == null || name.isBlank()) {
+            return siteReview.getWriterRole() == PartyRole.CLIENT ? "클라이언트" : "프리랜서";
+        }
+        return mask(name);
+    }
+
+    private String resolveWriterName(SiteReview siteReview) {
+        try {
+            return siteReview.getWriterRole() == PartyRole.CLIENT
+                    ? accountQueryUseCase.getClientProfile(siteReview.getWriterAccountId()).getCompanyName()
+                    : accountQueryUseCase.getById(siteReview.getWriterAccountId()).getName();
+        } catch (BusinessException e) {
+            return null;
+        }
+    }
+
+    /** 첫 글자만 남기고 나머지는 {@code *} 로 가린다(예: "홍길동" -&gt; "홍**"). */
+    private String mask(String name) {
+        if (name.length() <= 1) {
+            return name;
+        }
+        return name.charAt(0) + "*".repeat(name.length() - 1);
     }
 }
