@@ -69,11 +69,14 @@
   - **원인**: `/api/v1/matchings/positions/{id}/rerecommendations`에만 걸려있는 `MatchingRateLimitInterceptor`가 요청마다 `RateLimitProvider`(Redis 기반 `lettuceProxyManager`, `@Lazy`라 첫 실제 사용 시점에 연결)를 타는데, Redis가 없는 CI에서는 그 시점에 연결 실패로 500이 남. 로컬은 Redis 컨테이너가 떠 있어서 우연히 통과했었고, 재추천 엔드포인트를 실제로 호출하는 테스트가 이번에 처음 생기면서(`MatchingIntegrationTest`) 처음 드러남 — 8/8~8/9 세션 초반에 "고쳤다"고 기록한 Redis 이슈와는 결이 다름(그건 컨텍스트 기동 자체가 깨지던 것, 이번 건 기동은 되고 실제 호출 시점에만 터지는 것).
   - **수정**: `MatchingIntegrationTest`에 `RateLimitProvider`를 `@MockitoBean`으로 교체하고 항상 허용하는 로컬 Bucket4j 버킷을 반환하도록 스텁. 로컬 `./gradlew clean build` 전체 통과 확인 후 커밋·push.
 - **프론트 전달용 문서 검토 (완료)**: 사용자가 데스크탑에 만든 `AI매칭_API_화면매핑_최신본.md`(레포 밖 파일, 프론트 공유용)를 실제 코드와 대조 검증. 실제 오류 1건 발견: 재추천 API 에러표에 `MT_009`(추천 후보 없음)를 넣었는데, 코드상 `CANDIDATE_POOL_EMPTY`는 enum에 정의만 있고 실제로 던지는 곳이 없음 — 후보가 없으면 에러가 아니라 `candidates: []`로 201 성공 응답이 내려감(라운드는 EXHAUSTED). 추가로 `RerecommendRequest.quantity`가 PAID일 때 `@NotNull` 검증이 없어서 누락 시 500(NPE) 위험이 있다는 점도 안내함. **사용자가 문서에 바로 반영함**(재추천 에러표에서 MT_009 제거, "후보 없으면 201+빈 배열" 문구 추가, quantity PAID 필수·검증 없음 경고 추가, "아직 확정/수정 필요" 표에 행 추가) → 재검토해서 전부 정확하게 반영된 것 확인 완료. 이 문서 관련 후속 작업 없음.
+- **PR #51 merge 완료**: 사용자가 CI 그린 확인 후 develop에 merge(`origin/develop` HEAD가 PR #51 커밋으로 이동). 매칭 스텁 어댑터 교체, budgetCap 버그 수정, 결제완료 이벤트 리스너가 전부 develop에 반영됨.
+- **`RerecommendRequest.quantity` NPE 수정 (HANDOFF 20번)**: PR #51이 이미 리뷰 대상이었던 시점에 발견한 이슈라 별도 브랜치로 분리하기로 함 — develop에서 새로 `fix/rerecommend-quantity-validation` 브랜치를 파서 작업. `MatchingErrorCode.QUANTITY_REQUIRED`(MT_012, 400) 추가하고 `MatchingRerecommendService.rerecommend()` 초입에서 `type == PAID && quantity == null`이면 던지도록 수정. 회귀 테스트 `MatchingIntegrationTest.rerecommendPaidWithoutQuantityReturnsBadRequest` 추가(PAID+quantity 없이 호출 시 500이 아니라 400+MT_012 확인). `./gradlew build` 전체 통과 확인 후 push. PR 텍스트는 AI가 작성해 전달, 사용자가 GitHub 웹에서 생성 예정(이 컴퓨터는 `gh` CLI/API 쓰기 권한 없음, 기존 패턴과 동일).
 
 ## 다음 세션에서 할 일
 
-1. **PR #51 CI 결과 확인** — 레이트리밋 목 처리 커밋(마지막 push)까지 반영된 CI가 초록인지 확인. 초록이면 팀원 리뷰/머지 대기(머지는 4번이 직접 하지 않음).
-2. `MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 인터페이스 정의 + `MatchingRequestService`에 구현 추가. 5번 쪽 구현과 맞춰야 함.
+1. ~~PR #51 CI 결과 확인~~ — 2026-08-09 develop에 merge 완료.
+1-1. **`fix/rerecommend-quantity-validation` PR 생성 대기** — 사용자가 GitHub 웹에서 생성 후 리뷰/머지.
+2. **(다음 작업, 진행 중)** `MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 인터페이스 정의 + `MatchingRequestService`에 구현 추가. 5번 쪽 구현과 맞춰야 함.
 3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
 4. budgetCap의 WEEK→개월 환산 규칙 3번 답변 오면 `BudgetCapCalculator` 임시값(4주=1개월) 교체.
 5. `resolveFreelancerId`/`findCondition`(freelancerId 기준) — 1번의 account_id↔freelancer_profile.id 조회 메서드 승인되면 `FreelancerDirectoryAdapter` 마저 완전 교체.
