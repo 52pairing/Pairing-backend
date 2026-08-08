@@ -3,6 +3,7 @@ package com.pairing.negotiation.application.service;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.negotiation.application.event.NegotiationEvent;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
+import com.pairing.negotiation.application.port.out.ChatRoomCreationPort;
 import com.pairing.negotiation.application.port.out.NegotiationEventPort;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
@@ -11,6 +12,7 @@ import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
+import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
@@ -37,6 +39,7 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final NegotiationViewerResolver viewerResolver;
     private final NegotiationEventPort eventPort;
     private final NegotiationProposalPort proposalPort;
+    private final ChatRoomCreationPort chatRoomCreationPort;
 
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
@@ -95,6 +98,12 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         }
 
         persist(negotiation, messages);
+
+        // 타결 시 사람 채팅방을 연다(AI Out → 사람 채팅). 같은 트랜잭션이라 방 생성 실패 시 타결도 롤백된다.
+        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
+            chatRoomCreationPort.createForAgreedNegotiation(negotiation.getId());
+        }
+
         publish(negotiation, switch (negotiation.getStatus()) {
             case AGREED -> NegotiationEventType.AGREED;
             case FAILED -> NegotiationEventType.FAILED;
