@@ -104,7 +104,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(request.getProjectId(),
                 request.getPositionId());
         long budgetCap = budgetCapCalculator.calculate(request.getProjectId(), position.budgetAmount(),
-                position.headcount());
+                position.totalHeadcount(), position.periodValue(), position.periodUnit());
 
         negotiationPort.createNegotiation(new CreateNegotiationCommand(
                 request.getId(), request.getProjectId(), request.getPositionId(), request.getFreelancerId(),

@@ -5,6 +5,7 @@ import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
+import com.pairing.project.domain.model.Position;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -42,6 +43,13 @@ public class ProjectDirectoryAdapter implements ProjectDirectoryPort {
     }
 
     @Override
+    public List<Long> findPositionIds(Long projectId) {
+        return projectQueryUseCase.getById(projectId).getPositions().stream()
+                .map(Position::getId)
+                .toList();
+    }
+
+    @Override
     public ProjectPositionSummary findPositionSummary(Long projectId, Long positionId) {
         com.pairing.project.application.result.ProjectPositionSummary source =
                 projectQueryUseCase.findProjectPositionSummary(projectId, positionId);
@@ -68,9 +76,12 @@ public class ProjectDirectoryAdapter implements ProjectDirectoryPort {
                 source.minCareerYears(),
                 workLabel,
                 periodLabel,
+                source.periodValue(),
+                source.periodUnit(),
                 source.startDesiredDate(),
                 source.budgetAmount(),
-                source.headcount()
+                source.headcount(),
+                source.totalHeadcount()
         );
     }
 }

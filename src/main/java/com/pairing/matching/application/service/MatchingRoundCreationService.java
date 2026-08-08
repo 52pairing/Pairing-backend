@@ -88,8 +88,8 @@ class MatchingRoundCreationService {
             MatchingCandidate candidate = MatchingCandidate.createFromEmbedding(round.getId(), positionId,
                     item.freelancerId(), 0.0);
             candidate.applyLlmResult(item.score(), item.reason());
-            candidate.applyGuard(true, null);
             candidate.applyGradeWeight(gradeWeightPercent);
+            candidate.applyGuard(true, null);
 
             if (rank <= exposeCount) {
                 candidate.expose(rank);

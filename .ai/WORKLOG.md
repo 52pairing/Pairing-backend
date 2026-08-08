@@ -50,12 +50,26 @@
   - `./gradlew test` 전체 통과 확인 후 커밋·push. **이슈/PR 아직 안 만듦.**
 - **팀에 결정 요청 (미확정)**: 3번이 덤으로 준 `currentSituation`(프로젝트 현재 상황)/`mainTask`(주요 담당 업무)를 프리랜서의 "받은 매칭 요청" 카드에 노출할지 — 프리랜서는 수락 전에는 프로젝트 상세를 볼 권한이 없어서 지금은 이 정보를 어디서도 못 본다. 요구사항 문서(프로젝트 등록 화면, R30 부근)엔 실제 입력 항목으로 존재함. 개발량은 적음(필드 2개 추가). 화면 기획 확인 필요해서 팀에 질문 전달함, 답 대기 중.
 
+## 2026-08-09
+
+- **develop 재동기화**: 3번의 매칭 연동 포트 확장(`findPositionSummaries`/`findProjectPositionSummary(positionId)`/`findStatus`, `ProjectPositionSummary.totalHeadcount`, `RecruitingStartedEvent` 발행), 정산(착수금 결제) 도메인, 리뷰 도메인, 등급(Grade) 도메인, 알림(Notification) 도메인이 전부 develop에 merge됨.
+- **H2 통합테스트 신규 작성**: `MatchingIntegrationTest`(9개 — 후보조회/거절/요청발송/보낸목록/받은목록/수락/거절/재추천)와 `RecruitingStartedEventListenerTest`(2개 — 이벤트 처리·멱등성). Swagger 수동 클릭 대신 이걸로 검증하기로 함(H2 = 실 DB 대신 쓰는 인메모리 DB, 서버 안 띄우고 코드로 API 호출·응답 검증).
+- **버그 발견·수정 1**: 테스트 작성 중 `MatchingRoundCreationService.persistCandidates`가 `applyGuard()`를 `applyGradeWeight()`보다 먼저 호출하고 있어서, `MatchingCandidate`의 상태머신(EMBEDDING→LLM_FINAL→GUARD) 규칙상 실제 추천 라운드 생성 때마다 무조건 예외가 나는 상태였음(테스트가 아니었으면 배포 후 처음 라운드 생성 시점에야 발견됐을 버그). 호출 순서를 `applyLlmResult→applyGradeWeight→applyGuard`로 정정.
+- **3번의 버그 리포트 확인·수정 (B①②는 실제 버그, B③은 우리 쪽엔 문제 없음)**:
+  - budgetCap이 포지션 인원(`position.headcount()`)으로 나뉘던 것 → 프로젝트 전체 인원(`totalHeadcount`)으로 나누게 수정.
+  - budgetAmount(계약기간 전체 총액)를 개월 수로 안 나누고 월급과 비교하던 단위 불일치 → `periodValue`/`periodUnit`을 매칭 쪽 `ProjectPositionSummary`에 raw 필드로 추가하고 개월 수로 나누게 수정. WEEK 단위 주→개월 환산 규칙은 아직 미정이라 4주=1개월 임시값 사용, 3번에게 질문 전달.
+  - `findClientAccountId`가 client_profile.id를 그대로 쓰는 것 아니냐는 리포트는 확인 결과 우리 어댑터가 이미 account 도메인 조회로 진짜 accountId로 변환하고 있어서 문제 없음 — 3번에게 회신.
+- **결제→매칭 이벤트 리스너 신규 구현** (HANDOFF 3일차 항목 4, 7 완료): `RecruitingStartedEvent(projectId)`를 받아 포지션별로 스냅샷 동결(`MatchingSnapshot` PROJECT/POSITION 타입 최초 사용) → 임베딩 upsert(`MatchingPort.upsertPositionEmbedding` 신규, Pairing-python `PUT /embeddings/positions` 연동) → `MatchingRoundCreationService.createRound(INITIAL, ...)` 순서로 처리. 멱등 가드, 포지션 단위 예외 격리 적용.
+  - **버그 발견·수정 2 (재발 방지 필요)**: 처음엔 리스너 한 클래스 안에서 `@TransactionalEventListener`가 `this.method()`로 `@Transactional(REQUIRES_NEW)` 메서드를 자체 호출(self-invocation)하도록 짰는데, 스프링 프록시를 안 거쳐서 트랜잭션이 조용히 무시되고 라운드 저장이 안 되는 걸 테스트로 재현·발견함. `RecruitingStartedEventListener`(이벤트 수신+포지션 목록 순회)와 `RecruitingStartedPositionHandler`(포지션 1건 처리, 실제 REQUIRES_NEW 적용)로 빈을 분리해서 해결.
+- `ProjectDirectoryPort.findPositionIds(projectId)` 신규 추가 — project 도메인의 `findPositionSummaries`가 positionId를 안 내려줘서(포지션 여러 개일 때 어떤 요약이 어떤 포지션 건지 구분 불가), 대신 `ProjectQueryUseCase.getById(projectId).getPositions()`로 직접 포지션 ID 목록을 얻어오게 함. project 쪽에 `positionId` 필드 추가를 요청하면 나중에 더 가벼운 방식으로 교체 가능.
+- 3번에게 회신 정리해서 전달함(B①②③ 확인 결과 + C 구현 완료 알림 + WEEK 환산 규칙 질문).
+
 ## 다음 세션에서 할 일
 
-1. `feature/matching-directory-adapters`에 이슈·PR 생성 (`docs/ai/git-issue-pr-guide.md` 규칙: 브랜치명 `feature/short-task-name` 컨벤션 확인함). **PR 올리기 전에 `local` 프로파일로 서버 띄워 Swagger UI에서 바뀐 동작(후보 카드/요청 상세/수락→협상생성)을 실제로 호출해 확인하고 PR `Verification` 섹션에 기록할 것 — 지난 PR 때 빠뜨렸던 절차라 이번엔 잊지 말 것.**
+1. `feature/matching-directory-adapters`에 이슈·PR 생성 (`docs/ai/git-issue-pr-guide.md` 규칙: 브랜치명 `feature/short-task-name` 컨벤션 확인함). PR Verification 섹션에는 Swagger 대신 `MatchingIntegrationTest`/`RecruitingStartedEventListenerTest` 통과 결과를 근거로 기록.
 2. `MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 인터페이스 정의 + `MatchingRequestService`에 구현 추가. 5번 쪽 구현과 맞춰야 함.
 3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
-4. `feature/negotiation-unread-proposals`가 develop에 merge되면 `newProposalCount` 동작이 자동으로 좋아지는지 확인만.
+4. budgetCap의 WEEK→개월 환산 규칙 3번 답변 오면 `BudgetCapCalculator` 임시값(4주=1개월) 교체.
 5. `resolveFreelancerId`/`findCondition`(freelancerId 기준) — 1번의 account_id↔freelancer_profile.id 조회 메서드 승인되면 `FreelancerDirectoryAdapter` 마저 완전 교체.
 6. `.ai/HANDOFF.md`의 "3일차" 나머지 항목: Pairing-python `_build_prompt` 실구현 + 하드필터 + Stage F 실제 배분 알고리즘 + 등급 타이브레이커 + 통합테스트/문서 동기화.
-7. 결제 완료 트리거로 "최초 추천 라운드 생성" 호출하는 지점(payment 도메인도 아직 없음 — 인바운드 UseCase만 노출해두고 대기하는 게 나을지 확인 필요).
+7. 임베딩 텍스트(`RecruitingStartedPositionHandler.buildEmbeddingText`)에 mainTask/currentSituation/업무범위/우대사항 추가 — 3번 항목(위 3번)이 정해지고 매칭 쪽 요약에 필드가 생기면 같이 반영.

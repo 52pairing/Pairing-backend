@@ -92,6 +92,21 @@ public class PythonMatchingAdapter implements MatchingPort {
         return new MatchingRecommendation(data.positionId(), data.model(), candidates);
     }
 
+    @Override
+    @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "upsertPositionEmbeddingFallback")
+    public void upsertPositionEmbedding(Long positionId, String text) {
+        Map<String, Object> requestBody = Map.of("position_id", positionId, "text", text);
+
+        PythonApiResponse<EmbeddingData> response = restClient.put()
+                .uri("/api/v1/embeddings/positions")
+                .headers(this::withCommonHeaders)
+                .body(requestBody)
+                .retrieve()
+                .body(new org.springframework.core.ParameterizedTypeReference<PythonApiResponse<EmbeddingData>>() {
+                });
+        requireData(response);
+    }
+
     private void withCommonHeaders(org.springframework.http.HttpHeaders headers) {
         headers.add(INTERNAL_API_KEY_HEADER, internalApiKey);
         headers.add(TRACE_ID_HEADER, TraceIdFilter.currentTraceId());
@@ -117,7 +132,20 @@ public class PythonMatchingAdapter implements MatchingPort {
         throw new BusinessException(MatchingErrorCode.AI_SERVER_CALL_FAILED);
     }
 
+    private void upsertPositionEmbeddingFallback(Long positionId, String text, Throwable t) {
+        log.error("[Pairing-python] 포지션 임베딩 저장 실패/서킷 오픈 (positionId={}, 원인: {})", positionId, t.getMessage());
+        throw new BusinessException(MatchingErrorCode.AI_SERVER_CALL_FAILED);
+    }
+
     private record PythonApiResponse<T>(String code, String message, T data) {
+    }
+
+    private record EmbeddingData(
+            @JsonProperty("target_id") Long targetId,
+            String model,
+            int dimension,
+            boolean skipped
+    ) {
     }
 
     private record CandidatePoolData(

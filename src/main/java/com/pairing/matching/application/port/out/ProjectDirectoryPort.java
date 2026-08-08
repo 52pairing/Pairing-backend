@@ -24,6 +24,9 @@ public interface ProjectDirectoryPort {
     /** 포지션의 모집 인원. 노출 수·인원 초과 검증에 쓴다. */
     int findHeadcount(Long positionId);
 
+    /** 프로젝트에 속한 포지션 ID 전체(positionNo 오름차순). 결제 완료 후 포지션별로 초기 라운드를 돌릴 때 쓴다. */
+    List<Long> findPositionIds(Long projectId);
+
     /**
      * 매칭 요청 카드 노출용 프로젝트·포지션 요약.
      *

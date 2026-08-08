@@ -1,6 +1,6 @@
 # 인수인계 — AI매칭(4번 파트) 3일 스프린트
 
-최종 갱신: 2026-08-08. 이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다.
+최종 갱신: 2026-08-09. 이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다.
 
 ## 진행 현황 요약
 
@@ -24,7 +24,7 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 상�
 3. ~~`POST /api/v1/matchings/requests/{requestId}/acceptance` 실제 구현~~ — 완료. 스냅샷 캡처, `budgetCap` 계산, negotiation 호출까지 다 붙였다.
    - ~~negotiation 쪽 실제 인바운드 UseCase 없음~~ — 2026-08-08 해소, `NegotiationAdapter`로 실제 연동 완료(아래 12번 참고).
    - **새로 남은 것**: 협상 타결/결렬 시 매칭 상태를 갱신해줄 통로가 없음. `MatchingNegotiationOutcomeUseCase.markNegotiationAgreed/markNegotiationFailed(requestId)` 시그니처를 5번에게 전달함 — 양쪽 다 구현 전.
-4. 결제완료 이벤트 시점에 "1차 추천 라운드 생성" — **아직 안 함**. `MatchingRoundCreationService.createRound(...)`(2일차에 재추천용으로 만듦)를 그대로 재사용하면 되는데, 트리거를 걸 payment 도메인 자체가 아직 없다. payment 도메인이 생기면: `RecommendationType.INITIAL`, `recruitCount = position.headcount()`, `costAmount = 0`으로 `createRound` 호출하는 얇은 진입점만 추가하면 됨.
+4. ~~결제완료 이벤트 시점에 "1차 추천 라운드 생성"~~ — 2026-08-09 완료. 3번이 착수금 결제 커밋 후 `RecruitingStartedEvent(projectId)`를 발행하도록 만들었고, 매칭 쪽 `RecruitingStartedEventListener`/`RecruitingStartedPositionHandler`가 이를 받아 포지션별로 스냅샷 동결 → 임베딩 upsert(`MatchingPort.upsertPositionEmbedding` 신규) → `MatchingRoundCreationService.createRound(INITIAL, ...)` 순서로 처리한다. 멱등 가드·포지션 단위 예외 격리 적용, 테스트(`RecruitingStartedEventListenerTest`) 통과 확인.
 
 ### 2일차 — 후보 노출/선택/요청 [완료]
 
@@ -42,14 +42,17 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 상�
 12. ~~freelancer/project/negotiation 도메인이 실제로 만들어지면 스텁 어댑터 3개 교체~~ — 2026-08-08, `feature/matching-directory-adapters` 브랜치에서 완료(Project/Negotiation 완전 교체, Freelancer는 카드 요약만). **이 브랜치 이슈·PR 아직 안 만듦 — 다음 세션 최우선.** PR 올리기 전에 `local` 프로파일로 서버 띄워 Swagger에서 실제 호출 확인하고 `Verification` 섹션에 기록할 것(지난 PR 때 빠뜨렸던 절차).
     - 프리랜서 등급 타이브레이커(base_score 동점 시 마스터>시니어>주니어)는 아직 랭킹 로직에 미반영.
     - `resolveFreelancerId`/`findCondition`(freelancerId 기준)은 account 도메인의 account_id↔freelancer_profile.id 조회 메서드가 나와야 완전 교체 가능(2번이 1번에게 승인 요청, 대기 중).
+    - `src/test/java/com/pairing/matching/presentation/api/MatchingIntegrationTest.java`(H2 통합테스트, 후보조회/거절/요청발송/조회/수락/거절/재추천 9개 케이스)로 검증 완료 — Swagger 수동 클릭 대신 이 테스트를 돌려서 확인하면 됨. PR Verification 섹션에 이 테스트 통과를 근거로 적을 것.
 13. 통합 테스트, `.ai/API.md`/`docs/api-dto.csv` 최종 동기화, 에러코드(`AI_001~AI_030`) 매핑 점검.
 14. `MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보 인바운드 포트) 구현. 시그니처는 5번에게 전달 완료, `MatchingRequestService`에 구현 추가 필요.
 15. `currentSituation`/`mainTask`(프로젝트 현재 상황/담당 업무) 노출 여부 팀 답변 오면 `MatchingRequestResponse`에 필드 2개 추가 여부 결정.
+16. ~~budgetCap이 포지션 인원/총액 단위로 잘못 계산되던 버그 2건(3번 리포트)~~ — 2026-08-09 수정 완료. `position.headcount()`→`totalHeadcount()`, budgetAmount를 개월 수로도 나누도록 수정. WEEK 기간 주→개월 환산 규칙만 3번에게 확인 대기 중(현재 4주=1개월 임시값).
+17. **(참고, 재발 방지)** `@TransactionalEventListener` 안에서 `@Transactional(REQUIRES_NEW)` 메서드를 "같은 빈 안에서 `this.method()`로" 부르면 스프링 프록시를 안 거쳐 트랜잭션이 조용히 무시된다(자체 호출 self-invocation 문제). 실제로 이 버그로 라운드 저장이 안 되는 걸 테스트로 재현해서 발견 — 새 트랜잭션이 꼭 필요한 메서드는 반드시 별도 빈으로 분리해서 호출할 것(`RecruitingStartedEventListener`/`RecruitingStartedPositionHandler` 참고).
 
 ## 열려있는 결정/블로커 (건드리기 전에 확인)
 
 - `resolveFreelancerId`/`findCondition`(freelancerId 기준) — account 도메인 메서드 대기 중이라 여전히 placeholder.
-- 적합도 점수 스케일 0~100 여부, 골드 등급 수수료 할인, 프로젝트 인원별 예산배분 필드 존재 여부, `currentSituation`/`mainTask` 노출 여부 — `.ai/STATE.md` 하단 표 참고, 팀 확인 대기 중이라 확정 전까지는 가정값으로 진행.
+- 적합도 점수 스케일 0~100 여부, 골드 등급 수수료 할인, 프로젝트 인원별 예산배분 필드 존재 여부, `currentSituation`/`mainTask` 노출 여부, budgetCap의 WEEK→개월 환산 규칙 — `.ai/STATE.md` 하단 표 참고, 팀 확인 대기 중이라 확정 전까지는 가정값으로 진행.
 
 ## 참고할 실제 파일
 
