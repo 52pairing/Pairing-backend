@@ -469,4 +469,18 @@ class MatchingIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("MT_012"));
     }
+
+    @Test
+    @DisplayName("재추천 종류로 INITIAL을 보내면 400으로 거부한다")
+    void rerecommendWithInitialTypeReturnsBadRequest() throws Exception {
+        seedRound(2);
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"INITIAL","quantity":3}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_013"));
+    }
 }

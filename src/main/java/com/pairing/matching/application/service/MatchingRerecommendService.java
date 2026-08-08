@@ -32,6 +32,9 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
     @Transactional
     public CandidateListResponse rerecommend(Long positionId, RecommendationType type, Integer quantity,
                                              Long accountId) {
+        if (type != RecommendationType.FREE && type != RecommendationType.PAID) {
+            throw new BusinessException(MatchingErrorCode.INVALID_RERECOMMEND_TYPE);
+        }
         MatchingRound latestRound = matchingRoundRepository.findLatestByPositionId(positionId)
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.ROUND_NOT_FOUND));
         Long projectId = latestRound.getProjectId();
