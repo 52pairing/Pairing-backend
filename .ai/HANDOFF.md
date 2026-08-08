@@ -51,7 +51,8 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 같�
 16. ~~budgetCap이 포지션 인원/총액 단위로 잘못 계산되던 버그 2건(3번 리포트)~~ — 2026-08-09 수정 완료. `position.headcount()`→`totalHeadcount()`, budgetAmount를 개월 수로도 나누도록 수정. WEEK 기간 주→개월 환산 규칙만 3번에게 확인 대기 중(현재 4주=1개월 임시값).
 17. **(참고, 재발 방지)** `@TransactionalEventListener` 안에서 `@Transactional(REQUIRES_NEW)` 메서드를 "같은 빈 안에서 `this.method()`로" 부르면 스프링 프록시를 안 거쳐 트랜잭션이 조용히 무시된다(자체 호출 self-invocation 문제). 실제로 이 버그로 라운드 저장이 안 되는 걸 테스트로 재현해서 발견 — 새 트랜잭션이 꼭 필요한 메서드는 반드시 별도 빈으로 분리해서 호출할 것(`RecruitingStartedEventListener`/`RecruitingStartedPositionHandler` 참고).
 18. **(참고, 재발 방지)** 재추천 엔드포인트의 레이트리밋(`RateLimitProvider`)은 Redis가 실제로 있어야 동작한다. 이 엔드포인트를 호출하는 테스트를 새로 짤 땐 `RateLimitProvider`를 `@MockitoBean`으로 목 처리해야 Redis 없는 CI에서도 통과한다(`MatchingIntegrationTest` 참고). 로컬은 Redis 컨테이너가 떠 있어서 이 문제가 안 드러나니 착각하지 말 것.
-19. `C:\Users\user\Desktop\AI매칭_API_화면매핑_최신본.md`(레포 밖, 프론트 공유용 문서) 검토 결과 전달함 — 재추천 에러표의 `MT_009`(실제로는 안 던져지는 dead code, 후보 없으면 에러가 아니라 빈 배열로 201 성공) 제거 필요, `RerecommendRequest.quantity`가 PAID일 때 필수인데 검증이 없어 누락 시 500(NPE)이 날 수 있다는 점 안내함. 사용자가 문서에 반영했는지 다음 세션에서 확인.
+19. ~~`AI매칭_API_화면매핑_최신본.md`(레포 밖, 프론트 공유용 문서) 검토~~ — 2026-08-09 완료. MT_009(dead code, 실제론 201+빈 배열) 제거, `RerecommendRequest.quantity` PAID 필수·검증 없음 경고를 사용자가 문서에 반영, 재검토까지 끝남.
+20. **(작은 코드 개선, 우선순위 낮음)** `RerecommendRequest.quantity`에 `type=PAID`일 때만 필수가 되는 조건부 검증이 없다. 지금은 프론트가 빠뜨리면 400이 아니라 500(NPE, `recruitCount = quantity`에서 언박싱)이 난다. `MatchingRerecommendService.rerecommend()` 초입에 `type == PAID && quantity == null`이면 `MatchingErrorCode.INVALID_MATCHING_STATE`(또는 전용 코드) 던지는 명시적 검증 추가 권장.
 
 ## 열려있는 결정/블로커 (건드리기 전에 확인)
 
