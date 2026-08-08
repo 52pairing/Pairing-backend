@@ -2,6 +2,9 @@ package com.pairing.project.application.service;
 
 import com.pairing.global.exception.BusinessException;
 import com.pairing.project.application.port.ClientProfileReaderPort;
+import com.pairing.project.application.port.ProjectFileReaderPort;
+import com.pairing.project.application.port.SettlementReaderPort;
+import com.pairing.project.application.result.ProjectDetail;
 import com.pairing.project.application.result.ProjectPositionSummary;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.project.domain.model.Position;
@@ -27,6 +30,8 @@ public class ProjectQueryService implements ProjectQueryUseCase {
 
     private final ProjectRepository projectRepository;
     private final ClientProfileReaderPort clientProfileReaderPort;
+    private final ProjectFileReaderPort projectFileReaderPort;
+    private final SettlementReaderPort settlementReaderPort;
 
     @Override
     public Project getById(Long projectId) {
@@ -93,6 +98,23 @@ public class ProjectQueryService implements ProjectQueryUseCase {
                 project.getBudgetAmount(),
                 project.getCurrentSituation(),
                 project.getMainTask());
+    }
+
+    @Override
+    public ProjectDetail getDetail(Long projectId) {
+        return toDetail(getById(projectId));
+    }
+
+    @Override
+    public ProjectDetail getDetailForOwner(Long projectId, Long accountId) {
+        return toDetail(getByIdForOwner(projectId, accountId));
+    }
+
+    private ProjectDetail toDetail(Project project) {
+        return new ProjectDetail(
+                project,
+                projectFileReaderPort.getAllByIds(project.getFileIds()),
+                settlementReaderPort.findPayableSettlementId(project.getId()).orElse(null));
     }
 
     private Long resolveClientProfileId(Long accountId) {

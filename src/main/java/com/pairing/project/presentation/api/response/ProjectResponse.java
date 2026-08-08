@@ -110,13 +110,13 @@ public record ProjectResponse(
 ) {
 
     /**
-     * 도메인 -> 응답.
+     * 도메인 + 첨부 메타 -> 응답.
      *
      * <p>statusNote / freelancers / payableSettlementId 는 매칭·정산 도메인 값이라 아직 비운다.
-     * 첨부는 fileId 만 채운다. originalName / sizeBytes / fileUrl 은 file 테이블 소관인데
-     * file 도메인 구현이 붙으면 파라미터로 받아 채운다.
      */
-    public static ProjectResponse from(com.pairing.project.domain.model.Project p) {
+    public static ProjectResponse from(com.pairing.project.application.result.ProjectDetail detail) {
+        com.pairing.project.domain.model.Project p = detail.project();
+
         List<Position> positions = p.getPositions().stream()
                 .map(pos -> new Position(
                         pos.getId(), pos.getPositionNo(), pos.getJobCategory(), pos.getJobRole(),
@@ -124,8 +124,9 @@ public record ProjectResponse(
                         pos.getStatus(), pos.getSkills()))
                 .toList();
 
-        List<AttachedFile> files = p.getFileIds().stream()
-                .map(fileId -> new AttachedFile(fileId, null, null, null))
+        // objectKey 를 fileUrl 에 그대로 담는다. CdnMappable 이라 직렬화 시점에 절대 URL 로 바뀐다.
+        List<AttachedFile> files = detail.files().stream()
+                .map(f -> new AttachedFile(f.fileId(), f.originalName(), f.sizeBytes(), f.objectKey()))
                 .toList();
 
         return new ProjectResponse(
@@ -138,7 +139,7 @@ public record ProjectResponse(
                 p.getRecruitDeadline(), p.getExtensionCount(),
                 p.getFreeRerecommendUsed(), p.getPaidRerecommendUsed(),
                 positions, List.of(), files,
-                p.getCreatedAt(), null);
+                p.getCreatedAt(), detail.payableSettlementId());
     }
 
     @Schema(description = "포지션")
