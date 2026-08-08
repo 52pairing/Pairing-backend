@@ -9,6 +9,8 @@ import com.pairing.freelancer.application.usecase.FreelancerCandidateSummaryUseC
 import com.pairing.freelancer.domain.model.FreelancerGrade;
 import com.pairing.freelancer.exception.FreelancerErrorCode;
 import com.pairing.global.exception.BusinessException;
+import com.pairing.review.application.result.ReviewSummaryResult;
+import com.pairing.review.application.usecase.ReviewUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,12 +22,14 @@ public class FreelancerCandidateSummaryService implements FreelancerCandidateSum
 
     private final AccountQueryUseCase accountQueryUseCase;
     private final FileQueryUseCase fileQueryUseCase;
+    private final ReviewUseCase reviewUseCase;
 
     @Override
     public FreelancerCandidateSummaryResult getSummary(Long freelancerProfileId) {
         FreelancerProfile profile = accountQueryUseCase.findFreelancerProfileById(freelancerProfileId)
                 .orElseThrow(() -> new BusinessException(FreelancerErrorCode.CANDIDATE_NOT_FOUND));
         Account account = accountQueryUseCase.getById(profile.getAccountId());
+        ReviewSummaryResult reviewSummary = reviewUseCase.getSummary(profile.getAccountId());
 
         return new FreelancerCandidateSummaryResult(
                 profile.getId(),
@@ -33,9 +37,8 @@ public class FreelancerCandidateSummaryService implements FreelancerCandidateSum
                 account.getName(),
                 fileQueryUseCase.findObjectKey(profile.getProfileFileId()).orElse(null),
                 FreelancerGrade.valueOf(profile.getGrade()),
-                // TODO: review 도메인 구현 후 실제 평균/건수로 교체
-                null,
-                0
+                reviewSummary.averageScore(),
+                reviewSummary.reviewCount()
         );
     }
 }
