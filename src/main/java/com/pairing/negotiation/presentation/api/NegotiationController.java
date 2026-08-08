@@ -6,8 +6,10 @@ import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.negotiation.application.result.NegotiationView;
+import com.pairing.negotiation.application.usecase.NegotiationAdminQueryUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
+import com.pairing.negotiation.presentation.api.support.NegotiationAdminResponseFactory;
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
@@ -65,6 +67,7 @@ public class NegotiationController {
 
     private final NegotiationQueryUseCase negotiationQueryUseCase;
     private final NegotiationLoopUseCase negotiationLoopUseCase;
+    private final NegotiationAdminQueryUseCase negotiationAdminQueryUseCase;
 
     @GetMapping("/mine")
     @Operation(summary = "내 협상 목록",
@@ -198,9 +201,8 @@ public class NegotiationController {
     @GetMapping("/admin/summary")
     @Operation(summary = "[관리자] 협상 요약", description = "AI Agent 관리 화면 상단 카드입니다.")
     public ResponseEntity<ApiResponse<NegotiationAdminSummaryResponse>> findSummaryForAdmin() {
-        // TODO: 상태별 집계 + 평균 라운드/소요일 계산
         return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_SUMMARY_FOUND", "조회에 성공했습니다.",
-                new NegotiationAdminSummaryResponse(3, 1, 1, 1, 4.0, 2.3)));
+                NegotiationAdminResponseFactory.summary(negotiationAdminQueryUseCase.getSummary())));
     }
 
     @GetMapping("/admin")
@@ -212,9 +214,11 @@ public class NegotiationController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        // TODO: 전체 협상 검색
-        return ResponseEntity.ok(ApiResponse.success("NEGOTIATIONS_FOUND", "조회에 성공했습니다.",
-                new PageResponse<>(List.of(sampleSummary()), page, size, 1, 1, true, true)));
+        Pageable pageable = PageRequest.of(page, size);
+        PageResponse<NegotiationSummaryResponse> result = PageResponse.from(
+                negotiationAdminQueryUseCase.search(keyword, status, pageable)
+                        .map(NegotiationAdminResponseFactory::listItem));
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATIONS_FOUND", "조회에 성공했습니다.", result));
     }
 
     @GetMapping("/admin/{negotiationId}")
@@ -223,9 +227,8 @@ public class NegotiationController {
     public ResponseEntity<ApiResponse<NegotiationAdminDetailResponse>> findOneForAdmin(
             @PathVariable Long negotiationId
     ) {
-        // TODO: 협상 + 조건 + 라운드별 메시지를 조립
         return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_FOUND", "조회에 성공했습니다.",
-                sampleAdminDetail()));
+                NegotiationAdminResponseFactory.detail(negotiationAdminQueryUseCase.getDetail(negotiationId))));
     }
 
     @GetMapping("/admin/{negotiationId}/raw-logs")
@@ -234,11 +237,10 @@ public class NegotiationController {
     public ResponseEntity<ApiResponse<List<AgentRawLogResponse>>> findRawLogsForAdmin(
             @PathVariable Long negotiationId
     ) {
-        // TODO: ai_agent_log 조회 (시간순)
-        return ResponseEntity.ok(ApiResponse.success("RAW_LOGS_FOUND", "조회에 성공했습니다.",
-                List.of(new AgentRawLogResponse(9001L, 1, "CLIENT_AGENT", "gemini-2.5-flash",
-                        "{\"role\":\"system\",...}", "{\"proposal\":{...}}",
-                        1820, 410, 2140, null, LocalDateTime.now()))));
+        List<AgentRawLogResponse> logs = negotiationAdminQueryUseCase.getRawLogs(negotiationId).stream()
+                .map(NegotiationAdminResponseFactory::rawLog)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success("RAW_LOGS_FOUND", "조회에 성공했습니다.", logs));
     }
 
     @GetMapping("/admin/{negotiationId}/messages")
@@ -246,33 +248,16 @@ public class NegotiationController {
     public ResponseEntity<ApiResponse<List<NegotiationMessageResponse>>> findMessagesForAdmin(
             @PathVariable Long negotiationId
     ) {
-        // TODO: 관리자용 전체 로그 조회
-        return ResponseEntity.ok(ApiResponse.success("MESSAGES_FOUND", "조회에 성공했습니다.", List.of(sampleMessage())));
+        NegotiationAdminQueryUseCase.AdminMessages result = negotiationAdminQueryUseCase.getMessages(negotiationId);
+        List<NegotiationMessageResponse> logs = result.messages().stream()
+                .map(m -> NegotiationResponseFactory.message(m, result.conditionTypes().get(m.getConditionId())))
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success("MESSAGES_FOUND", "조회에 성공했습니다.", logs));
     }
 
     // ==========================================
     // 스켈레톤 고정 응답. 구현하면서 제거한다.
     // ==========================================
-
-    private NegotiationAdminDetailResponse sampleAdminDetail() {
-        return new NegotiationAdminDetailResponse(300L, "NEG-2026-001", 1L, "쇼핑몰 관리자 페이지 리뉴얼",
-                "삼성전자", "김프리", NegotiationStatus.AGREED,
-                LocalDateTime.now().minusDays(3), LocalDateTime.now().minusDays(1), 4,
-                new NegotiationAdminDetailResponse.FinalResult("월 5,000,000원", "3개월", "혼합",
-                        "프론트엔드 전체 리뉴얼"),
-                List.of(new NegotiationAdminDetailResponse.RoundLog(1, SenderType.CLIENT_AGENT,
-                        "클라이언트 Agent", "수정 제안", LocalDateTime.now().minusDays(3),
-                        "월 4,500,000원", "3개월", "프론트엔드 전체", "주 2회 출근",
-                        "예산 범위 내에서 최저 제안으로 시작", "수정 제안",
-                        "희망 단가보다 낮음, 출근 조건 조정 필요")));
-    }
-
-    private NegotiationSummaryResponse sampleSummary() {
-        return new NegotiationSummaryResponse(300L, "NEG-2026-001", 1L, "페어링 웹 리뉴얼",
-                "홍길동", "삼성전자", "김프리", NegotiationStatus.IN_PROGRESS, 3, true,
-                SenderType.FREELANCER_AGENT, LocalDateTime.now().minusMinutes(30),
-                LocalDateTime.now().minusDays(1), null);
-    }
 
     private NegotiationResponse sampleDetail() {
         NegotiationResponse.Condition condition = new NegotiationResponse.Condition(
