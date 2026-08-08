@@ -5,18 +5,18 @@ import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
+import com.pairing.matching.application.usecase.MatchingCandidateCommandUseCase;
+import com.pairing.matching.application.usecase.MatchingCandidateQueryUseCase;
+import com.pairing.matching.application.usecase.MatchingRequestCommandUseCase;
+import com.pairing.matching.application.usecase.MatchingRequestQueryUseCase;
+import com.pairing.matching.application.usecase.MatchingRerecommendUseCase;
 import com.pairing.matching.domain.model.MatchingRequestTab;
 import com.pairing.matching.domain.model.MatchingStatus;
-import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.presentation.api.request.MatchingRejectRequest;
 import com.pairing.matching.presentation.api.request.MatchingRequestCreateRequest;
 import com.pairing.matching.presentation.api.request.RerecommendRequest;
 import com.pairing.matching.presentation.api.response.CandidateListResponse;
-import com.pairing.matching.presentation.api.response.CandidateResponse;
 import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
-import com.pairing.meta.domain.model.JobRole;
-import com.pairing.meta.domain.model.PayUnit;
-import com.pairing.meta.domain.model.SkillCode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -32,8 +32,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -41,14 +39,18 @@ import java.util.List;
  *
  * <p>후보 추천 자체는 AI 서버(FastAPI)가 계산하고, 이 API 는 그 결과를 저장·조회하는 창구다.
  * 상태는 프리랜서 개인이 아니라 매칭 요청 1건에 붙는다.
- *
- * <p>스켈레톤이라 고정 응답을 돌려준다.
  */
 @RestController
 @RequestMapping("/api/v1/matchings")
 @RequiredArgsConstructor
 @Tag(name = "11. Matching", description = "AI 매칭 후보/요청 API")
 public class MatchingController {
+
+    private final MatchingCandidateQueryUseCase matchingCandidateQueryUseCase;
+    private final MatchingCandidateCommandUseCase matchingCandidateCommandUseCase;
+    private final MatchingRequestCommandUseCase matchingRequestCommandUseCase;
+    private final MatchingRequestQueryUseCase matchingRequestQueryUseCase;
+    private final MatchingRerecommendUseCase matchingRerecommendUseCase;
 
     @GetMapping("/positions/{positionId}/candidates")
     @PreAuthorize("hasRole('CLIENT')")
@@ -59,22 +61,22 @@ public class MatchingController {
             @PathVariable Long positionId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 최신 라운드의 노출 대상 후보 조회
-        return ResponseEntity.ok(ApiResponse.success("CANDIDATES_FOUND", "조회에 성공했습니다.", sampleCandidates()));
+        CandidateListResponse response = matchingCandidateQueryUseCase.findCandidates(positionId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("CANDIDATES_FOUND", "조회에 성공했습니다.", response));
     }
 
     @PostMapping("/candidates/{candidateId}/rejection")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "추천 후보 거절",
             description = "해당 후보와는 매칭을 진행하지 않습니다. 거절한 후보는 다시 추천되지 않습니다. "
-                    + "추천된 후보를 모두 거절하면 무료 재추천이 활성화됩니다.")
+                    + "무료 재추천은 이 거절과 무관하게, 발송한 매칭 요청이 전원 거절·만료됐을 때 프로젝트 전체 기준 1회 주어집니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "ACCESS_DENIED"})
     public ResponseEntity<ApiResponse<CandidateListResponse>> rejectCandidate(
             @PathVariable Long candidateId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 후보 rejected 처리 -> 전원 거절이면 무료 재추천 활성화
-        return ResponseEntity.ok(ApiResponse.success("CANDIDATE_REJECTED", "후보를 거절했습니다.", sampleCandidates()));
+        CandidateListResponse response = matchingCandidateCommandUseCase.rejectCandidate(candidateId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("CANDIDATE_REJECTED", "후보를 거절했습니다.", response));
     }
 
     @PostMapping("/requests")
@@ -85,9 +87,10 @@ public class MatchingController {
             @Valid @RequestBody MatchingRequestCreateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 인원 초과 검증 후 요청 생성 + 프리랜서 알림
+        List<MatchingRequestResponse> responses = matchingRequestCommandUseCase.sendRequests(
+                request.positionId(), request.candidateIds(), accountId);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created("MATCHING_REQUESTED", "매칭 요청을 보냈습니다.", List.of(sampleRequest())));
+                .body(ApiResponse.created("MATCHING_REQUESTED", "매칭 요청을 보냈습니다.", responses));
     }
 
     @GetMapping("/requests")
@@ -101,8 +104,9 @@ public class MatchingController {
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 클라이언트가 보낸 요청 조회
-        return ResponseEntity.ok(ApiResponse.success("REQUESTS_FOUND", "조회에 성공했습니다.", samplePage(page, size)));
+        PageResponse<MatchingRequestResponse> response = matchingRequestQueryUseCase.findSentRequests(
+                projectId, positionId, status, page, size, accountId);
+        return ResponseEntity.ok(ApiResponse.success("REQUESTS_FOUND", "조회에 성공했습니다.", response));
     }
 
     @GetMapping("/requests/received")
@@ -114,8 +118,9 @@ public class MatchingController {
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 프리랜서가 받은 요청 조회
-        return ResponseEntity.ok(ApiResponse.success("REQUESTS_FOUND", "조회에 성공했습니다.", samplePage(page, size)));
+        PageResponse<MatchingRequestResponse> response = matchingRequestQueryUseCase.findReceivedRequests(
+                tab, page, size, accountId);
+        return ResponseEntity.ok(ApiResponse.success("REQUESTS_FOUND", "조회에 성공했습니다.", response));
     }
 
     @GetMapping("/requests/{requestId}")
@@ -124,8 +129,8 @@ public class MatchingController {
             @PathVariable Long requestId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 당사자만 열람 가능
-        return ResponseEntity.ok(ApiResponse.success("REQUEST_FOUND", "조회에 성공했습니다.", sampleRequest()));
+        MatchingRequestResponse response = matchingRequestQueryUseCase.findRequest(requestId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("REQUEST_FOUND", "조회에 성공했습니다.", response));
     }
 
     @PostMapping("/requests/{requestId}/acceptance")
@@ -136,8 +141,8 @@ public class MatchingController {
             @PathVariable Long requestId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 상태 ACCEPTED -> 협상 생성 -> NEGOTIATING
-        return ResponseEntity.ok(ApiResponse.success("MATCHING_ACCEPTED", "요청을 수락했습니다.", sampleRequest()));
+        MatchingRequestResponse response = matchingRequestCommandUseCase.accept(requestId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("MATCHING_ACCEPTED", "요청을 수락했습니다.", response));
     }
 
     @PostMapping("/requests/{requestId}/rejection")
@@ -148,8 +153,9 @@ public class MatchingController {
             @Valid @RequestBody MatchingRejectRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 상태 REJECTED, 클라이언트 알림
-        return ResponseEntity.ok(ApiResponse.success("MATCHING_REJECTED", "요청을 거절했습니다.", sampleRequest()));
+        MatchingRequestResponse response = matchingRequestCommandUseCase.reject(requestId, request.reason(),
+                accountId);
+        return ResponseEntity.ok(ApiResponse.success("MATCHING_REJECTED", "요청을 거절했습니다.", response));
     }
 
     @PostMapping("/positions/{positionId}/rerecommendations")
@@ -161,35 +167,9 @@ public class MatchingController {
             @Valid @RequestBody RerecommendRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 무료/유료 조건 검증 -> 결제(유료) -> AI 서버 재추천 -> 결과 저장
+        CandidateListResponse response = matchingRerecommendUseCase.rerecommend(positionId, request.type(),
+                request.quantity(), accountId);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created("RERECOMMENDED", "재추천을 완료했습니다.", sampleCandidates()));
-    }
-
-    // ==========================================
-    // 스켈레톤 고정 응답. 구현하면서 제거한다.
-    // ==========================================
-
-    private CandidateListResponse sampleCandidates() {
-        CandidateResponse candidate = new CandidateResponse(
-                100L, 7L, "홍길동", "profiles/uuid.png", JobRole.BACKEND, 5, "SENIOR",
-                4.5, 12, List.of(SkillCode.JAVA, SkillCode.SPRING_BOOT), 87.5,
-                List.of("요구 스킬 97% 일치", "경력 조건 충족", "재택 근무 선호", "유사 프로젝트 3건"),
-                PayUnit.MONTHLY, 6_500_000L, 1, false, false);
-
-        return new CandidateListResponse(10L, 5L, 1, RecommendationType.INITIAL, 2,
-                false, 5, false, List.of(candidate));
-    }
-
-    private MatchingRequestResponse sampleRequest() {
-        return new MatchingRequestResponse(200L, 1L, "B2B 주문 관리 서비스 리뉴얼", 10L, JobRole.FRONTEND,
-                "홍길동", 94.0, "주식회사 오이랩", "IT/소프트웨어 · 50-100명",
-                List.of(SkillCode.REACT, SkillCode.TYPESCRIPT), 3, "재택 · 풀타임", "4개월",
-                LocalDate.of(2026, 9, 1), MatchingStatus.REQUEST_PENDING, 6_000_000L,
-                LocalDateTime.now(), LocalDateTime.now().plusDays(3), null, null, null, null, null);
-    }
-
-    private PageResponse<MatchingRequestResponse> samplePage(int page, int size) {
-        return new PageResponse<>(List.of(sampleRequest()), page, size, 1, 1, true, true);
+                .body(ApiResponse.created("RERECOMMENDED", "재추천을 완료했습니다.", response));
     }
 }

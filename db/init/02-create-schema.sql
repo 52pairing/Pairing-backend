@@ -50,7 +50,7 @@
 --  - updated_at 자동 갱신은 트리거로 처리 (MySQL 의 ON UPDATE 대체)
 --
 --  [삭제된 테이블]
---   freelancer_embedding / position_embedding -> FastAPI + ChromaDB 로 이관
+--   freelancer_embedding / position_embedding -> Pairing-python(FastAPI) 소유, pgvector로 같은 DB에 저장(별도 스키마 파일)
 --   project_parse  -> AI 검수 결과는 FastAPI 측에서 처리
 --   deliverable    -> 산출물 제출·검수 기능 제외
 --
@@ -460,6 +460,8 @@ CREATE TABLE "matching_candidate" (
     "fit_reason" TEXT,
     "rank_no" INTEGER,
     "is_exposed" BOOLEAN DEFAULT FALSE NOT NULL,
+    -- 클라이언트가 이 후보를 거절(비활성 표시)했는지. 요청 발송 여부와는 무관하다.
+    "is_rejected" BOOLEAN DEFAULT FALSE NOT NULL,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")

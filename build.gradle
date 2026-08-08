@@ -37,6 +37,10 @@ dependencies {
     // Redis (RedisTemplate — 토큰 저장, 인증코드, 캐시성 데이터 등)
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+    // AI 서버(Pairing-python) 호출 안정성: 서킷브레이커 + 분산 레이트리밋
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.2.0'
+    implementation 'com.bucket4j:bucket4j-redis:8.10.1'
+
     // S3 호환 오브젝트 스토리지 (AWS S3 / MinIO)
     implementation 'software.amazon.awssdk:s3:2.25.11'
 

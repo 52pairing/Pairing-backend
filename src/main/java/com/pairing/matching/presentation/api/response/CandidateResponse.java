@@ -46,10 +46,8 @@ public record CandidateResponse(
         @Schema(description = "보유 스킬")
         List<SkillCode> skills,
 
-        @Schema(description = "적합도 점수(0~100)", example = "87.5")
-        Double fitScore,
-
-        // 화면에는 문장이 아니라 태그 칩으로 나열된다. "요구 스킬 97% 일치", "재택 근무 선호" 처럼 짧게 준다.
+        // 적합도 점수는 화면에 노출하지 않는다. 근거만 태그 칩으로 짧게 나열한다.
+        // 예: "요구 스킬 97% 일치", "재택 근무 선호"
         @Schema(description = "AI 추천 이유 태그", example = "[\"요구 스킬 97% 일치\", \"경력 조건 충족\"]")
         List<String> fitReasons,
 
