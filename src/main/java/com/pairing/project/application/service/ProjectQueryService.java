@@ -9,6 +9,7 @@ import com.pairing.project.application.result.ProjectPositionSummary;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.project.domain.model.Position;
 import com.pairing.project.domain.model.Project;
+import com.pairing.project.domain.model.ProjectStatus;
 import com.pairing.project.domain.repository.ProjectRepository;
 import com.pairing.project.exception.ProjectErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -76,6 +77,12 @@ public class ProjectQueryService implements ProjectQueryUseCase {
     }
 
     @Override
+    public ProjectStatus findStatus(Long projectId) {
+        return projectRepository.findStatusById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+    }
+
+    @Override
     public ProjectPositionSummary findProjectPositionSummary(Long projectId, Long positionId) {
         Project project = getById(projectId);
         Position position = project.getPositions().stream()
@@ -83,6 +90,27 @@ public class ProjectQueryService implements ProjectQueryUseCase {
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ProjectErrorCode.POSITION_NOT_FOUND));
 
+        return toSummary(project, position);
+    }
+
+    @Override
+    public ProjectPositionSummary findProjectPositionSummary(Long positionId) {
+        Long projectId = projectRepository.findProjectIdByPositionId(positionId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.POSITION_NOT_FOUND));
+
+        return findProjectPositionSummary(projectId, positionId);
+    }
+
+    @Override
+    public List<ProjectPositionSummary> findPositionSummaries(Long projectId) {
+        Project project = getById(projectId);
+
+        return project.getPositions().stream()
+                .map(position -> toSummary(project, position))
+                .toList();
+    }
+
+    private ProjectPositionSummary toSummary(Project project, Position position) {
         return new ProjectPositionSummary(
                 project.getId(),
                 project.getTitle(),
@@ -96,6 +124,7 @@ public class ProjectQueryService implements ProjectQueryUseCase {
                 project.getPeriodUnit(),
                 project.getStartDesiredDate(),
                 project.getBudgetAmount(),
+                project.getTotalHeadcount(),
                 project.getCurrentSituation(),
                 project.getMainTask());
     }

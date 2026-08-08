@@ -3,6 +3,7 @@ package com.pairing.project.application.service;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.project.application.command.CreateProjectCommand;
+import com.pairing.project.application.event.RecruitingStartedEvent;
 import com.pairing.project.application.port.ClientProfileReaderPort;
 import com.pairing.project.application.port.ProjectFileReaderPort;
 import com.pairing.project.application.usecase.ProjectCommandUseCase;
@@ -12,6 +13,7 @@ import com.pairing.project.exception.ProjectErrorCode;
 import com.pairing.settlement.application.command.CreateDepositSettlementCommand;
 import com.pairing.settlement.application.usecase.DepositSettlementUseCase;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,7 @@ public class ProjectCommandService implements ProjectCommandUseCase {
     private final ClientProfileReaderPort clientProfileReaderPort;
     private final ProjectFileReaderPort projectFileReaderPort;
     private final DepositSettlementUseCase depositSettlementUseCase;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public Long create(CreateProjectCommand command) {
@@ -79,6 +82,9 @@ public class ProjectCommandService implements ProjectCommandUseCase {
 
         project.startRecruiting();
         projectRepository.updateState(project);
+
+        // 임베딩 저장과 최초 추천은 AI 서버를 호출한다. 커밋 후로 미뤄 결제가 AI 장애에 묶이지 않게 한다.
+        eventPublisher.publishEvent(new RecruitingStartedEvent(projectId));
     }
 
     /** 없는 fileId 를 그대로 저장하면 FK 위반으로 500 이 난다. 저장 전에 file 도메인에 존재를 확인한다. */
