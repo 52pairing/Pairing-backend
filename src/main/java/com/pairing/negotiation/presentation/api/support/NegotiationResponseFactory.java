@@ -46,7 +46,7 @@ public final class NegotiationResponseFactory {
                 n.getTotalRound(),
                 Negotiation.MAX_ROUND,
                 n.getAgreedAmount(),
-                null,                       // TODO(M4): chatRoomId
+                view.chatRoomId(),          // 타결 후 채팅 이동용(없으면 null)
                 n.getAiOutAt(),
                 false,                      // finalApprovalRequired: 15회 자동 결렬 채택으로 항상 false
                 conditions
