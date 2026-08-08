@@ -1,6 +1,7 @@
 package com.pairing.project.application.usecase;
 
 import com.pairing.project.application.result.ProjectPositionSummary;
+import com.pairing.project.domain.model.Project;
 
 import java.util.List;
 
@@ -27,4 +28,11 @@ public interface ProjectQueryUseCase {
     int findHeadcount(Long positionId);
 
     ProjectPositionSummary findProjectPositionSummary(Long projectId, Long positionId);
+
+    /** 상세 조회. 없으면 PJ_001. */
+    Project getById(Long projectId);
+
+    /** 상세 조회 + 열람 권한 확인. 없으면 PJ_001, 소유자가 아니면 PJ_003. */
+    Project getByIdForOwner(Long projectId, Long accountId);
+
 }

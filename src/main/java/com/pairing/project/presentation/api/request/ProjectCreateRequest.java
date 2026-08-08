@@ -3,6 +3,8 @@ package com.pairing.project.presentation.api.request;
 import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
+import com.pairing.project.application.command.CreateProjectCommand;
+import com.pairing.project.domain.model.PositionUpdate;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
@@ -96,4 +98,17 @@ public record ProjectCreateRequest(
         @AssertTrue(message = "등록 전 안내에 동의해야 합니다.")
         boolean noticeAgreed
 ) {
+
+    /** 등록이라 positionId 는 없다. 안내 동의는 @AssertTrue 로 이미 검증되어 Command 에 담지 않는다. */
+    public CreateProjectCommand toCommand(Long accountId) {
+        List<PositionUpdate> positionUpdates = positions.stream()
+                .map(p -> new PositionUpdate(null, p.jobCategory(), p.jobRole(),
+                        p.minCareerYears(), p.headcount(), p.skills()))
+                .toList();
+
+        return new CreateProjectCommand(accountId, title, startDesiredDate, startNegotiable,
+                periodValue, periodUnit, budgetAmount, workStyle, workForm,
+                currentSituation, mainTask, detailScope, extraNote,
+                positionUpdates, fileIds == null ? List.of() : fileIds);
+    }
 }

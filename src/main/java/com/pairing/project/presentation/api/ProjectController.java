@@ -16,6 +16,9 @@ import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.project.domain.model.PositionStatus;
 import com.pairing.project.domain.model.ProjectPaymentStatus;
 import com.pairing.project.domain.model.ProjectStatus;
+import com.pairing.project.application.usecase.ProjectCommandUseCase;
+import com.pairing.project.application.usecase.ProjectQueryUseCase;
+import com.pairing.project.exception.ProjectErrorCode;
 import com.pairing.project.presentation.api.request.ProjectCreateRequest;
 import com.pairing.project.domain.model.ProjectTab;
 import com.pairing.project.presentation.api.request.ProjectPreReviewRequest;
@@ -57,6 +60,9 @@ import java.util.List;
 @Tag(name = "10. Project", description = "프로젝트 등록/조회/수정 API")
 public class ProjectController {
 
+    private final ProjectCommandUseCase projectCommandUseCase;
+    private final ProjectQueryUseCase projectQueryUseCase;
+
     @PostMapping
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "프로젝트 등록",
@@ -66,20 +72,26 @@ public class ProjectController {
             @Valid @RequestBody ProjectCreateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 프로젝트 + 포지션 + 스킬 + 첨부 저장, 착수금 결제 대기 상태로 생성
+        Long projectId = projectCommandUseCase.create(request.toCommand(accountId));
+
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created("PROJECT_CREATED", "프로젝트가 등록되었습니다.", sampleDetail()));
+                .body(ApiResponse.created("PROJECT_CREATED", "프로젝트가 등록되었습니다.",
+                        ProjectResponse.from(projectQueryUseCase.getById(projectId))));
     }
 
     @GetMapping("/{projectId}")
-    @Operation(summary = "프로젝트 상세 조회")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED", "ACCESS_DENIED"})
+    @PreAuthorize("hasRole('CLIENT')")
+    @Operation(summary = "프로젝트 상세 조회",
+            description = "본인이 등록한 프로젝트만 조회할 수 있습니다. "
+                    + "참여 프리랜서 열람은 매칭 도메인 구현 후 엽니다.")
+    @ApiErrorCodeExample(domain = ProjectErrorCode.class,
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER"})
     public ResponseEntity<ApiResponse<ProjectResponse>> findOne(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 조회 + 열람 권한 확인(클라이언트 본인 또는 참여 프리랜서)
-        return ResponseEntity.ok(ApiResponse.success("PROJECT_FOUND", "조회에 성공했습니다.", sampleDetail()));
+        return ResponseEntity.ok(ApiResponse.success("PROJECT_FOUND", "조회에 성공했습니다.",
+                ProjectResponse.from(projectQueryUseCase.getByIdForOwner(projectId, accountId))));
     }
 
     @PutMapping("/{projectId}")
@@ -283,7 +295,7 @@ public class ProjectController {
                 ProjectPaymentStatus.DEPOSIT_PAID,
                 List.of(JobRole.BACKEND.getLabel()), List.of("Java", "Spring Boot"),
                 50_000_000L, "6개월", LocalDate.of(2026, 9, 1), 2, 1,
-                LocalDateTime.now().plusWeeks(2), "삼성전자", "김프리", LocalDateTime.now());
+                LocalDateTime.now().plusWeeks(2), "삼성전자", "김프리", 700L, LocalDateTime.now());
 
         return new PageResponse<>(List.of(summary), page, size, 1, 1, true, true);
     }

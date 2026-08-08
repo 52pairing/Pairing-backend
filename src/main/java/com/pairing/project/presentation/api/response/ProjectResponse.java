@@ -104,9 +104,42 @@ public record ProjectResponse(
         @Schema(description = "등록 시각")
         LocalDateTime createdAt,
 
-        @Schema(description = "착수금 정산 ID. 결제 완료 후에는 null", example = "700")
-        Long depositSettlementId
+        @Schema(description = "지금 결제해야 할 정산 ID. 결제할 게 없으면 null. "
+                + "등록 완료면 착수금, 완료 대기면 성공보수를 가리킨다.", example = "700")
+        Long payableSettlementId
 ) {
+
+    /**
+     * 도메인 -> 응답.
+     *
+     * <p>statusNote / freelancers / payableSettlementId 는 매칭·정산 도메인 값이라 아직 비운다.
+     * 첨부는 fileId 만 채운다. originalName / sizeBytes / fileUrl 은 file 테이블 소관인데
+     * file 도메인 구현이 붙으면 파라미터로 받아 채운다.
+     */
+    public static ProjectResponse from(com.pairing.project.domain.model.Project p) {
+        List<Position> positions = p.getPositions().stream()
+                .map(pos -> new Position(
+                        pos.getId(), pos.getPositionNo(), pos.getJobCategory(), pos.getJobRole(),
+                        pos.getMinCareerYears(), pos.getHeadcount(), pos.getConfirmedCount(),
+                        pos.getStatus(), pos.getSkills()))
+                .toList();
+
+        List<AttachedFile> files = p.getFileIds().stream()
+                .map(fileId -> new AttachedFile(fileId, null, null, null))
+                .toList();
+
+        return new ProjectResponse(
+                p.getId(), p.getTitle(), p.getStatus(), null,
+                p.getPaymentStatus(), p.getStartDesiredDate(), p.isStartNegotiable(),
+                p.getPeriodValue(), p.getPeriodUnit(), p.getBudgetAmount(),
+                p.getWorkStyle(), p.getWorkForm(), p.getWorkLocation(),
+                p.getCurrentSituation(), p.getMainTask(), p.getDetailScope(), p.getExtraNote(),
+                p.getTotalHeadcount(), p.getConfirmedHeadcount(),
+                p.getRecruitDeadline(), p.getExtensionCount(),
+                p.getFreeRerecommendUsed(), p.getPaidRerecommendUsed(),
+                positions, List.of(), files,
+                p.getCreatedAt(), null);
+    }
 
     @Schema(description = "포지션")
     public record Position(

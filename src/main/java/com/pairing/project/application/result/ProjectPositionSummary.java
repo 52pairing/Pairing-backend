@@ -37,6 +37,10 @@ public record ProjectPositionSummary(
         LocalDate startDesiredDate,
 
         /** 프로젝트 전체 예산. 원 단위, 부가세 별도. */
-        Long budgetAmount
+        Long budgetAmount,
+
+        /** 프리랜서가 보는 매칭 요청 카드의 상세 정보. */
+        String currentSituation,
+        String mainTask
 ) {
 }
