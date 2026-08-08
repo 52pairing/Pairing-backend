@@ -7,9 +7,8 @@ import java.util.List;
 /**
  * project 도메인 조회 포트. 매칭은 이 인터페이스로만 프로젝트·포지션 정보를 읽는다.
  *
- * <p><b>임시 스텁 상태(2026-08-07)</b>: project 도메인에 아직 실제 영속 계층이 없어
- * {@code infrastructure.directory.StubProjectDirectoryAdapter}가 고정값을 돌려준다.
- * project 도메인이 실제 구현되면 이 어댑터 하나만 실제 조회 코드로 교체하면 된다.
+ * <p>{@code infrastructure.directory.ProjectDirectoryAdapter}가 project 도메인의
+ * {@code ProjectQueryUseCase}와 account 도메인의 {@code AccountQueryUseCase}를 조합해 구현한다.
  */
 public interface ProjectDirectoryPort {
 
@@ -25,6 +24,12 @@ public interface ProjectDirectoryPort {
     /** 포지션의 모집 인원. 노출 수·인원 초과 검증에 쓴다. */
     int findHeadcount(Long positionId);
 
-    /** 매칭 요청 카드 노출용 프로젝트·포지션 요약. */
-    ProjectPositionSummary findPositionSummary(Long positionId);
+    /**
+     * 매칭 요청 카드 노출용 프로젝트·포지션 요약.
+     *
+     * <p>projectId를 매칭이 직접 넘긴다 — project 도메인은 positionId만으로 projectId를
+     * 역조회하는 방법을 제공하지 않고, 매칭은 자신의 MatchingRound/MatchingRequest에
+     * 이미 그 매핑을 갖고 있어 넘기는 쪽이 더 자연스럽다.
+     */
+    ProjectPositionSummary findPositionSummary(Long projectId, Long positionId);
 }

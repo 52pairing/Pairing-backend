@@ -8,9 +8,8 @@ import java.util.Optional;
 /**
  * negotiation 도메인 호출 포트. 매칭은 이 인터페이스로만 협상 생성·조회를 요청한다.
  *
- * <p><b>임시 스텁 상태(2026-08-07)</b>: negotiation 도메인에 아직 인바운드 application 계층이 없어
- * {@code infrastructure.negotiation.StubNegotiationAdapter}가 대신 구현한다.
- * negotiation팀이 실제 UseCase를 만들면 이 어댑터가 그 UseCase를 그대로 위임 호출하도록 교체한다.
+ * <p>{@code infrastructure.negotiation.NegotiationAdapter}가 negotiation 도메인의
+ * {@code NegotiationCommandUseCase}/{@code NegotiationProgressUseCase}를 위임 호출해 구현한다.
  */
 public interface NegotiationPort {
 

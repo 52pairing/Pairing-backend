@@ -16,11 +16,13 @@ import com.pairing.matching.application.usecase.MatchingRequestQueryUseCase;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRequest;
 import com.pairing.matching.domain.model.MatchingRequestTab;
+import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.domain.model.MatchingStatus;
 import com.pairing.matching.domain.model.SnapshotType;
 import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
+import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.exception.MatchingErrorCode;
 import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
@@ -43,6 +45,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
 
     private final MatchingRequestRepository matchingRequestRepository;
     private final MatchingCandidateRepository matchingCandidateRepository;
+    private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingSnapshotRepository matchingSnapshotRepository;
     private final ProjectDirectoryPort projectDirectoryPort;
     private final FreelancerDirectoryPort freelancerDirectoryPort;
@@ -72,8 +75,10 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
             throw new BusinessException(MatchingErrorCode.INVALID_MATCHING_STATE);
         }
 
-        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(positionId);
-        if (!projectDirectoryPort.isOwnedByAccount(position.projectId(), accountId)) {
+        MatchingRound round = matchingRoundRepository.findById(candidate.getRoundId())
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.ROUND_NOT_FOUND));
+        Long projectId = round.getProjectId();
+        if (!projectDirectoryPort.isOwnedByAccount(projectId, accountId)) {
             throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
         }
         if (matchingRequestRepository.findByPositionIdAndFreelancerId(positionId, candidate.getFreelancerId())
@@ -81,7 +86,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
             throw new BusinessException(MatchingErrorCode.INVALID_MATCHING_STATE);
         }
 
-        MatchingRequest request = MatchingRequest.create(position.projectId(), positionId, candidateId,
+        MatchingRequest request = MatchingRequest.create(projectId, positionId, candidateId,
                 candidate.getFreelancerId());
         request = matchingRequestRepository.save(request);
         return matchingRequestResponseAssembler.build(request, accountId);
@@ -96,7 +101,8 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         FreelancerConditionResponse condition = freelancerDirectoryPort.findCondition(request.getFreelancerId());
         matchingSnapshotRepository.save(buildFreelancerSnapshot(request, condition));
 
-        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(request.getPositionId());
+        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(request.getProjectId(),
+                request.getPositionId());
         long budgetCap = budgetCapCalculator.calculate(request.getProjectId(), position.budgetAmount(),
                 position.headcount());
 

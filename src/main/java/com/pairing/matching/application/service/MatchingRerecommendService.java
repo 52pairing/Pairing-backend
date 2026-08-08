@@ -32,11 +32,13 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
     @Transactional
     public CandidateListResponse rerecommend(Long positionId, RecommendationType type, Integer quantity,
                                              Long accountId) {
-        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(positionId);
-        Long projectId = position.projectId();
+        MatchingRound latestRound = matchingRoundRepository.findLatestByPositionId(positionId)
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.ROUND_NOT_FOUND));
+        Long projectId = latestRound.getProjectId();
         if (!projectDirectoryPort.isOwnedByAccount(projectId, accountId)) {
             throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
         }
+        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
 
         int recruitCount;
         long costAmount;
