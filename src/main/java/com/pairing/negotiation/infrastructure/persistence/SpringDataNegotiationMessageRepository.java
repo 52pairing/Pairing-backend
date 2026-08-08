@@ -4,6 +4,7 @@ import com.pairing.negotiation.domain.model.NegotiationMessageType;
 import com.pairing.negotiation.domain.model.SenderType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,4 +29,11 @@ public interface SpringDataNegotiationMessageRepository extends JpaRepository<Ne
     /** 특정 라운드에 이 주체가 남긴 응답 개수. */
     long countByNegotiationIdAndSenderTypeAndRoundNoAndMessageType(
             Long negotiationId, SenderType senderType, int roundNo, NegotiationMessageType messageType);
+
+    /** 협상의 전체 제안 수(아직 아무 것도 안 읽은 경우). */
+    long countByNegotiationIdAndMessageType(Long negotiationId, NegotiationMessageType messageType);
+
+    /** 특정 시각 이후 생성된 제안 수(마지막 읽음 이후 새 제안). */
+    long countByNegotiationIdAndMessageTypeAndCreatedAtAfter(
+            Long negotiationId, NegotiationMessageType messageType, LocalDateTime createdAt);
 }

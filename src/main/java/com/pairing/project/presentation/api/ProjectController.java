@@ -5,6 +5,7 @@ import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
+import com.pairing.file.exception.FileErrorCode;
 import com.pairing.matching.domain.model.MatchingStatus;
 import com.pairing.meta.domain.model.JobCategory;
 import com.pairing.meta.domain.model.JobRole;
@@ -68,6 +69,7 @@ public class ProjectController {
     @Operation(summary = "프로젝트 등록",
             description = "등록 직후 상태는 REGISTERED 이며, 착수금 수수료를 결제해야 모집이 시작됩니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST"})
+    @ApiErrorCodeExample(domain = FileErrorCode.class, value = {"FILE_NOT_FOUND"})
     public ResponseEntity<ApiResponse<ProjectResponse>> create(
             @Valid @RequestBody ProjectCreateRequest request,
             @CurrentAccountId Long accountId
@@ -76,7 +78,7 @@ public class ProjectController {
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("PROJECT_CREATED", "프로젝트가 등록되었습니다.",
-                        ProjectResponse.from(projectQueryUseCase.getById(projectId))));
+                        ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
     @GetMapping("/{projectId}")
@@ -91,7 +93,7 @@ public class ProjectController {
             @CurrentAccountId Long accountId
     ) {
         return ResponseEntity.ok(ApiResponse.success("PROJECT_FOUND", "조회에 성공했습니다.",
-                ProjectResponse.from(projectQueryUseCase.getByIdForOwner(projectId, accountId))));
+                ProjectResponse.from(projectQueryUseCase.getDetailForOwner(projectId, accountId))));
     }
 
     @PutMapping("/{projectId}")

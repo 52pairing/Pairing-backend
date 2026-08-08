@@ -1,14 +1,21 @@
 package com.pairing.project.application.service;
 
+import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.project.application.command.CreateProjectCommand;
 import com.pairing.project.application.port.ClientProfileReaderPort;
+import com.pairing.project.application.port.ProjectFileReaderPort;
 import com.pairing.project.application.usecase.ProjectCommandUseCase;
 import com.pairing.project.domain.model.Project;
 import com.pairing.project.domain.repository.ProjectRepository;
+import com.pairing.project.exception.ProjectErrorCode;
+import com.pairing.settlement.application.command.CreateDepositSettlementCommand;
+import com.pairing.settlement.application.usecase.DepositSettlementUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 /**
  * 프로젝트 등록·수정.
@@ -23,11 +30,15 @@ public class ProjectCommandService implements ProjectCommandUseCase {
 
     private final ProjectRepository projectRepository;
     private final ClientProfileReaderPort clientProfileReaderPort;
+    private final ProjectFileReaderPort projectFileReaderPort;
+    private final DepositSettlementUseCase depositSettlementUseCase;
 
     @Override
     public Long create(CreateProjectCommand command) {
         ClientProfileReaderPort.ClientProfileView client =
                 clientProfileReaderPort.getByAccountId(command.accountId());
+
+        requireAttachmentsExist(command.fileIds());
 
         // 근무 장소는 상주일 때만 의미가 있다. 판단은 도메인이 하고 여기서는 후보만 넘긴다.
         String clientAddress = command.workStyle() == WorkStyle.ONSITE
@@ -52,6 +63,26 @@ public class ProjectCommandService implements ProjectCommandUseCase {
                 command.positions(),
                 command.fileIds());
 
-        return projectRepository.save(project).getId();
+        Long projectId = projectRepository.save(project).getId();
+
+        // 착수금은 등록 완료 시점에 발생한다. 결제 버튼이 바로 활성화되어야 한다. (P27·P32)
+        depositSettlementUseCase.createClientDeposit(new CreateDepositSettlementCommand(
+                projectId, command.accountId(), command.budgetAmount(), client.grade()));
+
+        return projectId;
+    }
+
+    @Override
+    public void startRecruiting(Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        project.startRecruiting();
+        projectRepository.updateState(project);
+    }
+
+    /** 없는 fileId 를 그대로 저장하면 FK 위반으로 500 이 난다. 저장 전에 file 도메인에 존재를 확인한다. */
+    private void requireAttachmentsExist(List<Long> fileIds) {
+        projectFileReaderPort.getAllByIds(fileIds);
     }
 }

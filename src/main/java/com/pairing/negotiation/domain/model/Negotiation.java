@@ -40,6 +40,8 @@ public class Negotiation {
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
     private String endReason;
+    private LocalDateTime clientLastReadAt;       // 클라가 마지막으로 협상을 읽은 시각(안 읽은 제안 배지 기준선)
+    private LocalDateTime freelancerLastReadAt;   // 프리가 마지막으로 협상을 읽은 시각
     private List<NegotiationCondition> conditions;
 
     private Negotiation(Long requestId, Long projectId, Long positionId, Long freelancerId,
@@ -60,7 +62,8 @@ public class Negotiation {
     private Negotiation(Long id, Long requestId, Long projectId, Long positionId, Long freelancerId,
                         NegotiationStatus status, int totalRound, Long agreedAmount, Long budgetCap,
                         Long floorAmount, LocalDateTime aiOutAt, LocalDateTime startedAt,
-                        LocalDateTime endedAt, String endReason, List<NegotiationCondition> conditions) {
+                        LocalDateTime endedAt, String endReason, LocalDateTime clientLastReadAt,
+                        LocalDateTime freelancerLastReadAt, List<NegotiationCondition> conditions) {
         this.id = id;
         this.requestId = requestId;
         this.projectId = projectId;
@@ -75,6 +78,8 @@ public class Negotiation {
         this.startedAt = startedAt;
         this.endedAt = endedAt;
         this.endReason = endReason;
+        this.clientLastReadAt = clientLastReadAt;
+        this.freelancerLastReadAt = freelancerLastReadAt;
         this.conditions = conditions == null ? List.of() : conditions;
     }
 
@@ -88,9 +93,12 @@ public class Negotiation {
                                            Long freelancerId, NegotiationStatus status, int totalRound,
                                            Long agreedAmount, Long budgetCap, Long floorAmount,
                                            LocalDateTime aiOutAt, LocalDateTime startedAt, LocalDateTime endedAt,
-                                           String endReason, List<NegotiationCondition> conditions) {
+                                           String endReason, LocalDateTime clientLastReadAt,
+                                           LocalDateTime freelancerLastReadAt,
+                                           List<NegotiationCondition> conditions) {
         return new Negotiation(id, requestId, projectId, positionId, freelancerId, status, totalRound,
-                agreedAmount, budgetCap, floorAmount, aiOutAt, startedAt, endedAt, endReason, conditions);
+                agreedAmount, budgetCap, floorAmount, aiOutAt, startedAt, endedAt, endReason,
+                clientLastReadAt, freelancerLastReadAt, conditions);
     }
 
     /** 대리인 왕복 1라운드 소비. 상한 도달 시 소비 불가(결렬 처리로 넘긴다). */
@@ -143,6 +151,20 @@ public class Negotiation {
                 .sorted(Comparator.comparingInt(NegotiationCondition::getSortOrder))
                 .forEach(c -> sb.append('|').append(c.getConditionType()).append('=').append(c.getAgreedValue()));
         return sb.toString();
+    }
+
+    /** 이 당사자가 협상을 마지막으로 읽은 시각을 갱신한다. "확인하지 않은 새 제안 수" 배지의 기준선. */
+    public void markRead(PartyRole role, LocalDateTime at) {
+        if (role == PartyRole.CLIENT) {
+            this.clientLastReadAt = at;
+        } else {
+            this.freelancerLastReadAt = at;
+        }
+    }
+
+    /** 이 당사자의 마지막 읽음 시각(없으면 null = 아직 아무 것도 안 읽음). */
+    public LocalDateTime lastReadAt(PartyRole role) {
+        return role == PartyRole.CLIENT ? clientLastReadAt : freelancerLastReadAt;
     }
 
     /** 결렬(포기 / 15회 소진). */

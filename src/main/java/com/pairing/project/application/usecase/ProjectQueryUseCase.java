@@ -1,5 +1,6 @@
 package com.pairing.project.application.usecase;
 
+import com.pairing.project.application.result.ProjectDetail;
 import com.pairing.project.application.result.ProjectPositionSummary;
 import com.pairing.project.domain.model.Project;
 
@@ -34,5 +35,11 @@ public interface ProjectQueryUseCase {
 
     /** 상세 조회 + 열람 권한 확인. 없으면 PJ_001, 소유자가 아니면 PJ_003. */
     Project getByIdForOwner(Long projectId, Long accountId);
+
+    /** 상세 화면용. 첨부 메타까지 합쳐 준다. */
+    ProjectDetail getDetail(Long projectId);
+
+    /** 상세 화면용. 소유자가 아니면 PJ_003. */
+    ProjectDetail getDetailForOwner(Long projectId, Long accountId);
 
 }

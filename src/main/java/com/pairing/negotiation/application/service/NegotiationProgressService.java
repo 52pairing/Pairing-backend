@@ -31,10 +31,11 @@ public class NegotiationProgressService implements NegotiationProgressUseCase {
     }
 
     private NegotiationProgress toProgress(Negotiation negotiation) {
-        int currentRound = negotiation.getTotalRound();
-        int newProposalCount = currentRound > 0
-                ? messageRepository.countProposalsInRound(negotiation.getId(), currentRound)
-                : 0;
-        return new NegotiationProgress(negotiation.getId(), currentRound, Negotiation.MAX_ROUND, newProposalCount);
+        // "확인하지 않은 새 제안 수" = 클라가 마지막으로 협상을 읽은 이후 온 AI 제안 수(안 읽었으면 전체).
+        // 매칭 요청 카드는 클라 화면이므로 클라 기준으로 센다.
+        int newProposalCount = messageRepository.countUnreadProposals(
+                negotiation.getId(), negotiation.getClientLastReadAt());
+        return new NegotiationProgress(negotiation.getId(), negotiation.getTotalRound(),
+                Negotiation.MAX_ROUND, newProposalCount);
     }
 }

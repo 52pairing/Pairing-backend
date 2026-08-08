@@ -21,6 +21,14 @@ public interface ProjectRepository {
     /** 포지션·요구 스킬·첨부까지 함께 저장한다. */
     Project save(Project project);
 
+    /**
+     * 상태 전이 저장. 포지션·첨부는 건드리지 않는다.
+     *
+     * <p>{@link #save} 는 등록용이다. 이미 저장된 프로젝트에 그걸 쓰면 자식이 재삽입되어
+     * {@code uk_position_skill} 에 걸린다. 상태만 바뀌는 경로는 이 메서드를 쓴다.
+     */
+    Project updateState(Project project);
+
     /** 상세 조회. 포지션과 요구 스킬을 함께 로드한다. */
     Optional<Project> findById(Long projectId);
 
