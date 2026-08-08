@@ -1,9 +1,11 @@
 package com.pairing.project.infrastructure.persistence;
 
+import com.pairing.global.exception.BusinessException;
 import com.pairing.project.domain.model.Position;
 import com.pairing.project.domain.model.Project;
 import com.pairing.project.domain.model.ProjectStatus;
 import com.pairing.project.domain.repository.ProjectRepository;
+import com.pairing.project.exception.ProjectErrorCode;
 import com.pairing.project.infrastructure.mapper.ProjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,6 +35,16 @@ public class ProjectRepositoryAdapter implements ProjectRepository {
     public Project save(Project project) {
         ProjectJpaEntity saved = springDataRepository.save(projectMapper.toJpaEntity(project));
         return projectMapper.toDomain(saved);
+    }
+
+    @Override
+    public Project updateState(Project project) {
+        ProjectJpaEntity entity = springDataRepository.findByIdAndDeletedAtIsNull(project.getId())
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        // 영속 엔티티를 그대로 두고 스칼라만 갱신한다. 변경 감지가 커밋 시점에 UPDATE 를 만든다.
+        projectMapper.applyState(entity, project);
+        return projectMapper.toDomain(entity);
     }
 
     @Override

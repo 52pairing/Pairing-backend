@@ -3,12 +3,18 @@ package com.pairing.settlement.presentation.api;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
+import com.pairing.global.exception.BusinessException;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.meta.domain.model.PartyRole;
+import com.pairing.project.application.usecase.ProjectQueryUseCase;
+import com.pairing.settlement.application.result.SettlementResult;
+import com.pairing.settlement.application.usecase.SettlementPaymentUseCase;
+import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import com.pairing.settlement.domain.model.PenaltyStatus;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
+import com.pairing.settlement.exception.SettlementErrorCode;
 import com.pairing.settlement.presentation.api.request.SettlementPayRequest;
 import com.pairing.settlement.presentation.api.response.PenaltyResponse;
 import com.pairing.settlement.presentation.api.response.SettlementResponse;
@@ -17,6 +23,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,7 +37,9 @@ import org.springframework.web.bind.annotation.RestController;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 수수료 정산과 위약금. (요구사항 R20, R34, R39)
@@ -45,6 +55,10 @@ import java.util.List;
 @Tag(name = "15. Settlement", description = "정산/결제 API")
 public class SettlementController {
 
+    private final SettlementQueryUseCase settlementQueryUseCase;
+    private final SettlementPaymentUseCase settlementPaymentUseCase;
+    private final ProjectQueryUseCase projectQueryUseCase;
+
     @GetMapping("/mine")
     @Operation(summary = "내 정산 목록", description = "착수금·성공보수 수수료 내역입니다. 클라이언트와 프리랜서 모두 조회합니다.")
     public ResponseEntity<ApiResponse<PageResponse<SettlementResponse>>> findMine(
@@ -54,33 +68,81 @@ public class SettlementController {
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 내가 납부자인 정산 조회
+        // 여러 정산이 같은 프로젝트를 가리키는 경우가 많아 요청 단위로 이름 조회를 모은다.
+        Map<Long, String> titleCache = new HashMap<>();
+
+        Page<SettlementResponse> data = settlementQueryUseCase
+                .findMine(accountId, phase, status, PageRequest.of(page, size))
+                .map(result -> toResponse(result, titleCache));
+
         return ResponseEntity.ok(ApiResponse.success("SETTLEMENTS_FOUND", "조회에 성공했습니다.",
-                new PageResponse<>(List.of(sampleSettlement()), page, size, 1, 1, true, true)));
+                PageResponse.from(data)));
     }
 
     @GetMapping("/{settlementId}")
-    @Operation(summary = "정산 상세")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"ACCESS_DENIED"})
+    @Operation(summary = "정산 상세", description = "납부자 본인만 열람할 수 있습니다.")
+    @ApiErrorCodeExample(domain = SettlementErrorCode.class, value = {"SETTLEMENT_NOT_FOUND", "NOT_PAYER"})
     public ResponseEntity<ApiResponse<SettlementResponse>> findOne(
             @PathVariable Long settlementId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 납부자 본인 또는 관리자만 열람
-        return ResponseEntity.ok(ApiResponse.success("SETTLEMENT_FOUND", "조회에 성공했습니다.", sampleSettlement()));
+        return ResponseEntity.ok(ApiResponse.success("SETTLEMENT_FOUND", "조회에 성공했습니다.",
+                toResponse(settlementQueryUseCase.getByIdForPayer(settlementId, accountId))));
     }
 
     @PostMapping("/{settlementId}/payment")
     @Operation(summary = "수수료 결제",
-            description = "결제 가능한 상태에서만 호출합니다. 가상계좌 잔액에서 차감하고 원장에 기록합니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "ACCESS_DENIED"})
+            description = "결제 가능한 상태에서만 호출합니다. "
+                    + "클라이언트 착수금이면 결제와 동시에 프로젝트가 모집중으로 전환됩니다. "
+                    + "PG 연동 전이라 승인 절차 없이 즉시 완료 처리됩니다.")
+    @ApiErrorCodeExample(domain = SettlementErrorCode.class,
+            value = {"SETTLEMENT_NOT_FOUND", "NOT_PAYER", "NOT_PAYABLE"})
     public ResponseEntity<ApiResponse<SettlementResponse>> pay(
             @PathVariable Long settlementId,
             @Valid @RequestBody SettlementPayRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 상태 확인 -> 결제수단 소유 확인 -> 원장 기록 -> 상태 PAID -> 프로젝트 결제 상태 갱신
-        return ResponseEntity.ok(ApiResponse.success("SETTLEMENT_PAID", "결제가 완료되었습니다.", sampleSettlement()));
+        SettlementResult result =
+                settlementPaymentUseCase.pay(settlementId, accountId, request.paymentMethodId());
+
+        return ResponseEntity.ok(ApiResponse.success("SETTLEMENT_PAID", "결제가 완료되었습니다.",
+                toResponse(result)));
+    }
+
+    private SettlementResponse toResponse(SettlementResult result) {
+        return toResponse(result, new HashMap<>());
+    }
+
+    /**
+     * 프로젝트명을 붙여 응답을 조립한다.
+     *
+     * <p>정산 서비스가 project 를 직접 읽으면 project -> settlement 방향과 맞물려 순환이 되므로
+     * 프레젠테이션에서 두 인바운드 포트를 조합한다. payerName 은 결제수단 조회와 함께 뒤에 채운다.
+     */
+    private SettlementResponse toResponse(SettlementResult result, Map<Long, String> titleCache) {
+        return SettlementResponse.from(result, resolveProjectTitle(result.projectId(), titleCache), null);
+    }
+
+    /**
+     * 프로젝트명. 못 찾으면 null 로 흘린다.
+     *
+     * <p>프로젝트가 삭제돼도 정산 이력은 남아야 한다. 여기서 예외를 그대로 올리면
+     * 그 한 건 때문에 목록 전체가 실패한다. 실패도 캐시해 같은 프로젝트를 되묻지 않는다.
+     */
+    private String resolveProjectTitle(Long projectId, Map<Long, String> titleCache) {
+        if (titleCache.containsKey(projectId)) {
+            return titleCache.get(projectId);
+        }
+
+        String title = null;
+        try {
+            title = projectQueryUseCase.getById(projectId).getTitle();
+        } catch (BusinessException e) {
+            // getById 는 대상이 없을 때만 던진다. 이름을 비우고 넘어간다.
+        }
+
+        titleCache.put(projectId, title);
+        return title;
     }
 
     @GetMapping("/penalties/mine")

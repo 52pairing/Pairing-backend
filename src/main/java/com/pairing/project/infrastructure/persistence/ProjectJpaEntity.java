@@ -193,6 +193,32 @@ public class ProjectJpaEntity {
         this.deletedAt = deletedAt;
     }
 
+    /**
+     * 상태 전이 결과만 반영한다. positions / files 는 손대지 않는다.
+     *
+     * <p>매퍼로 새 그래프를 만들어 save 하면 자식이 다시 INSERT 되어
+     * {@code uk_position_skill} 에 걸린다. 상태만 바뀌는 경로는 영속 엔티티를 로드해 이걸 쓴다.
+     */
+    public void applyState(ProjectStatus status, ProjectPaymentStatus paymentStatus,
+                           int totalHeadcount, int confirmedHeadcount,
+                           LocalDateTime recruitStartedAt, LocalDateTime recruitDeadline,
+                           int extensionCount, int freeRerecommendUsed, int paidRerecommendUsed,
+                           LocalDateTime canceledAt, LocalDateTime closedAt,
+                           LocalDate retentionUntil) {
+        this.status = status;
+        this.paymentStatus = paymentStatus;
+        this.totalHeadcount = totalHeadcount;
+        this.confirmedHeadcount = confirmedHeadcount;
+        this.recruitStartedAt = recruitStartedAt;
+        this.recruitDeadline = recruitDeadline;
+        this.extensionCount = extensionCount;
+        this.freeRerecommendUsed = freeRerecommendUsed;
+        this.paidRerecommendUsed = paidRerecommendUsed;
+        this.canceledAt = canceledAt;
+        this.closedAt = closedAt;
+        this.retentionUntil = retentionUntil;
+    }
+
     public void addPosition(ProjectPositionJpaEntity position) {
         positions.add(position);
         position.assignProject(this);
