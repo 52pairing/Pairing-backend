@@ -15,6 +15,7 @@ import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.swagger.v3.oas.models.servers.Server;
 import org.springdoc.core.customizers.OperationCustomizer;
 import org.springdoc.core.utils.SpringDocUtils;
 import org.springframework.context.annotation.Bean;
@@ -22,6 +23,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.method.HandlerMethod;
 
 import java.time.Instant;
+import java.util.List;
 
 @Configuration
 public class SwaggerConfig {
@@ -121,6 +123,12 @@ public class SwaggerConfig {
                         .title("Pairing API")
                         .description("페어링 백엔드 API 문서")
                         .version("v1"))
+                // 서버 URL 을 상대 경로로 고정한다. 비워두면 springdoc 이 요청에서 유추하는데,
+                // CloudFront(443) -> ALB(80) -> ECS 구조에서는 ALB 가 X-Forwarded-Proto: http 를 붙여
+                // http:// 로 유추된다. https 로 열린 Swagger UI 가 그 주소를 호출하면 브라우저가
+                // 혼합 콘텐츠로 차단하고 "Failed to fetch" 로 보인다. 상대 경로면 UI 가 문서를
+                // 받아온 오리진을 그대로 쓰므로 로컬(http)과 배포(https) 모두 맞는다.
+                .servers(List.of(new Server().url("/")))
                 .addSecurityItem(securityRequirement)
                 .components(new Components()
                         .addSecuritySchemes("bearerAuth", securityScheme));
