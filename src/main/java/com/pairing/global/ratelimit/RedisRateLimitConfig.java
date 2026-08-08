@@ -12,12 +12,17 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 import java.time.Duration;
 
 /**
  * Bucket4j가 Redis에 직접 붙는 전용 연결을 만든다. RedisTemplate과는 별개 커넥션이다
  * (Bucket4j-Redis 라이브러리가 Lettuce의 저수준 API를 요구해서 RedisTemplate으로 대체할 수 없다).
+ *
+ * <p>{@code @Lazy}: 이 빈은 {@code redisClient.connect(...)}로 즉시 연결을 맺는다.
+ * global 패키지라 모든 컨텍스트 로딩에 걸리므로, 지연시키지 않으면 Redis가 없는 환경(CI 등)에서
+ * 애플리케이션 전체가 기동조차 못 한다. 실제 레이트리밋을 쓰는 요청이 올 때만 연결한다.
  */
 @Slf4j
 @Configuration
@@ -36,6 +41,7 @@ public class RedisRateLimitConfig {
     private boolean redisSslEnabled;
 
     @Bean
+    @Lazy
     public ProxyManager<byte[]> lettuceProxyManager() {
         RedisURI.Builder uriBuilder = RedisURI.builder()
                 .withHost(redisHost)
