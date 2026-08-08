@@ -126,6 +126,11 @@ class NegotiationLoopServiceTest {
         assertThat(reloaded.getAgreedAmount()).isEqualTo(5_000_000L);
         assertThat(reloaded.getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.AGREED);
         assertThat(reloaded.getConditions().get(0).getAgreedValue()).isEqualTo("5000000");
+
+        // 타결 시점 최종 조건이 로그에 봉인된다(증거).
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .anyMatch(m -> m.getContent().contains("최종 조건 봉인")
+                        && m.getContent().contains("AMOUNT=5000000"));
     }
 
     @Test

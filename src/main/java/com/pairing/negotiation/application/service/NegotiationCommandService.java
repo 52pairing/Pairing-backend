@@ -2,11 +2,14 @@ package com.pairing.negotiation.application.service;
 
 import com.pairing.global.exception.BusinessException;
 import com.pairing.negotiation.application.command.CreateNegotiationCommand;
+import com.pairing.negotiation.application.port.out.ChatRoomCreationPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort.ProjectView;
 import com.pairing.negotiation.application.usecase.NegotiationCommandUseCase;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
+import com.pairing.negotiation.domain.model.NegotiationMessage;
+import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
 import com.pairing.negotiation.domain.service.NegotiationConditionCalculator;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
@@ -22,7 +25,9 @@ import java.util.List;
 public class NegotiationCommandService implements NegotiationCommandUseCase {
 
     private final NegotiationRepository negotiationRepository;
+    private final NegotiationMessageRepository messageRepository;
     private final ProjectReaderPort projectReaderPort;
+    private final ChatRoomCreationPort chatRoomCreationPort;
 
     @Override
     public Long create(CreateNegotiationCommand command) {
@@ -47,7 +52,27 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
                 command.requestId(), command.projectId(), command.positionId(),
                 command.freelancerId(), command.budgetCap(), conditions);
 
-        return negotiationRepository.save(negotiation).getId();
+        // 불일치 조건이 0개면 협상할 게 없다 → 즉시 타결하고 사람 채팅방을 연다(AI 루프 없이 바로 채팅).
+        boolean settledImmediately = conditions.isEmpty();
+        if (settledImmediately) {
+            negotiation.agreeWithoutConditions(command.budgetCap());
+        }
+
+        Long negotiationId = negotiationRepository.save(negotiation).getId();
+
+        if (settledImmediately) {
+            sealAgreementSnapshot(negotiationId, negotiation);   // 최종 조건 봉인(증거 일관성)
+            chatRoomCreationPort.createForAgreedNegotiation(negotiationId);
+        }
+        return negotiationId;
+    }
+
+    /** 무협상 즉시 타결도 최종 조건을 해시체인에 봉인한다. 이 협상의 첫(그리고 유일한) 로그다. */
+    private void sealAgreementSnapshot(Long negotiationId, Negotiation negotiation) {
+        NegotiationMessage snapshot = NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
+                "협상 없이 즉시 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot());
+        snapshot.seal(messageRepository.findLatestHash(negotiationId).orElse(NegotiationMessage.GENESIS_HASH));
+        messageRepository.save(snapshot);
     }
 
     private void validate(CreateNegotiationCommand command) {
