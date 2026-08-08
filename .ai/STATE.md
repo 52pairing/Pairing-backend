@@ -1,6 +1,6 @@
 # 현재 상태 — AI매칭(4번 파트)
 
-최종 갱신: 2026-08-07
+최종 갱신: 2026-08-08
 
 ## 담당 범위
 
@@ -25,26 +25,23 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 - `POST /api/v1/matchings/recommendations` — 후보풀 조회 + Gemini 재랭킹(`{freelancer_id, score, reason}` 구조화 출력)
 - **미구현(TODO)**: `MatchingService._build_prompt`가 스텁 — 지금은 freelancer_id+유사도만 나열, 실제 이력서/포지션 요구조건 텍스트 없음. 하드필터(직군/직무/일정/단가)도 검색에 전혀 없음.
 
-## Pairing-backend `matching` 도메인 현황 (2026-08-07 저녁 갱신)
+## Pairing-backend `matching` 도메인 현황 (2026-08-08 갱신)
 
-- `MatchingController`의 9개 엔드포인트 **전부 실제 구현으로 전환 완료** (더 이상 고정 샘플 응답 없음). 요청/응답 DTO는 확정됨(아래 참고).
+- `MatchingController`의 9개 엔드포인트 **전부 실제 구현**(고정 샘플 응답 없음). PR #34로 develop에 merge 완료.
 - `meta` 도메인이 공통 마스터 데이터(직군/직무/스킬/근무조건) 제공 — `/api/v1/meta/*`, 비로그인도 호출 가능.
-- Spring → Pairing-python 호출 코드(`MatchingPort`+`PythonMatchingAdapter`, Resilience4j 서킷브레이커, Bucket4j 레이트리밋)를 Algoga_V3_backend 패턴 그대로 이식해 완성. `application.yaml`에 `ai.pairing-python.base-url`/`internal-api-key` 설정 추가(테스트 프로파일에도 동일하게 추가함 — 안 넣으면 컨텍스트 로딩이 깨진다).
-- **다른 도메인 의존 부분은 포트+스텁 어댑터로 자리를 만들어두고 진행**(freelancer/project/negotiation 도메인이 전부 아직 실제 영속 계층이 없어서 — enum만 존재). 매칭 자체 로직(라운드/후보/요청 상태, 점수 계산, 가중치, budgetCap 등)은 전부 실제 DB로 완성했고, 아래 3개 포트만 그 도메인들이 실제로 구현되면 어댑터 클래스 하나씩 교체하면 된다:
-  - `application/port/out/FreelancerDirectoryPort` ← `infrastructure/directory/StubFreelancerDirectoryAdapter`
-  - `application/port/out/ProjectDirectoryPort` ← `infrastructure/directory/StubProjectDirectoryAdapter`
-  - `application/port/out/NegotiationPort` ← `infrastructure/negotiation/StubNegotiationAdapter` (협상 생성은 실패시키지 않고 음수 placeholder ID + 경고 로그만 남김)
-- `budgetCap`(수수료율 구간×클라이언트등급)과 `grade_weight`(0/1/2%) 계산은 `ClientGradeResolver`/`BudgetCapCalculator`가 **실제로** `account` 도메인의 `ClientProfileRepository`(이건 진짜 구현돼 있음)를 조회해서 처리한다 — 이 둘만은 스텁이 아니다.
-- Stage F 가드(직무/스킬·예산 조합 재검증)는 지금 항상 통과 처리(placeholder). 규칙 기반 실제 검증은 3일차.
-- fitReason은 DB에 `"|"`로 이어붙인 문자열로 저장하고 API 응답에서 다시 나눠 태그 리스트로 돌려준다(`CandidateResponseAssembler`). Pairing-python이 이 구분자로 합친 문자열을 내려주도록 3일차에 `_build_prompt`/응답 스키마를 맞춰야 한다.
-- `matching_candidate`에 스키마 대비 빠져있던 `is_rejected` 컬럼을 추가했다(클라이언트가 요청 발송 전에 후보를 거절하는 상태 저장용, DB 마이그레이션 필요).
-- **버그 수정**: `findFreelancerIdsByPositionId`가 프로젝트가 아니라 포지션 단위로 스코프가 좁게 잡혀 있었음(R02 예외조건 5 위반) → `findFreelancerIdsByProjectId`로 교체.
-
-## 오늘 코드로 반영한 것 (커밋 전, 로컬만)
-
-- `CandidateResponse`, `MatchingRequestResponse`에서 `fitScore` 필드 제거 (점수 숫자를 클라이언트에 노출 안 하기로 결정). `MatchingController` 샘플 데이터, `docs/api-dto.csv`, `.ai/API.md` 동기화 완료. 컴파일 확인함.
-- 매칭 도메인 전체 구현(위 섹션 참고) — 새 파일 다수, `db/init/02-create-schema.sql`에 컬럼 1개 추가, `application.yaml`/테스트 `application.yaml`에 설정 추가.
-- **주의**: 이 변경들은 아직 push 안 됨. 커밋 시 같이 나가야 함.
+- Spring → Pairing-python 호출 코드(`MatchingPort`+`PythonMatchingAdapter`, Resilience4j 서킷브레이커, Bucket4j 레이트리밋) 완성.
+- **다른 도메인 연동 포트 3개 — 대부분 실제 구현으로 교체 완료** (`feature/matching-directory-adapters` 브랜치, 아직 이슈·PR 안 만듦):
+  - `ProjectDirectoryPort` ← `infrastructure/directory/ProjectDirectoryAdapter` — **완전 교체**. `ProjectQueryUseCase`(project 도메인) + `AccountQueryUseCase.findClientProfileById`(회사명/업종/직원수)로 실제 조회. `findPositionSummary`는 project 도메인이 positionId 단독으로 projectId를 역조회할 방법이 없어서 **포트 시그니처를 `findPositionSummary(projectId, positionId)`로 변경**했다 — 매칭이 자신의 `MatchingRound`(project_id 보유)에서 얻어 넘긴다.
+  - `NegotiationPort` ← `infrastructure/negotiation/NegotiationAdapter` — **완전 교체**. negotiation의 `NegotiationCommandUseCase`(생성)/`NegotiationProgressUseCase`(진행조회) 위임 호출.
+  - `FreelancerDirectoryPort` ← `infrastructure/directory/FreelancerDirectoryAdapter` — **부분 교체**. `findCardSummary`만 실구현(`FreelancerCandidateSummaryUseCase`). `resolveFreelancerId`/`findCondition`은 account_id↔freelancer_profile.id 양방향 조회가 account 도메인에 아직 없어(2번이 1번에게 승인 요청, 대기 중) 스텁 유지 — 로그 경고로 표시해둠.
+- `budgetCap`(수수료율 구간×클라이언트등급)과 `grade_weight`(0/1/2%) 계산은 `ClientGradeResolver`/`BudgetCapCalculator`가 실제 리포지토리를 조회해서 처리한다.
+- Stage F 가드(직무/스킬·예산 조합 재검증)는 지금 항상 통과 처리(placeholder). 규칙 기반 실제 검증은 아직 남음.
+- fitReason은 DB에 `"|"`로 이어붙인 문자열로 저장하고 API 응답에서 다시 나눠 태그 리스트로 돌려준다(`CandidateResponseAssembler`). Pairing-python이 이 구분자로 합친 문자열을 내려주도록 `_build_prompt`/응답 스키마를 맞춰야 한다(아직 안 함).
+- **로컬 개발 환경에서 발견·수정한 버그 2건** (코드 정상, 인프라/설정 문제였음):
+  - `global/ratelimit/RedisRateLimitConfig`가 빈 생성 시 즉시 Redis에 연결해서 Redis 없는 환경(CI)에서 전체 컨텍스트 로딩이 실패 → `@Lazy`(빈 + 생성자 주입 지점 둘 다)로 지연 연결하도록 수정.
+  - `matching_candidate`/`matching_round`의 NUMERIC 컬럼(similarity/base_score/grade_weight/fit_score/cost_amount)에 JPA 엔티티가 `columnDefinition`을 안 줘서 스키마 검증 실패 → 명시해서 해결.
+- **협상(5번) 연동 — 아직 남은 것**: 협상이 타결(AGREED)/결렬(FAILED)되는 시점에 매칭 쪽 상태(`MatchingRequest.advanceStatus`/`failNegotiation`)를 갱신해줄 통로가 없다. `MatchingNegotiationOutcomeUseCase.markNegotiationAgreed(requestId)`/`.markNegotiationFailed(requestId)` 시그니처를 5번에게 전달했고, **양쪽 다 아직 구현 전**.
+- `newProposalCount`(협상 진행조회 응답)는 "클라가 마지막으로 읽은 시점 이후 온 새 제안 수"로 정의 확정. 실제 반영은 5번의 `feature/negotiation-unread-proposals` 브랜치가 develop에 merge된 뒤 자동 적용됨(우리 코드 수정 불필요).
 
 ## 확정된 설계 결정 (요약, 상세 근거는 각 요구사항 R01~R05/정책 P02~P09 참고)
 
@@ -59,7 +56,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
    - **PERIOD**: `periodValue`가 null이면 그 협상에서 제외, 값 있으면 포함(블랑켓 제외 아님)
    - 경력연차·스킬은 매칭 필터로만 쓰고 diff 대상 아님
    - `budgetCap`: 3일 마감 때문에 1단계는 "순예산÷확정인원"으로 단순화, 나중에 Stage F 정확한 배분값으로 교체(필드명 동일 유지)
-   - **블로커**: `negotiation` 도메인에 `application` 계층이 아직 없음 — 협상팀이 인바운드 UseCase를 만들어야 연동 가능
+   - ~~블로커: negotiation 도메인에 application 계층이 아직 없음~~ — 2026-08-08 해소. `NegotiationCommandUseCase`/`NegotiationProgressUseCase` 실구현 완료, `NegotiationAdapter`로 연동함.
 
 ## 아직 팀 확인 대기 중인 것
 
@@ -68,3 +65,4 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 | 적합도 점수 스케일이 진짜 0~100인지 | policy.md "정의 필요, 월요일 확정" 회의 결과 대기 |
 | 골드 등급 수수료 할인 여부 | 다이아만 정책에 명시됨, 확인 필요 |
 | 프로젝트 등록에 인원별 예산 배분 필드 존재 여부 | 없으면 지금처럼 순예산 전체 조합으로만 판단 |
+| `currentSituation`(프로젝트 현재 상황)/`mainTask`(주요 담당 업무)를 프리랜서의 "받은 매칭 요청" 카드에 노출할지 | 2026-08-08 팀에 질문 전달, 답 대기 중. 데이터는 이미 `ProjectQueryUseCase`에서 옴, 노출하려면 `MatchingRequestResponse`에 필드 2개만 추가하면 됨 |
