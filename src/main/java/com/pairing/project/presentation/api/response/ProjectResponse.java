@@ -1,6 +1,6 @@
 package com.pairing.project.presentation.api.response;
 
-import com.pairing.global.common.api.response.StatusHistoryResponse;
+import com.pairing.global.infrastructure.s3.CdnMappable;
 import com.pairing.matching.domain.model.MatchingStatus;
 import com.pairing.meta.domain.model.JobCategory;
 import com.pairing.meta.domain.model.JobRole;
@@ -98,15 +98,48 @@ public record ProjectResponse(
         @Schema(description = "프리랜서 현황. 상세 화면 하단 목록")
         List<ParticipantFreelancer> freelancers,
 
-        @Schema(description = "상태 이력. 관리자 상세에서만 채워진다")
-        List<StatusHistoryResponse> statusHistories,
-
         @Schema(description = "첨부 자료")
         List<AttachedFile> files,
 
         @Schema(description = "등록 시각")
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+
+        @Schema(description = "지금 결제해야 할 정산 ID. 결제할 게 없으면 null. "
+                + "등록 완료면 착수금, 완료 대기면 성공보수를 가리킨다.", example = "700")
+        Long payableSettlementId
 ) {
+
+    /**
+     * 도메인 -> 응답.
+     *
+     * <p>statusNote / freelancers / payableSettlementId 는 매칭·정산 도메인 값이라 아직 비운다.
+     * 첨부는 fileId 만 채운다. originalName / sizeBytes / fileUrl 은 file 테이블 소관인데
+     * file 도메인 구현이 붙으면 파라미터로 받아 채운다.
+     */
+    public static ProjectResponse from(com.pairing.project.domain.model.Project p) {
+        List<Position> positions = p.getPositions().stream()
+                .map(pos -> new Position(
+                        pos.getId(), pos.getPositionNo(), pos.getJobCategory(), pos.getJobRole(),
+                        pos.getMinCareerYears(), pos.getHeadcount(), pos.getConfirmedCount(),
+                        pos.getStatus(), pos.getSkills()))
+                .toList();
+
+        List<AttachedFile> files = p.getFileIds().stream()
+                .map(fileId -> new AttachedFile(fileId, null, null, null))
+                .toList();
+
+        return new ProjectResponse(
+                p.getId(), p.getTitle(), p.getStatus(), null,
+                p.getPaymentStatus(), p.getStartDesiredDate(), p.isStartNegotiable(),
+                p.getPeriodValue(), p.getPeriodUnit(), p.getBudgetAmount(),
+                p.getWorkStyle(), p.getWorkForm(), p.getWorkLocation(),
+                p.getCurrentSituation(), p.getMainTask(), p.getDetailScope(), p.getExtraNote(),
+                p.getTotalHeadcount(), p.getConfirmedHeadcount(),
+                p.getRecruitDeadline(), p.getExtensionCount(),
+                p.getFreeRerecommendUsed(), p.getPaidRerecommendUsed(),
+                positions, List.of(), files,
+                p.getCreatedAt(), null);
+    }
 
     @Schema(description = "포지션")
     public record Position(
@@ -118,8 +151,7 @@ public record ProjectResponse(
             @Schema(description = "모집 인원", example = "2") int headcount,
             @Schema(description = "확정 인원", example = "1") int confirmedCount,
             @Schema(description = "포지션 상태") PositionStatus status,
-            @Schema(description = "요구 스킬") List<SkillCode> skills,
-            @Schema(description = "우대사항", example = "유사 프로젝트 경험자 우대") String preferredNote
+            @Schema(description = "요구 스킬") List<SkillCode> skills
     ) {
     }
 
@@ -141,7 +173,9 @@ public record ProjectResponse(
     @Schema(description = "첨부 자료")
     public record AttachedFile(
             @Schema(description = "파일 ID", example = "1") Long fileId,
-            @Schema(description = "원본 파일명", example = "기획서.pdf") String originalName
-    ) {
+            @Schema(description = "원본 파일명", example = "기획서.pdf") String originalName,
+            @Schema(description = "크기(byte)", example = "29491") Long sizeBytes,
+            @Schema(description = "다운로드 URL") String fileUrl
+    ) implements CdnMappable {
     }
 }

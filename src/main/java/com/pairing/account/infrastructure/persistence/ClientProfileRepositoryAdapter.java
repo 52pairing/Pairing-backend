@@ -27,6 +27,11 @@ public class ClientProfileRepositoryAdapter implements ClientProfileRepository {
     }
 
     @Override
+    public Optional<ClientProfile> findById(Long id) {
+        return springDataRepository.findByIdAndDeletedAtIsNull(id).map(clientProfileMapper::toDomain);
+    }
+
+    @Override
     public boolean existsByBusinessNo(String businessNo) {
         return springDataRepository.existsByBusinessNo(businessNo);
     }

@@ -25,6 +25,9 @@ import org.mockito.quality.Strictness;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -175,6 +178,7 @@ class LoginServiceTest {
     @DisplayName("차단된 IP는 계정 조회 전에 AU_014로 막는다")
     void blockedIpIsRejectedFirst() {
         given(loginAttemptPort.isBlocked(IP)).willReturn(true);
+        given(loginAttemptPort.blockRemaining(IP)).willReturn(Duration.ofMinutes(90));
 
         assertThatThrownBy(() -> loginService.login(command()))
                 .isInstanceOf(BusinessException.class)
@@ -182,6 +186,32 @@ class LoginServiceTest {
                 .isEqualTo(AuthErrorCode.LOGIN_BLOCKED);
 
         verify(accountQueryUseCase, never()).findByEmailAndRole(anyString(), any());
+    }
+
+    @Test
+    @DisplayName("IP 차단 메시지에 다시 시도할 수 있는 시각이 들어간다")
+    void blockedMessageContainsRetryTime() {
+        given(loginAttemptPort.isBlocked(IP)).willReturn(true);
+        given(loginAttemptPort.blockRemaining(IP)).willReturn(Duration.ofMinutes(90));
+
+        String expectedAt = LocalDateTime.now().plusMinutes(90)
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+
+        assertThatThrownBy(() -> loginService.login(command()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining(expectedAt)
+                .hasMessageContaining("1시간 30분 남음");
+    }
+
+    @Test
+    @DisplayName("남은 시간을 못 읽으면 차단 기간(2시간)으로 안내한다")
+    void blockedMessageFallsBackToBlockDuration() {
+        given(loginAttemptPort.isBlocked(IP)).willReturn(true);
+        given(loginAttemptPort.blockRemaining(IP)).willReturn(Duration.ZERO);
+
+        assertThatThrownBy(() -> loginService.login(command()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("2시간 후에 다시 시도해 주세요.");
     }
 
     @Test

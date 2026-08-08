@@ -7,4 +7,6 @@ import java.util.Optional;
 public interface SpringDataFreelancerProfileRepository extends JpaRepository<FreelancerProfileJpaEntity, Long> {
 
     Optional<FreelancerProfileJpaEntity> findByAccountIdAndDeletedAtIsNull(Long accountId);
+
+    Optional<FreelancerProfileJpaEntity> findByIdAndDeletedAtIsNull(Long id);
 }

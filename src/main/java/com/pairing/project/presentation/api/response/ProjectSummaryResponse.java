@@ -62,6 +62,10 @@ public record ProjectSummaryResponse(
         @Schema(description = "매칭된 프리랜서명. 없으면 null", example = "김프리")
         String matchedFreelancerName,
 
+        @Schema(description = "지금 결제해야 할 정산 ID. 결제할 게 없으면 null. "
+                + "카드의 결제 버튼이 이 값을 사용한다.", example = "700")
+        Long payableSettlementId,
+
         @Schema(description = "등록 시각")
         LocalDateTime createdAt
 ) {

@@ -2,11 +2,14 @@ package com.pairing.account.application.service;
 
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.ClientProfile;
+import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SocialAccount;
 import com.pairing.account.domain.model.SocialProvider;
 import com.pairing.account.domain.repository.AccountRepository;
 import com.pairing.account.domain.repository.ClientProfileRepository;
+import com.pairing.account.domain.repository.FreelancerProfileRepository;
 import com.pairing.account.domain.repository.SocialAccountRepository;
 import com.pairing.account.exception.AccountErrorCode;
 import com.pairing.global.exception.BusinessException;
@@ -25,6 +28,7 @@ public class AccountQueryService implements AccountQueryUseCase {
 
     private final AccountRepository accountRepository;
     private final ClientProfileRepository clientProfileRepository;
+    private final FreelancerProfileRepository freelancerProfileRepository;
     private final SocialAccountRepository socialAccountRepository;
 
     @Override
@@ -73,5 +77,21 @@ public class AccountQueryService implements AccountQueryUseCase {
     @Override
     public Optional<SocialAccount> findSocialAccount(SocialProvider provider, String providerUid) {
         return socialAccountRepository.findByProviderAndProviderUid(provider, providerUid);
+    }
+
+    @Override
+    public ClientProfile getClientProfile(Long accountId) {
+        return clientProfileRepository.findByAccountId(accountId)
+                .orElseThrow(() -> new BusinessException(AccountErrorCode.PROFILE_NOT_FOUND));
+    }
+
+    @Override
+    public Optional<FreelancerProfile> findFreelancerProfileById(Long freelancerProfileId) {
+        return freelancerProfileRepository.findById(freelancerProfileId);
+    }
+
+    @Override
+    public Optional<ClientProfile> findClientProfileById(Long clientProfileId) {
+        return clientProfileRepository.findById(clientProfileId);
     }
 }

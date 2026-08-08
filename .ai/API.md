@@ -92,7 +92,10 @@
 - 비밀번호 변경 후 모든 세션이 끊기므로 재로그인이 필요하다.
 - **로그인 전 "비밀번호 찾기"와 로그인 후 "비밀번호 변경"은 방식이 다르다.**
   찾기는 메일 링크 → 임시 비밀번호 발급, 변경은 메일 인증코드 → 사용자가 새 비밀번호 직접 입력.
-  변경은 현재 비밀번호를 받지 않고, `purpose=PASSWORD_CHANGE` 인증을 먼저 통과해야 한다(미인증 시 `AU_006`).
+  변경은 현재 비밀번호를 받지 않는다.
+- `PATCH /auth/password` 는 두 화면이 함께 쓰며 인증 요구만 다르다.
+  마이페이지 변경은 `purpose=PASSWORD_CHANGE` 인증을 먼저 통과해야 하고(미인증 시 `AU_006`),
+  **임시 비밀번호로 로그인한 직후에는 인증코드 없이** 바로 호출한다. 서버가 `tempPassword` 상태를 보고 가른다.
 
 ---
 
@@ -144,9 +147,12 @@
 | DELETE | `/api/v1/files/{fileId}` | O | 업로더 본인만 삭제 |
 
 - `purpose`: `PROFILE_IMAGE` / `COMPANY_LOGO` / `PORTFOLIO` / `PROJECT_FILE` / `SIGNATURE`.
-- 용량·확장자 제한은 purpose 별로 다르다. 초과 시 400.
+- 용량·확장자 제한은 purpose 별로 다르다. 초과/불일치 시 400(`GLOBAL_008` / `FI_003`).
 - 다른 도메인은 파일 자체가 아니라 **`fileId` 만 참조**한다. (예: `logoFileId`, `fileIds[]`, `signatureFileId`)
 - 응답의 `fileUrl` 은 CDN 절대경로로 자동 변환된다.
+- 삭제는 업로더 본인만 가능(`FI_002`), 조회는 다른 도메인 응답에도 쓰이므로 소유자 제한이 없다.
+- 다른 도메인은 presentation DTO가 아니라 `FileQueryUseCase.findObjectKey(fileId)` (application 포트)로
+  object key 를 가져와 자기 응답의 `~Url` 필드에 담는다.
 
 ## 05. Home (비로그인 메인)
 
@@ -160,10 +166,9 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/accounts/me/payment-methods` | O | 등록된 카드·간편결제 목록 |
-| POST | `/api/v1/accounts/me/payment-methods` | O | body `{methodType, card{cardBrand,cardNumber,expiryMonth,expiryYear,cvc,cardHolder}}` 또는 `{methodType, easyPay{provider}}` |
-| PUT | `/api/v1/accounts/me/payment-methods/{id}/default` | O | 기본 결제수단 설정 |
-| DELETE | `/api/v1/accounts/me/payment-methods/{id}` | O | 결제수단 삭제 |
+| GET | `/api/v1/accounts/me/payment-methods` | O | 카드·계좌 목록(각 1건, `methodType` 으로 구분: CARD/BANK_ACCOUNT) |
+| PUT | `/api/v1/accounts/me/payment-methods/card` | O | body `{cardBrand, cardNumber, cardHolder}` 카드 정보 수정 |
+| PUT | `/api/v1/accounts/me/payment-methods/bank-account` | O | body `{bankCode, accountNo, accountHolder}` 계좌 정보 수정 |
 | DELETE | `/api/v1/accounts/me` | O | body `{currentPassword, reason}` 회원 탈퇴 |
 | GET | `/api/v1/accounts/admin/summary` | ADMIN | 회원 요약 카드(전체·정상·정지·탈퇴·역할별) |
 | GET | `/api/v1/accounts/admin?role=&status=&signupType=&keyword=&page=&size=` | ADMIN | 회원 목록 |
@@ -171,9 +176,9 @@
 | POST | `/api/v1/accounts/admin/{accountId}/suspension` | ADMIN | body `{reason, days}` 정지 |
 | DELETE | `/api/v1/accounts/admin/{accountId}/suspension` | ADMIN | 정지 해제 |
 
-- 수수료 결제수단은 **계정당 최대 3개**다. 첫 등록분이 기본 결제수단이 되고 `isDefault` 는 한 건만 true 다.
-- CVC는 등록 시 검증에만 쓰고 저장하지 않는다. 조회 응답에는 마스킹된 `displayName` 만 나간다.
-- 용역비 수령 계좌는 가입 시 한 번만 받는다. 마이페이지 결제수단 목록에는 나오지 않는다.
+- 카드(수수료 결제) 1개 + 계좌(용역비 수령) 1개, 가입 시 각각 하나씩 만들어진다. 마이페이지에서는 **기존 값을 수정만** 한다.
+  신규 등록·삭제·기본 결제수단 지정 API는 없다(둘 다 필수 항목이라 삭제 개념이 없음).
+- 카드번호·계좌번호는 하이픈을 넣어도 되며 서버가 숫자만 남겨 암호화 저장한다. 조회 응답에는 마스킹된 `displayName` 만 나간다.
 - 탈퇴는 진행 중 프로젝트나 미납 요금이 있으면 거부된다. 30일 재가입 제한이 걸린다.
 - 역할별 마이페이지(조회·수정)는 20/21 도메인에 있다.
 - 관리자 회원 상세는 목록과 응답이 다르다(`AdminAccountDetailResponse`). 활동 현황 6지표와 프로젝트 이력을 함께 준다.
@@ -390,12 +395,7 @@
 | GET | `/api/v1/freelancers/me/condition` | FREELANCER | 내 조건 |
 | PUT | `/api/v1/freelancers/me/condition` | FREELANCER | 조건 등록/수정 |
 | GET | `/api/v1/freelancers/me/resume` | FREELANCER | **조건 + 이력서 통합 조회** (마이페이지 "내 이력서" 한 화면) |
-| PUT | `/api/v1/freelancers/me/resume` | FREELANCER | 이력서 등록/수정 |
-| GET | `/api/v1/freelancers/me/resume/pdf` | FREELANCER | 이력서 PDF URL |
-| GET | `/api/v1/freelancers/me/portfolios` | FREELANCER | 포트폴리오 목록 |
-| POST | `/api/v1/freelancers/me/portfolios` | FREELANCER | body `{title, description, fileId, linkUrl}` |
-| PUT | `/api/v1/freelancers/me/portfolios/{id}` | FREELANCER | 포트폴리오 수정 |
-| DELETE | `/api/v1/freelancers/me/portfolios/{id}` | FREELANCER | 포트폴리오 삭제 |
+| PUT | `/api/v1/freelancers/me/resume` | FREELANCER | 이력서 등록/수정 (포트폴리오 등록/삭제도 여기서 같이 처리) |
 | GET | `/api/v1/freelancers/me/matching-settings` | FREELANCER | 매칭 설정 조회 |
 | PUT | `/api/v1/freelancers/me/matching-settings` | FREELANCER | body `{aiMatchingAgreed, matchingPaused}` |
 
@@ -403,16 +403,21 @@
 - **조회는 통합, 저장은 분리**다. 마이페이지는 한 화면이라 `GET /me/resume` 하나로 `{condition, resume}` 를 함께 받고,
   등록 위저드는 단계별 저장이 필요해 `PUT /me/condition` 과 `PUT /me/resume` 를 따로 호출한다.
 - 조건·이력서 저장 시 임베딩이 갱신된다. 필수 항목을 다 채우면 이력서가 `COMPLETED` 가 되고 매칭 대상이 된다.
-- 하위 목록(학력/경력/자격증/링크)은 **전체 교체** 방식이다.
+- 하위 목록(학력/경력/자격증/링크/포트폴리오)은 **전체 교체** 방식이다. 포트폴리오는 별도 CRUD 없이
+  `PUT /me/resume` 안에서 파일/링크로 함께 등록·삭제된다. 이력서 PDF 발급 API는 없다.
+- `PUT /me/resume` 는 `agreements{profileCollectionAgreed, profileProvisionAgreed, aiAnalysisAgreed,
+  careerPortfolioUsageAgreed}` 를 필수로 받는다(넷 다 true, 미동의 시 `FR_004`). 회원가입 약관(`terms`)과는
+  별개이며 최초 등록 시 한 번만 받고 이후 수정은 이 값에 영향을 주지 않는다.
 
 ## 21. Client
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/clients/me` | CLIENT | 마이페이지 |
-| PATCH | `/api/v1/clients/me` | CLIENT | body `{companyName, employeeCount, phone, logoFileId, address}` |
+| GET | `/api/v1/clients/me` | CLIENT | 기업정보 조회(사업분야·사업자등록번호·회사명·직원수·담당자명·주소) |
+| PATCH | `/api/v1/clients/me` | CLIENT | body `{companyName, employeeCount, address}` 기업정보 수정 |
 
-사업자등록번호·대표자명·업종은 수정할 수 없다.
+사업자등록번호·사업 분야·담당자명(대표자명)·업무이메일은 수정할 수 없다.
+전화번호·기업 로고는 계정 공통 화면("기본 정보" 탭, 06번 계정 도메인)에서 다루며 이 도메인 책임이 아니다.
 
 ## 07. Grade
 
@@ -453,7 +458,7 @@
 | AU_007 / AU_008 / AU_009 | 409 | 이메일 / 휴대폰 / 사업자등록번호 중복 |
 | AU_010 / AU_011 | 400 | 비밀번호 형식 / 확인 불일치 |
 | AU_013 | 400 | 약관 동의 목록 누락 |
-| AU_014 | 429 | IP 차단 (1시간 20회 → 2시간) |
+| AU_014 | 429 | IP 차단 (1시간 20회 → 2시간). message 에 재시도 가능 시각 포함 |
 | AU_015 | 401 | 재발급 시 다른 기기 로그인 감지 |
 | AU_016 | 401 | 리프레시 토큰 없음/무효 |
 | AU_017 | 403 | 임시 비밀번호 상태 |
@@ -468,3 +473,9 @@
 | AC_001 ~ AC_005 | - | 계정 조회/상태 오류 |
 | AC_006 | 400 | 지원하지 않는 은행 코드 |
 | TM_002 / TM_003 | 400 | 필수 약관 미동의 / 알 수 없는 약관 포함 |
+| FI_001 | 404 | 파일을 찾을 수 없음 |
+| FI_002 | 403 | 업로더 본인이 아님(삭제 시도) |
+| FI_003 | 400 | 허용 용량 초과 |
+| FR_001 ~ FR_003 | - | 프리랜서 조건/이력서 조회·검증 오류 |
+| FR_004 | 400 | 이력서 등록 필수 동의 4종 중 미동의 |
+| FR_005 | 404 | 존재하지 않는 프리랜서(freelancer_profile.id) |

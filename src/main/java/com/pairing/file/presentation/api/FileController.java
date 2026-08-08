@@ -1,6 +1,10 @@
 package com.pairing.file.presentation.api;
 
+import com.pairing.file.application.command.UploadFileCommand;
+import com.pairing.file.application.usecase.FileCommandUseCase;
+import com.pairing.file.application.usecase.FileQueryUseCase;
 import com.pairing.file.domain.model.FilePurpose;
+import com.pairing.file.exception.FileErrorCode;
 import com.pairing.file.presentation.api.response.FileResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
@@ -37,6 +41,9 @@ import org.springframework.web.multipart.MultipartFile;
 @Tag(name = "04. File", description = "공통 파일 업로드 API")
 public class FileController {
 
+    private final FileCommandUseCase fileCommandUseCase;
+    private final FileQueryUseCase fileQueryUseCase;
+
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @Operation(summary = "파일 업로드", description = "purpose 에 따라 허용 확장자와 크기 상한이 달라집니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_FILE_TYPE", "FILE_UPLOAD_FAILED"})
@@ -45,9 +52,8 @@ public class FileController {
             @RequestParam FilePurpose purpose,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 파일 저장 및 file 테이블 등록
-        FileResponse data = new FileResponse(1L, "portfolio.pdf", "files/portfolio/uuid.pdf",
-                "application/pdf", 1_048_576L);
+        FileResponse data = FileResponse.from(
+                fileCommandUseCase.upload(new UploadFileCommand(accountId, purpose, file)));
 
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("FILE_UPLOADED", "업로드에 성공했습니다.", data));
@@ -55,24 +61,23 @@ public class FileController {
 
     @GetMapping("/{fileId}")
     @Operation(summary = "파일 메타 조회", description = "다운로드 URL 을 얻을 때 사용합니다.")
+    @ApiErrorCodeExample(domain = FileErrorCode.class, value = {"FILE_NOT_FOUND"})
     public ResponseEntity<ApiResponse<FileResponse>> findOne(
             @PathVariable Long fileId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 조회 및 접근 권한 확인
-        FileResponse data = new FileResponse(fileId, "portfolio.pdf", "files/portfolio/uuid.pdf",
-                "application/pdf", 1_048_576L);
-
+        FileResponse data = FileResponse.from(fileQueryUseCase.getById(fileId));
         return ResponseEntity.ok(ApiResponse.success("FILE_FOUND", "조회에 성공했습니다.", data));
     }
 
     @DeleteMapping("/{fileId}")
     @Operation(summary = "파일 삭제", description = "업로드한 본인만 삭제할 수 있습니다.")
+    @ApiErrorCodeExample(domain = FileErrorCode.class, value = {"FILE_NOT_FOUND", "FILE_ACCESS_DENIED"})
     public ResponseEntity<ApiResponse<Void>> delete(
             @PathVariable Long fileId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 소유자 확인 후 삭제
+        fileCommandUseCase.delete(fileId, accountId);
         return ResponseEntity.ok(ApiResponse.success("FILE_DELETED", "삭제되었습니다."));
     }
 }

@@ -1,5 +1,6 @@
 package com.pairing.freelancer.presentation.api.response;
 
+import com.pairing.freelancer.application.result.ResumeResult;
 import com.pairing.freelancer.domain.model.CampusType;
 import com.pairing.freelancer.domain.model.GraduationStatus;
 import com.pairing.freelancer.domain.model.ResumeStatus;
@@ -26,8 +27,40 @@ public record ResumeResponse(
         @Schema(name = "ResumeEducationResponse", description = "학력") List<Education> educations,
         @Schema(name = "ResumeCareerResponse", description = "경력") List<Career> careers,
         @Schema(name = "ResumeCertificateResponse", description = "자격증·어학") List<Certificate> certificates,
-        @Schema(description = "링크") List<String> links
+        @Schema(description = "링크") List<String> links,
+        @Schema(description = "이력서 등록 필수 동의 4종") Agreements agreements
 ) implements CdnMappable {
+
+    public static ResumeResponse from(ResumeResult result) {
+        return new ResumeResponse(
+                result.resumeId(),
+                result.status(),
+                result.name(),
+                result.birthDate(),
+                result.contactPhone(),
+                result.contactEmail(),
+                result.address(),
+                result.profileImageUrl(),
+                result.selfIntroduction(),
+                result.portfolioUrl(),
+                result.educations().stream()
+                        .map(e -> new Education(e.getStartDate(), e.getEndDate(), e.getSchoolName(), e.getMajor(),
+                                e.getGraduationStatus(), e.getCampusType()))
+                        .toList(),
+                result.careers().stream()
+                        .map(c -> new Career(c.getStartDate(), c.getEndDate(), c.getCompanyName(),
+                                c.getDepartmentRank(), c.getJobDescription()))
+                        .toList(),
+                result.certificates().stream()
+                        .map(c -> new Certificate(c.getAcquiredDate(), c.getName(), c.getIssuerScore(), c.getNote()))
+                        .toList(),
+                result.links().stream().map(link -> link.getUrl()).toList(),
+                new Agreements(result.agreements().isProfileCollectionAgreed(),
+                        result.agreements().isProfileProvisionAgreed(),
+                        result.agreements().isAiAnalysisAgreed(),
+                        result.agreements().isCareerPortfolioUsageAgreed())
+        );
+    }
 
     @Schema(description = "학력")
     public record Education(
@@ -56,6 +89,15 @@ public record ResumeResponse(
             @Schema(description = "시험명") String name,
             @Schema(description = "발급기관/점수") String issuerScore,
             @Schema(description = "비고") String note
+    ) {
+    }
+
+    @Schema(description = "이력서 등록 필수 동의 4종")
+    public record Agreements(
+            @Schema(description = "프로필 정보 수집 동의") boolean profileCollectionAgreed,
+            @Schema(description = "클라이언트 제공 동의") boolean profileProvisionAgreed,
+            @Schema(description = "AI 매칭 분석 동의") boolean aiAnalysisAgreed,
+            @Schema(description = "경력/포트폴리오 활용 동의") boolean careerPortfolioUsageAgreed
     ) {
     }
 }

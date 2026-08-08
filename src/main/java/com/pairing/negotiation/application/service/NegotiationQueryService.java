@@ -1,6 +1,7 @@
 package com.pairing.negotiation.application.service;
 
 import com.pairing.global.exception.BusinessException;
+import com.pairing.negotiation.application.port.out.ChatRoomLookupPort;
 import com.pairing.negotiation.application.port.out.PartyNameReaderPort;
 import com.pairing.negotiation.application.port.out.PartyProfilePort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
@@ -8,9 +9,11 @@ import com.pairing.negotiation.application.port.out.ProjectReaderPort.ProjectVie
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.Negotiation;
+import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.PartyRole;
+import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
 import com.pairing.negotiation.domain.service.NegotiationLogVerifier;
@@ -21,7 +24,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -35,6 +40,7 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
     private final PartyProfilePort partyProfilePort;
     private final PartyNameReaderPort partyNameReaderPort;
     private final NegotiationViewerResolver viewerResolver;
+    private final ChatRoomLookupPort chatRoomLookupPort;
 
     @Override
     public NegotiationView getDetail(Long negotiationId, Long accountId) {
@@ -46,8 +52,9 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
 
         PartyRole role = viewerResolver.resolve(accountId, negotiation.getFreelancerId(), clientProfileId);
         String title = project.map(ProjectView::title).orElse(null);
+        Long chatRoomId = chatRoomLookupPort.findChatRoomIdByNegotiationId(negotiationId).orElse(null);
 
-        return toView(negotiation, role, title, clientProfileId);
+        return detailView(negotiation, role, title, clientProfileId, chatRoomId);
     }
 
     @Override
@@ -92,10 +99,8 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
             throw new BusinessException(NegotiationErrorCode.NOT_PARTICIPANT);
         }
 
-        String clientName = partyNameReaderPort.findClientCompanyName(project.clientProfileId()).orElse(null);
         return negotiationRepository.findByProjectId(projectId, status, pageable)
-                .map(n -> new NegotiationView(n, PartyRole.CLIENT, project.title(), clientName,
-                        partyNameReaderPort.findFreelancerName(n.getFreelancerId()).orElse(null)));
+                .map(n -> summaryView(n, PartyRole.CLIENT, project.title(), project.clientProfileId()));
     }
 
     /** 프리랜서 목록: 협상마다 프로젝트가 달라 title 은 건별로 읽는다. */
@@ -106,16 +111,52 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
         return negotiationRepository.findByFreelancerId(myFreelancerProfileId, status, pageable)
                 .map(n -> {
                     Optional<ProjectView> project = projectReaderPort.findById(n.getProjectId());
-                    return toView(n, PartyRole.FREELANCER,
+                    return summaryView(n, PartyRole.FREELANCER,
                             project.map(ProjectView::title).orElse(null),
                             project.map(ProjectView::clientProfileId).orElse(null));
                 });
     }
 
-    /** 애그리거트 + role + 표시용 이름(회사명·프리 이름)을 조립한다. */
-    private NegotiationView toView(Negotiation negotiation, PartyRole role, String title, Long clientProfileId) {
-        String clientName = partyNameReaderPort.findClientCompanyName(clientProfileId).orElse(null);
-        String freelancerName = partyNameReaderPort.findFreelancerName(negotiation.getFreelancerId()).orElse(null);
-        return new NegotiationView(negotiation, role, title, clientName, freelancerName);
+    /** 상세 뷰: 조건별 현재 AI 제안(값·근거) + 채팅방 ID 를 채운다. */
+    private NegotiationView detailView(Negotiation negotiation, PartyRole role, String title, Long clientProfileId,
+                                       Long chatRoomId) {
+        Map<Long, NegotiationView.ConditionProposal> proposals = new HashMap<>();
+        for (NegotiationCondition c : negotiation.getConditions()) {
+            messageRepository.findLatestProposal(negotiation.getId(), c.getId())
+                    .ifPresent(m -> proposals.put(c.getId(),
+                            new NegotiationView.ConditionProposal(m.getProposedValue(), m.getReason())));
+        }
+        return NegotiationView.forDetail(negotiation, role, title,
+                clientName(clientProfileId), freelancerName(negotiation), chatRoomId, proposals);
+    }
+
+    /** 목록 뷰: 마지막 제안(주체·시각) + '내 응답 필요' 여부를 채운다. */
+    private NegotiationView summaryView(Negotiation negotiation, PartyRole role, String title, Long clientProfileId) {
+        NegotiationMessage lastProposal = messageRepository.findLatestProposal(negotiation.getId()).orElse(null);
+        return NegotiationView.forSummary(negotiation, role, title,
+                clientName(clientProfileId), freelancerName(negotiation), isWaitingFor(negotiation, role),
+                lastProposal != null ? lastProposal.getSenderType() : null,
+                lastProposal != null ? lastProposal.getCreatedAt() : null);
+    }
+
+    /** '내 응답 필요': 진행 중 + 이번 라운드에 AI 제안이 있는데 내 응답이 아직 없을 때. */
+    private boolean isWaitingFor(Negotiation negotiation, PartyRole role) {
+        if (negotiation.getStatus() != NegotiationStatus.IN_PROGRESS) {
+            return false;
+        }
+        int round = negotiation.getTotalRound();
+        if (round <= 0 || messageRepository.countProposalsInRound(negotiation.getId(), round) == 0) {
+            return false;
+        }
+        SenderType mySender = role == PartyRole.CLIENT ? SenderType.CLIENT : SenderType.FREELANCER;
+        return messageRepository.countResponsesInRound(negotiation.getId(), mySender, round) == 0;
+    }
+
+    private String clientName(Long clientProfileId) {
+        return partyNameReaderPort.findClientCompanyName(clientProfileId).orElse(null);
+    }
+
+    private String freelancerName(Negotiation negotiation) {
+        return partyNameReaderPort.findFreelancerName(negotiation.getFreelancerId()).orElse(null);
     }
 }

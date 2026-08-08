@@ -4,6 +4,7 @@ import com.pairing.account.application.command.CreateClientAccountCommand;
 import com.pairing.account.application.command.CreateFreelancerAccountCommand;
 import com.pairing.account.application.command.CreateSocialFreelancerAccountCommand;
 import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.EmployeeCount;
 
 /**
  * 계정 상태를 바꾸는 인바운드 포트.
@@ -30,4 +31,7 @@ public interface AccountCommandUseCase {
     void unlock(Long accountId);
 
     void verifyEmail(Long accountId);
+
+    /** 클라이언트 마이페이지(기업정보) 수정. 사업자등록번호·사업 분야는 대상이 아니다. */
+    void updateClientProfile(Long accountId, String companyName, EmployeeCount employeeCount, String address);
 }

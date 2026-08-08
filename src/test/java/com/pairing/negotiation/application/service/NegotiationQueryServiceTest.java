@@ -15,7 +15,10 @@ import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
+import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.PartyRole;
+import com.pairing.negotiation.domain.model.SenderType;
+import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import com.pairing.negotiation.presentation.api.response.NegotiationResponse;
@@ -48,6 +51,8 @@ class NegotiationQueryServiceTest {
     @Autowired
     private NegotiationRepository negotiationRepository;
     @Autowired
+    private NegotiationMessageRepository messageRepository;
+    @Autowired
     private ClientProfileRepository clientProfileRepository;
     @Autowired
     private FreelancerProfileRepository freelancerProfileRepository;
@@ -63,6 +68,7 @@ class NegotiationQueryServiceTest {
     private Long freelancerAccountId;   // account 행이 있어야 프리 이름(account.name)이 해석됨
     private Long freelancerProfileId;
     private Long negotiationId;
+    private Long amountConditionId;
 
     @BeforeEach
     void setUp() {
@@ -77,15 +83,34 @@ class NegotiationQueryServiceTest {
 
         // project 는 협상 소유의 읽기 전용 엔티티만 매핑되므로 직접 삽입한다.
         // start_negotiable 은 NOT NULL(primitive)이라 반드시 채운다.
-        jdbcTemplate.update("INSERT INTO project (id, client_id, title, start_negotiable) VALUES (?, ?, ?, ?)",
-                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true);
+        // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.
+        jdbcTemplate.update("INSERT INTO project "
+                        + "(id, client_id, title, start_negotiable, "
+                        + "period_value, period_unit, budget_amount, work_style, work_form, "
+                        + "status, payment_status, total_headcount, confirmed_headcount, "
+                        + "extension_count, free_rerecommend_used, paid_rerecommend_used) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true,
+                6, "MONTH", 50_000_000L, "REMOTE", "FULL_TIME",
+                "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
                 50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));
         NegotiationCondition amount = negotiation.getConditions().get(0);
         amount.submitFloor(PartyRole.CLIENT, "3500000");
         amount.submitFloor(PartyRole.FREELANCER, "3800000");
-        negotiationId = negotiationRepository.save(negotiation).getId();
+        Negotiation saved = negotiationRepository.save(negotiation);
+        negotiationId = saved.getId();
+        amountConditionId = saved.getConditions().get(0).getId();
+    }
+
+    /** 라운드 1로 진행시키고 AMOUNT 조건에 AI 제안 1건을 남긴다(SYSTEM 중재자 제안). */
+    private void proposeRound1() {
+        Negotiation n = negotiationRepository.findById(negotiationId).orElseThrow();
+        n.incrementRound();
+        negotiationRepository.save(n);
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 1,
+                SenderType.SYSTEM, "월 360만원을 제안합니다.", "양측 마지노선의 중간값", "3600000")));
     }
 
     @Test
@@ -113,6 +138,30 @@ class NegotiationQueryServiceTest {
         NegotiationResponse response = NegotiationResponseFactory.detail(view);
         assertThat(response.counterpartName()).isEqualTo("김프리");   // 클라가 보면 상대=프리 이름
         assertThat(response.conditions().get(0).myFloor()).isEqualTo("3500000");
+    }
+
+    @Test
+    @DisplayName("상세: 조건 카드에 현재 AI 제안값·근거가 인라인으로 채워진다")
+    void detailShowsCurrentProposal() {
+        proposeRound1();
+
+        NegotiationResponse response = NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, freelancerAccountId));
+        NegotiationResponse.Condition condition = response.conditions().get(0);
+        assertThat(condition.proposedValue()).isEqualTo("3600000");
+        assertThat(condition.reason()).isEqualTo("양측 마지노선의 중간값");
+    }
+
+    @Test
+    @DisplayName("목록: 제안 후 미응답이면 waitingForMe=true, 마지막 제안 주체·시각이 채워진다")
+    void summaryWaitingForMeAndLastProposal() {
+        proposeRound1();
+
+        NegotiationView view = queryUseCase.findMine(
+                freelancerAccountId, null, null, PageRequest.of(0, 10)).getContent().get(0);
+        assertThat(view.waitingForMe()).isTrue();
+        assertThat(view.lastProposalBy()).isEqualTo(SenderType.SYSTEM);
+        assertThat(view.lastProposalAt()).isNotNull();
     }
 
     @Test

@@ -15,7 +15,8 @@ import java.util.List;
 /**
  * 모집 인원 1건(포지션).
  *
- * <p>인원수(headcount)는 등록 후 변경할 수 없다. 매칭 요청·계약이 포지션 단위로 묶이기 때문이다.
+ * * <p>인원수(headcount)는 착수금 결제 후(RECRUITING 이후) 변경할 수 없다.
+ *  * 매칭 요청·계약이 포지션 단위로 묶이기 때문이다.
  */
 @Schema(description = "프로젝트 포지션 요청")
 public record PositionRequest(
@@ -40,11 +41,7 @@ public record PositionRequest(
 
         @Schema(description = "요구 스킬. 1개 이상", example = "[\"JAVA\", \"SPRING_BOOT\"]")
         @NotEmpty(message = "요구 스킬은 1개 이상입니다.")
-        List<SkillCode> skills,
+        List<SkillCode> skills
 
-        // 우대사항은 코드가 아니라 자유 텍스트다. 매칭 점수에는 가점으로만 반영한다.
-        @Schema(description = "우대사항. 선택", example = "유사 프로젝트 경험자 우대")
-        @Size(max = 500, message = "우대사항은 500자를 넘을 수 없습니다.")
-        String preferredNote
 ) {
 }

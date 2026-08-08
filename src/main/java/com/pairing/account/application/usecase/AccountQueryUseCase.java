@@ -1,6 +1,8 @@
 package com.pairing.account.application.usecase;
 
 import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.ClientProfile;
+import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SocialAccount;
 import com.pairing.account.domain.model.SocialProvider;
@@ -36,4 +38,14 @@ public interface AccountQueryUseCase {
     boolean isRejoinRestricted(String emailHash, String phoneHash, Role role);
 
     Optional<SocialAccount> findSocialAccount(SocialProvider provider, String providerUid);
+
+    /** 클라이언트 마이페이지(기업정보) 조회용. 없으면 {@code AC_002}. */
+    ClientProfile getClientProfile(Long accountId);
+
+    /** 매칭/협상 도메인이 freelancer_profile.id 로 프리랜서를 다시 찾을 때 쓴다. 없으면 empty. */
+    Optional<FreelancerProfile> findFreelancerProfileById(Long freelancerProfileId);
+
+    /** 매칭/협상 도메인이 client_profile.id 로 클라이언트를 다시 찾을 때 쓴다. 없으면 empty. */
+    Optional<ClientProfile> findClientProfileById(Long clientProfileId);
+
 }

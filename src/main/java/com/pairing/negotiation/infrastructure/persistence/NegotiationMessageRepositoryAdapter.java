@@ -2,6 +2,7 @@ package com.pairing.negotiation.infrastructure.persistence;
 
 import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationMessageType;
+import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.infrastructure.mapper.NegotiationMessageMapper;
 import lombok.RequiredArgsConstructor;
@@ -46,5 +47,25 @@ public class NegotiationMessageRepositoryAdapter implements NegotiationMessageRe
     public Optional<String> findLatestHash(Long negotiationId) {
         return springDataRepository.findFirstByNegotiationIdOrderByIdDesc(negotiationId)
                 .map(NegotiationMessageJpaEntity::getContentHash);
+    }
+
+    @Override
+    public int countProposalsInRound(Long negotiationId, int roundNo) {
+        return (int) springDataRepository.countByNegotiationIdAndMessageTypeAndRoundNo(
+                negotiationId, NegotiationMessageType.PROPOSAL, roundNo);
+    }
+
+    @Override
+    public Optional<NegotiationMessage> findLatestProposal(Long negotiationId) {
+        return springDataRepository
+                .findFirstByNegotiationIdAndMessageTypeOrderByRoundNoDescIdDesc(
+                        negotiationId, NegotiationMessageType.PROPOSAL)
+                .map(mapper::toDomain);
+    }
+
+    @Override
+    public int countResponsesInRound(Long negotiationId, SenderType senderType, int roundNo) {
+        return (int) springDataRepository.countByNegotiationIdAndSenderTypeAndRoundNoAndMessageType(
+                negotiationId, senderType, roundNo, NegotiationMessageType.RESPONSE);
     }
 }

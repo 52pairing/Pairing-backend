@@ -3,18 +3,20 @@ package com.pairing.negotiation.application.service;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.negotiation.application.event.NegotiationEvent;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
+import com.pairing.negotiation.application.port.out.ChatRoomCreationPort;
 import com.pairing.negotiation.application.port.out.NegotiationEventPort;
+import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
+import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
-import com.pairing.negotiation.domain.service.NegotiationProposalStub;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -33,6 +38,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final ProjectReaderPort projectReaderPort;
     private final NegotiationViewerResolver viewerResolver;
     private final NegotiationEventPort eventPort;
+    private final NegotiationProposalPort proposalPort;
+    private final ChatRoomCreationPort chatRoomCreationPort;
 
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
@@ -84,13 +91,20 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
 
         if (negotiation.allConditionsAgreed()) {
             negotiation.agree(finalAmount(negotiation));
+            // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
             messages.add(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
-                    "모든 조건이 합의되어 협상이 타결되었습니다."));
+                    "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
         } else {
             advanceOrFail(negotiation, messages);
         }
 
         persist(negotiation, messages);
+
+        // 타결 시 사람 채팅방을 연다(AI Out → 사람 채팅). 같은 트랜잭션이라 방 생성 실패 시 타결도 롤백된다.
+        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
+            chatRoomCreationPort.createForAgreedNegotiation(negotiation.getId());
+        }
+
         publish(negotiation, switch (negotiation.getStatus()) {
             case AGREED -> NegotiationEventType.AGREED;
             case FAILED -> NegotiationEventType.FAILED;
@@ -133,16 +147,34 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         messages.addAll(proposeForPending(negotiation));
     }
 
-    /** PENDING 조건마다 stub 제안 메시지 생성(현재 라운드). */
+    /** PENDING 조건들에 대한 제안 메시지 생성(현재 라운드). 제안값은 AI 포트(실패 시 stub 폴백)에서 온다. */
     private List<NegotiationMessage> proposeForPending(Negotiation negotiation) {
+        List<NegotiationCondition> pending = negotiation.getConditions().stream()
+                .filter(condition -> !condition.isAgreed())
+                .toList();
+        if (pending.isEmpty()) {
+            return List.of();
+        }
+
+        List<NegotiationProposalPort.ConditionInput> inputs = pending.stream()
+                .map(c -> new NegotiationProposalPort.ConditionInput(c.getId(), c.getConditionType(),
+                        c.getClientValue(), c.getFreelancerValue(), c.getClientFloor(), c.getFreelancerFloor()))
+                .toList();
+        Map<Long, NegotiationProposalPort.Proposal> byId = proposalPort.propose(
+                        new NegotiationProposalPort.ProposalContext(negotiation.getId(),
+                                negotiation.getTotalRound(), negotiation.getBudgetCap(), inputs))
+                .stream()
+                .collect(Collectors.toMap(NegotiationProposalPort.Proposal::conditionId, Function.identity(),
+                        (a, b) -> a));
+
         List<NegotiationMessage> messages = new ArrayList<>();
-        for (NegotiationCondition condition : negotiation.getConditions()) {
-            if (condition.isAgreed()) {
+        for (NegotiationCondition condition : pending) {
+            NegotiationProposalPort.Proposal p = byId.get(condition.getId());
+            if (p == null) {
                 continue;
             }
-            NegotiationProposalStub.Proposal p = NegotiationProposalStub.propose(condition);
             messages.add(NegotiationMessage.proposal(negotiation.getId(), condition.getId(),
-                    negotiation.getTotalRound(), SenderType.SYSTEM, p.content(), p.reason(), p.value()));
+                    negotiation.getTotalRound(), SenderType.SYSTEM, p.content(), p.reason(), p.proposedValue()));
         }
         return messages;
     }

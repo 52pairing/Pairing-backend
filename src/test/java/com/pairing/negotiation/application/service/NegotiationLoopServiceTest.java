@@ -6,9 +6,11 @@ import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
+import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.AnswerInput;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.FloorInput;
+import com.pairing.negotiation.domain.service.NegotiationProposalStub;
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
@@ -23,6 +25,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +40,23 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @Transactional
 class NegotiationLoopServiceTest {
+
+    /** 파이썬 HTTP 호출 없이 결정적으로 돌리기 위한 stub 제안 포트(폴백과 동일한 중간값 규칙). */
+    @TestConfiguration
+    static class StubProposalConfig {
+        @Bean
+        @Primary
+        NegotiationProposalPort stubProposalPort() {
+            return context -> context.conditions().stream()
+                    .map(c -> {
+                        NegotiationProposalStub.Proposal p =
+                                NegotiationProposalStub.propose(c.clientValue(), c.freelancerValue());
+                        return new NegotiationProposalPort.Proposal(
+                                c.conditionId(), p.value(), p.content(), p.reason());
+                    })
+                    .toList();
+        }
+    }
 
     @Autowired
     private NegotiationLoopUseCase loopUseCase;
@@ -65,8 +87,16 @@ class NegotiationLoopServiceTest {
                 FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1))).getId();
 
         // start_negotiable 은 NOT NULL(primitive 매핑)이라 반드시 채운다.
-        jdbcTemplate.update("INSERT INTO project (id, client_id, title, start_negotiable) VALUES (?, ?, ?, ?)",
-                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true);
+        // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.
+        jdbcTemplate.update("INSERT INTO project "
+                        + "(id, client_id, title, start_negotiable, "
+                        + "period_value, period_unit, budget_amount, work_style, work_form, "
+                        + "status, payment_status, total_headcount, confirmed_headcount, "
+                        + "extension_count, free_rerecommend_used, paid_rerecommend_used) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true,
+                6, "MONTH", 50_000_000L, "REMOTE", "FULL_TIME",
+                "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0)));
@@ -104,6 +134,11 @@ class NegotiationLoopServiceTest {
         assertThat(reloaded.getAgreedAmount()).isEqualTo(5_000_000L);
         assertThat(reloaded.getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.AGREED);
         assertThat(reloaded.getConditions().get(0).getAgreedValue()).isEqualTo("5000000");
+
+        // 타결 시점 최종 조건이 로그에 봉인된다(증거).
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .anyMatch(m -> m.getContent().contains("최종 조건 봉인")
+                        && m.getContent().contains("AMOUNT=5000000"));
     }
 
     @Test
