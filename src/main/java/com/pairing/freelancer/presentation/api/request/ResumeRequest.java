@@ -1,9 +1,11 @@
 package com.pairing.freelancer.presentation.api.request;
 
+import com.pairing.freelancer.application.command.UpsertResumeCommand;
 import com.pairing.freelancer.domain.model.CampusType;
 import com.pairing.freelancer.domain.model.GraduationStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -66,8 +68,37 @@ public record ResumeRequest(
 
         @Schema(description = "링크(깃허브·포트폴리오·노션 등, 선택)")
         @Valid
-        List<Link> links
+        List<Link> links,
+
+        @Schema(description = "이력서 등록 필수 동의 4종. 최초 등록 시에만 받고, 이후 수정에는 영향을 주지 않는다.")
+        @NotNull(message = "약관 동의는 필수입니다.")
+        @Valid
+        Agreements agreements
 ) {
+
+    public UpsertResumeCommand toCommand(Long accountId) {
+        return new UpsertResumeCommand(
+                accountId, profileFileId, contactPhone, contactEmail, address, selfIntroduction, portfolioFileId,
+                educations.stream()
+                        .map(e -> new UpsertResumeCommand.Education(e.startDate(), e.endDate(), e.schoolName(),
+                                e.major(), e.graduationStatus(), e.campusType()))
+                        .toList(),
+                careers.stream()
+                        .map(c -> new UpsertResumeCommand.Career(c.startDate(), c.endDate(), c.companyName(),
+                                c.departmentRank(), c.jobDescription()))
+                        .toList(),
+                certificates == null
+                        ? List.of()
+                        : certificates.stream()
+                                .map(c -> new UpsertResumeCommand.Certificate(c.acquiredDate(), c.name(),
+                                        c.issuerScore(), c.note()))
+                                .toList(),
+                links == null ? List.of() : links.stream().map(Link::url).toList(),
+                new UpsertResumeCommand.Agreements(agreements.profileCollectionAgreed(),
+                        agreements.profileProvisionAgreed(), agreements.aiAnalysisAgreed(),
+                        agreements.careerPortfolioUsageAgreed())
+        );
+    }
 
     @Schema(name = "ResumeEducationRequest", description = "학력")
     public record Education(
@@ -103,6 +134,26 @@ public record ResumeRequest(
     public record Link(
             @Schema(description = "URL", example = "https://github.com/pairing")
             @NotBlank @Size(max = 500) String url
+    ) {
+    }
+
+    @Schema(name = "ResumeAgreementsRequest", description = "이력서 등록 필수 동의 4종. 넷 다 true 여야 한다.")
+    public record Agreements(
+            @Schema(description = "프로필 정보 수집 동의")
+            @AssertTrue(message = "프로필 정보 수집에 동의해야 합니다.")
+            boolean profileCollectionAgreed,
+
+            @Schema(description = "클라이언트 제공 동의")
+            @AssertTrue(message = "클라이언트 제공에 동의해야 합니다.")
+            boolean profileProvisionAgreed,
+
+            @Schema(description = "AI 매칭 분석 동의")
+            @AssertTrue(message = "AI 매칭 분석에 동의해야 합니다.")
+            boolean aiAnalysisAgreed,
+
+            @Schema(description = "경력/포트폴리오 활용 동의")
+            @AssertTrue(message = "경력/포트폴리오 활용에 동의해야 합니다.")
+            boolean careerPortfolioUsageAgreed
     ) {
     }
 }

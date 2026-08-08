@@ -3,6 +3,7 @@ package com.pairing.negotiation.application.service;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.negotiation.application.event.NegotiationEvent;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
+import com.pairing.negotiation.application.port.out.ChatRoomCreationPort;
 import com.pairing.negotiation.application.port.out.NegotiationEventPort;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
@@ -11,6 +12,7 @@ import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
+import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
@@ -37,6 +39,7 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final NegotiationViewerResolver viewerResolver;
     private final NegotiationEventPort eventPort;
     private final NegotiationProposalPort proposalPort;
+    private final ChatRoomCreationPort chatRoomCreationPort;
 
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
@@ -88,13 +91,20 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
 
         if (negotiation.allConditionsAgreed()) {
             negotiation.agree(finalAmount(negotiation));
+            // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
             messages.add(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
-                    "모든 조건이 합의되어 협상이 타결되었습니다."));
+                    "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
         } else {
             advanceOrFail(negotiation, messages);
         }
 
         persist(negotiation, messages);
+
+        // 타결 시 사람 채팅방을 연다(AI Out → 사람 채팅). 같은 트랜잭션이라 방 생성 실패 시 타결도 롤백된다.
+        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
+            chatRoomCreationPort.createForAgreedNegotiation(negotiation.getId());
+        }
+
         publish(negotiation, switch (negotiation.getStatus()) {
             case AGREED -> NegotiationEventType.AGREED;
             case FAILED -> NegotiationEventType.FAILED;
