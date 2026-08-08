@@ -27,6 +27,10 @@ public interface SpringDataProjectRepository extends JpaRepository<ProjectJpaEnt
     @Query("SELECT p.clientId FROM ProjectJpaEntity p WHERE p.id = :id AND p.deletedAt IS NULL")
     Optional<Long> findClientIdById(@Param("id") Long id);
 
+    /** 상태 검사용. 애그리거트를 로드하지 않고 status 만 뽑는다. */
+    @Query("SELECT p.status FROM ProjectJpaEntity p WHERE p.id = :id AND p.deletedAt IS NULL")
+    Optional<ProjectStatus> findStatusById(@Param("id") Long id);
+
     /** 계정이 소유한 프로젝트 ID 전체. 상태 무관. */
     @Query("SELECT p.id FROM ProjectJpaEntity p WHERE p.clientId = :clientId AND p.deletedAt IS NULL")
     List<Long> findIdsByClientId(@Param("clientId") Long clientId);

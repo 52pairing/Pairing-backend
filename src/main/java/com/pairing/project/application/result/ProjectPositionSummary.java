@@ -39,6 +39,9 @@ public record ProjectPositionSummary(
         /** 프로젝트 전체 예산. 원 단위, 부가세 별도. */
         Long budgetAmount,
 
+        /** 모든 포지션 인원의 합. 1인당 금액은 포지션 인원이 아니라 이 값으로 나눈다. */
+        int totalHeadcount,
+
         /** 프리랜서가 보는 매칭 요청 카드의 상세 정보. */
         String currentSituation,
         String mainTask

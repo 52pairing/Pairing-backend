@@ -38,6 +38,9 @@ public interface ProjectRepository {
      */
     Optional<Long> findClientIdById(Long projectId);
 
+    /** 상태 검사용 경량 조회. 애그리거트를 로드하지 않는다. */
+    Optional<ProjectStatus> findStatusById(Long projectId);
+
     /** 계정이 소유한 프로젝트 ID 전체. 상태와 무관하다(취소·종료 포함). 없으면 빈 리스트. */
     List<Long> findIdsByClientId(Long clientProfileId);
 
@@ -52,4 +55,7 @@ public interface ProjectRepository {
 
     /** 포지션 단건. 매칭이 projectId 없이 모집 인원만 조회할 때 쓴다. */
     Optional<Position> findPositionById(Long positionId);
+
+    /** 포지션이 속한 프로젝트 ID. Position 이 projectId 를 들고 있지 않아 따로 조회한다. */
+    Optional<Long> findProjectIdByPositionId(Long positionId);
 }

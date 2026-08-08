@@ -1,6 +1,8 @@
 package com.pairing.project.infrastructure.persistence;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
@@ -13,4 +15,8 @@ public interface SpringDataProjectPositionRepository
         extends JpaRepository<ProjectPositionJpaEntity, Long> {
 
     Optional<ProjectPositionJpaEntity> findById(Long id);
+
+    /** 포지션이 속한 프로젝트 ID. FK 컬럼만 읽으므로 프로젝트를 로드하지 않는다. */
+    @Query("SELECT pp.project.id FROM ProjectPositionJpaEntity pp WHERE pp.id = :id")
+    Optional<Long> findProjectIdById(@Param("id") Long id);
 }

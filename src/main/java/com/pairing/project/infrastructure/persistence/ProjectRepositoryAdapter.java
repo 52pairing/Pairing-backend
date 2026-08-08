@@ -59,6 +59,11 @@ public class ProjectRepositoryAdapter implements ProjectRepository {
     }
 
     @Override
+    public Optional<ProjectStatus> findStatusById(Long projectId) {
+        return springDataRepository.findStatusById(projectId);
+    }
+
+    @Override
     public List<Long> findIdsByClientId(Long clientProfileId) {
         return springDataRepository.findIdsByClientId(clientProfileId);
     }
@@ -94,5 +99,10 @@ public class ProjectRepositoryAdapter implements ProjectRepository {
     public Optional<Position> findPositionById(Long positionId) {
         return positionRepository.findById(positionId)
                 .map(projectMapper::toPositionDomain);
+    }
+
+    @Override
+    public Optional<Long> findProjectIdByPositionId(Long positionId) {
+        return positionRepository.findProjectIdById(positionId);
     }
 }
