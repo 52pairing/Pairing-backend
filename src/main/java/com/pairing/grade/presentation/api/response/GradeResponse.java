@@ -1,6 +1,7 @@
 package com.pairing.grade.presentation.api.response;
 
 import com.pairing.account.domain.model.Role;
+import com.pairing.grade.domain.model.GradeTier;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
@@ -32,6 +33,21 @@ public record GradeResponse(
         // 프리랜서 화면은 숫자 표 대신 "기본 수수료" / "수수료 각 1% 인하 (총 2% 인하)" 문구로 보여준다.
         @Schema(description = "수수료 표시 문구", example = "기본 수수료") String feeNote
 ) {
+
+    public static GradeResponse from(GradeTier tier) {
+        return new GradeResponse(
+                tier.role(),
+                tier.code(),
+                tier.label(),
+                tier.level(),
+                tier.promotionCondition(),
+                tier.maintenanceCondition(),
+                tier.benefits().stream().map(b -> new Benefit(b.label(), b.value())).toList(),
+                new FeeRate(tier.feeRate().depositUnder(), tier.feeRate().depositOver(),
+                        tier.feeRate().successFeeUnder(), tier.feeRate().successFeeOver()),
+                tier.feeNote()
+        );
+    }
 
     /** 화면에 "매칭 프리랜서 수 — 1명" 처럼 라벨과 값으로 나열된다. */
     @Schema(description = "혜택 항목")

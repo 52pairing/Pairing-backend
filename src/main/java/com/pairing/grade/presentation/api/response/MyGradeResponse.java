@@ -1,5 +1,6 @@
 package com.pairing.grade.presentation.api.response;
 
+import com.pairing.grade.application.result.MyGradeResult;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /** 내 등급 현황. 마이페이지 "등급 및 혜택" 상단에 쓴다. */
@@ -15,4 +16,9 @@ public record MyGradeResponse(
                 example = "완료 건수 6건이 더 필요합니다.") String nextGradeGuide,
         @Schema(description = "등급 재산정 기준일 안내", example = "매월 1일 자동 산정") String checkedGuide
 ) {
+
+    public static MyGradeResponse from(MyGradeResult result) {
+        return new MyGradeResponse(result.grade(), result.label(), result.completedProjectCount(),
+                result.ratingAverage(), result.nextGrade(), result.nextGradeGuide(), result.checkedGuide());
+    }
 }
