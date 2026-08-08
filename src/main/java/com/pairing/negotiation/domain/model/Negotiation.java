@@ -117,6 +117,21 @@ public class Negotiation {
         this.endedAt = this.aiOutAt;
     }
 
+    /**
+     * 불일치 조건이 하나도 없어(양측 조건 일치) 협상 없이 즉시 타결. 생성 시점에만 호출한다.
+     * 조건이 있으면 이 경로가 아니다(정상 협상 루프로 진행).
+     */
+    public void agreeWithoutConditions(Long agreedAmount) {
+        ensureInProgress();
+        if (!conditions.isEmpty()) {
+            throw new BusinessException(NegotiationErrorCode.INVALID_CONDITION);
+        }
+        this.status = NegotiationStatus.AGREED;
+        this.agreedAmount = agreedAmount;
+        this.aiOutAt = LocalDateTime.now();
+        this.endedAt = this.aiOutAt;
+    }
+
     /** 결렬(포기 / 15회 소진). */
     public void fail(String reason) {
         ensureInProgress();

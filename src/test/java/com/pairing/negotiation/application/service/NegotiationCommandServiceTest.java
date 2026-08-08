@@ -1,5 +1,12 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.account.domain.model.BusinessField;
+import com.pairing.account.domain.model.ClientProfile;
+import com.pairing.account.domain.model.EmployeeCount;
+import com.pairing.account.domain.model.FreelancerProfile;
+import com.pairing.account.domain.repository.ClientProfileRepository;
+import com.pairing.account.domain.repository.FreelancerProfileRepository;
+import com.pairing.chat.domain.repository.ChatRoomRepository;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.PayUnit;
 import com.pairing.meta.domain.model.WorkForm;
@@ -37,6 +44,12 @@ class NegotiationCommandServiceTest {
     private NegotiationCommandUseCase commandUseCase;
     @Autowired
     private NegotiationRepository negotiationRepository;
+    @Autowired
+    private ChatRoomRepository chatRoomRepository;
+    @Autowired
+    private ClientProfileRepository clientProfileRepository;
+    @Autowired
+    private FreelancerProfileRepository freelancerProfileRepository;
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -77,17 +90,31 @@ class NegotiationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("모든 조건이 맞으면 조건 없는 협상이 생성된다")
-    void createWithNoMismatch() {
-        insertProject(5_000_000L, WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), true);
+    @DisplayName("모든 조건이 맞으면 협상 없이 즉시 타결되고 채팅방이 열린다")
+    void createWithNoMismatchSettlesImmediately() {
+        // 프로비저닝(채팅방 개설)이 당사자 정보를 읽으므로 프로필을 실제로 심는다.
+        Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
+                910_101L, "삼성전자", "1234567890",
+                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299)).getId();
+        Long freelancerProfileId = freelancerProfileRepository.save(
+                FreelancerProfile.create(910_102L, LocalDate.of(1990, 1, 1))).getId();
+        jdbcTemplate.update("INSERT INTO project "
+                        + "(id, client_id, title, budget_amount, work_style, work_form, start_desired_date, start_negotiable) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", 5_000_000L,
+                WorkStyle.REMOTE.name(), WorkForm.FULL_TIME.name(), LocalDate.of(2026, 1, 1), true);
 
-        Long id = commandUseCase.create(command(5_000_000L,
+        Long id = commandUseCase.create(new CreateNegotiationCommand(100L, PROJECT_ID, 10L, freelancerProfileId,
+                5_000_000L,
                 new FreelancerConditionSnapshot(PayUnit.MONTHLY, 5_000_000L,
                         WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), false,
                         null, null, null)));
 
         Negotiation saved = negotiationRepository.findById(id).orElseThrow();
         assertThat(saved.getConditions()).isEmpty();
+        assertThat(saved.getStatus()).isEqualTo(NegotiationStatus.AGREED);
+        assertThat(saved.getAgreedAmount()).isEqualTo(5_000_000L);
+        assertThat(chatRoomRepository.findByNegotiationId(id)).isPresent();
     }
 
     @Test
