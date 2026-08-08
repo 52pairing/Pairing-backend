@@ -1,58 +1,101 @@
 package com.pairing.project.application.service;
 
-import com.pairing.meta.domain.model.JobRole;
-import com.pairing.meta.domain.model.PeriodUnit;
-import com.pairing.meta.domain.model.SkillCode;
-import com.pairing.meta.domain.model.WorkForm;
-import com.pairing.meta.domain.model.WorkStyle;
+import com.pairing.global.exception.BusinessException;
+import com.pairing.project.application.port.ClientProfileReaderPort;
 import com.pairing.project.application.result.ProjectPositionSummary;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
+import com.pairing.project.domain.model.Position;
+import com.pairing.project.domain.model.Project;
+import com.pairing.project.domain.repository.ProjectRepository;
+import com.pairing.project.exception.ProjectErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.util.List;
 
 /**
- * 스켈레톤이라 고정 응답을 돌려준다. 구현하면서 TODO 를 채운다.
+ * 프로젝트 조회.
+ *
+ * <p>account 컨텍스트는 {@link ClientProfileReaderPort} 로만 조회한다.
+ * accountId 를 client_profile.id 로 바꾸는 책임이 이 계층에 있다.
  */
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
 public class ProjectQueryService implements ProjectQueryUseCase {
 
+    private final ProjectRepository projectRepository;
+    private final ClientProfileReaderPort clientProfileReaderPort;
+
+    @Override
+    public Project getById(Long projectId) {
+        return projectRepository.findById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+    }
+
+    @Override
+    public Project getByIdForOwner(Long projectId, Long accountId) {
+        Project project = getById(projectId);
+
+        if (!project.isOwnedBy(resolveClientProfileId(accountId))) {
+            throw new BusinessException(ProjectErrorCode.NOT_PROJECT_OWNER);
+        }
+        return project;
+    }
+
     @Override
     public boolean isOwnedBy(Long projectId, Long accountId) {
-        // TODO: accountId -> clientProfileId 변환 후 project.client_id 와 비교
-        return true;
+        Long clientProfileId = resolveClientProfileId(accountId);
+        return projectRepository.findClientIdById(projectId)
+                .map(clientProfileId::equals)
+                .orElse(false);
     }
 
     @Override
     public List<Long> findProjectIdsByAccountId(Long accountId) {
-        // TODO: accountId -> clientProfileId 변환 후 client_id 로 조회
-        return List.of(1L);
+        return projectRepository.findIdsByClientId(resolveClientProfileId(accountId));
     }
 
     @Override
     public Long findClientProfileId(Long projectId) {
-        // TODO: project.client_id 반환. 없으면 예외
-        return 1L;
+        return projectRepository.findClientIdById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
     }
 
     @Override
     public int findHeadcount(Long positionId) {
-        // TODO: project_position.headcount 반환. 없으면 예외
-        return 2;
+        return projectRepository.findPositionById(positionId)
+                .map(Position::getHeadcount)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.POSITION_NOT_FOUND));
     }
 
     @Override
     public ProjectPositionSummary findProjectPositionSummary(Long projectId, Long positionId) {
-        // TODO: project + project_position + position_skill 조인 조회
+        Project project = getById(projectId);
+        Position position = project.getPositions().stream()
+                .filter(p -> positionId.equals(p.getId()))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.POSITION_NOT_FOUND));
+
         return new ProjectPositionSummary(
-                projectId, "페어링 웹 리뉴얼",
-                JobRole.BACKEND, List.of(SkillCode.JAVA, SkillCode.SPRING_BOOT), 3, 2,
-                WorkStyle.REMOTE, WorkForm.FULL_TIME, 6, PeriodUnit.MONTH,
-                LocalDate.of(2026, 9, 1), 50_000_000L);
+                project.getId(),
+                project.getTitle(),
+                position.getJobRole(),
+                position.getSkills(),
+                position.getMinCareerYears(),
+                position.getHeadcount(),
+                project.getWorkStyle(),
+                project.getWorkForm(),
+                project.getPeriodValue(),
+                project.getPeriodUnit(),
+                project.getStartDesiredDate(),
+                project.getBudgetAmount(),
+                project.getCurrentSituation(),
+                project.getMainTask());
+    }
+
+    private Long resolveClientProfileId(Long accountId) {
+        return clientProfileReaderPort.getByAccountId(accountId).clientProfileId();
     }
 }

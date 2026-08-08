@@ -60,8 +60,16 @@ class NegotiationChatRoomLinkTest {
                 BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299)).getId();
         Long freelancerProfileId = freelancerProfileRepository.save(
                 FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1))).getId();
-        jdbcTemplate.update("INSERT INTO project (id, client_id, title, start_negotiable) VALUES (?, ?, ?, ?)",
-                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true);
+        // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.
+        jdbcTemplate.update("INSERT INTO project "
+                        + "(id, client_id, title, start_negotiable, "
+                        + "period_value, period_unit, budget_amount, work_style, work_form, "
+                        + "status, payment_status, total_headcount, confirmed_headcount, "
+                        + "extension_count, free_rerecommend_used, paid_rerecommend_used) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", true,
+                6, "MONTH", 50_000_000L, "REMOTE", "FULL_TIME",
+                "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
 
         negotiationId = negotiationRepository.save(Negotiation.create(810L, PROJECT_ID, 10L,
                 freelancerProfileId, 5_000_000L,
