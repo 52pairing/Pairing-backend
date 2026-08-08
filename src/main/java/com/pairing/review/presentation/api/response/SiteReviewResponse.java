@@ -1,6 +1,7 @@
 package com.pairing.review.presentation.api.response;
 
 import com.pairing.meta.domain.model.PartyRole;
+import com.pairing.review.application.result.SiteReviewResult;
 import com.pairing.review.domain.model.SiteReviewVisibility;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -20,4 +21,10 @@ public record SiteReviewResponse(
         @Schema(description = "홍보 활용 여부", example = "false") boolean promoted,
         @Schema(description = "작성 시각") LocalDateTime createdAt
 ) {
+
+    public static SiteReviewResponse from(SiteReviewResult result) {
+        return new SiteReviewResponse(result.siteReviewId(), result.writerRole(), result.writerName(),
+                result.score(), result.content(), result.projectTitle(), result.visibility(), result.promoted(),
+                result.createdAt());
+    }
 }

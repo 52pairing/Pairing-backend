@@ -338,7 +338,7 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| POST | `/api/v1/reviews` | O | body `{contractId, counterpart{...}, site{...}}` |
+| POST | `/api/v1/reviews` | O | body `{contractId, projectId, revieweeAccountId, counterpart{...}, site{...}}` |
 | GET | `/api/v1/reviews/received?page=&size=` | O | 받은 리뷰 |
 | GET | `/api/v1/reviews/written?page=&size=` | O | 작성한 리뷰 |
 | GET | `/api/v1/reviews/summary` | O | 평균 별점·건수·등급 |
@@ -348,8 +348,15 @@
 | PUT | `/api/v1/reviews/admin/site-reviews/{siteReviewId}/visibility` | ADMIN | body `{visibility, promoted}` |
 
 - 대금 지급이 끝난 계약만 작성 가능하고, 등록 후 수정·삭제할 수 없다.
+  **단, contract/settlement 도메인이 아직 스켈레톤이라 이 자격(완료+지급) 검증은 현재 비활성화 상태다**
+  (같은 계약을 같은 사람이 두 번 작성하는 것만 막는다, `RV_001`). `/pending`(작성 대기 목록)도 그 데이터가
+  없어 항상 빈 배열이다.
+- `projectId`/`revieweeAccountId` 는 원래 `contractId` 로 계약 도메인에서 유도해야 하지만, 그 도메인이
+  준비될 때까지 임시로 요청에서 직접 받는다. 프론트는 계약/프로젝트 상세 화면에서 이미 알고 있는 값을
+  그대로 넘기면 된다. (contract 도메인이 갖춰지면 계약 API 계약 변경과 함께 제거될 필드)
 - **상대 평가와 서비스 후기 모두 별점이 필수**다. 코멘트만 선택(각 500자)이다.
 - 상대 평가와 사이트 후기를 한 화면에서 쓰므로 등록 API 가 하나다. 사이트 후기는 기본 `PRIVATE`.
+- `summary.grade` 는 review 집계로 새로 산정하지 않고, 계정에 이미 저장된 현재 등급값을 그대로 보여준다.
 
 ## 17. Notification
 
@@ -479,3 +486,6 @@
 | FR_001 ~ FR_003 | - | 프리랜서 조건/이력서 조회·검증 오류 |
 | FR_004 | 400 | 이력서 등록 필수 동의 4종 중 미동의 |
 | FR_005 | 404 | 존재하지 않는 프리랜서(freelancer_profile.id) |
+| RV_001 | 409 | 같은 계약을 같은 사람이 이미 리뷰함 |
+| RV_002 | 400 | 리뷰 정보가 올바르지 않음(본인 리뷰 등) |
+| RV_003 | 404 | 사이트 리뷰를 찾을 수 없음 |

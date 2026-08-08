@@ -1,5 +1,6 @@
 package com.pairing.review.presentation.api.response;
 
+import com.pairing.review.application.result.ReviewSummaryResult;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /** 마이페이지의 평균 별점·건수. */
@@ -10,4 +11,8 @@ public record ReviewSummaryResponse(
         @Schema(description = "리뷰 건수", example = "12") int reviewCount,
         @Schema(description = "등급. 평균 별점과 건수로 산정된다.", example = "SENIOR") String grade
 ) {
+
+    public static ReviewSummaryResponse from(ReviewSummaryResult result) {
+        return new ReviewSummaryResponse(result.averageScore(), result.reviewCount(), result.grade());
+    }
 }

@@ -1,5 +1,6 @@
 package com.pairing.review.presentation.api.response;
 
+import com.pairing.review.application.result.SiteReviewSummaryResult;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.Map;
@@ -19,4 +20,10 @@ public record SiteReviewSummaryResponse(
         @Schema(description = "별점 분포", example = "{\"5\": 2, \"4\": 1, \"3\": 1, \"2\": 0, \"1\": 0}")
         Map<Integer, Long> scoreDistribution
 ) {
+
+    public static SiteReviewSummaryResponse from(SiteReviewSummaryResult result) {
+        return new SiteReviewSummaryResponse(result.ratingAverage(), result.totalCount(), result.thisMonthCount(),
+                result.promotedCount(), result.notPromotedCount(), result.publicCount(),
+                result.scoreDistribution());
+    }
 }
