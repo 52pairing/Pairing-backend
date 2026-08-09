@@ -1,6 +1,7 @@
 package com.pairing.negotiation.application.service;
 
 import com.pairing.global.exception.BusinessException;
+import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCase;
 import com.pairing.negotiation.application.event.NegotiationEvent;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
 import com.pairing.negotiation.application.port.out.ChatRoomCreationPort;
@@ -41,6 +42,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final NegotiationEventPort eventPort;
     private final NegotiationProposalPort proposalPort;
     private final ChatRoomCreationPort chatRoomCreationPort;
+    // 협상 결과(타결/결렬)를 매칭 요청 건에 반영하는 인바운드 포트(방향: negotiation → matching).
+    private final MatchingNegotiationOutcomeUseCase matchingOutcomeUseCase;
 
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
@@ -92,6 +95,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
 
         if (negotiation.allConditionsAgreed()) {
             negotiation.agree(finalAmount(negotiation));
+            // 타결 → 매칭 요청을 계약 대기(CONTRACT_PENDING)로 전환(같은 트랜잭션).
+            matchingOutcomeUseCase.markNegotiationAgreed(negotiation.getRequestId());
             // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
             messages.add(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
                     "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
@@ -120,6 +125,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
 
         String endReason = (reason == null || reason.isBlank()) ? "협상 포기" : reason;
         negotiation.fail(endReason);
+        // 결렬(협상 포기) → 매칭 요청을 협상 결렬(NEGOTIATION_FAILED)로 종결(같은 트랜잭션).
+        matchingOutcomeUseCase.markNegotiationFailed(negotiation.getRequestId());
         persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
                 "협상이 종료되었습니다: " + endReason)));
         publish(negotiation, NegotiationEventType.FAILED);
@@ -147,6 +154,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         } catch (BusinessException e) {
             if (e.getErrorCode() == NegotiationErrorCode.ROUND_LIMIT_REACHED) {
                 negotiation.fail("라운드 상한(15회) 소진으로 자동 결렬");
+                // 자동 결렬 → 매칭 요청을 협상 결렬(NEGOTIATION_FAILED)로 종결(같은 트랜잭션).
+                matchingOutcomeUseCase.markNegotiationFailed(negotiation.getRequestId());
                 messages.add(NegotiationMessage.system(negotiation.getId(), negotiation.getTotalRound(),
                         "라운드 상한(15회) 소진으로 협상이 자동 결렬되었습니다."));
                 return;

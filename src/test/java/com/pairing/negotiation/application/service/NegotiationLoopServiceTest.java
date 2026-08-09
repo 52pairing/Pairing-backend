@@ -99,6 +99,15 @@ class NegotiationLoopServiceTest {
                 6, "MONTH", 50_000_000L, "REMOTE", "FULL_TIME",
                 "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
 
+        // 협상의 requestId(100)가 가리키는 매칭 요청 건. 타결/결렬 시 NegotiationLoopService 가
+        // MatchingNegotiationOutcomeUseCase 로 이 건의 상태를 갱신하므로, 실제 흐름과 동일하게
+        // NEGOTIATING 상태의 요청 행을 만들어 둔다. (없으면 REQUEST_NOT_FOUND 로 타결/결렬이 롤백된다)
+        jdbcTemplate.update("INSERT INTO matching_request "
+                        + "(id, project_id, position_id, candidate_id, freelancer_id, "
+                        + "status, requested_at, expires_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                100L, PROJECT_ID, 10L, 1L, freelancerProfileId, "NEGOTIATING");
+
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0)));
         Negotiation saved = negotiationRepository.save(negotiation);
