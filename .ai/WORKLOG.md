@@ -74,17 +74,20 @@
 - **budgetCap WEEK→개월 환산 4주=1개월 확정** (`docs/budgetcap-week-conversion-confirmed` 브랜치) — 사용자 확인. `negotiation` 도메인의 `NegotiationConditionCalculator`도 이미 같은 값을 쓰고 있어서 두 도메인 계산 기준이 원래부터 일치했음을 확인. `BudgetCapCalculator`의 임시값 표기 제거.
 - **`MatchingNegotiationOutcomeUseCase` 구현** (HANDOFF 14번, `feature/matching-negotiation-outcome` 브랜치) — 매칭 쪽 인바운드 포트 신규 작성, `MatchingRequestService`가 구현체. `markNegotiationAgreed`는 신규 도메인 메서드 `MatchingRequest.agreeNegotiation()`(기존 `failNegotiation()`과 대칭, NEGOTIATING일 때만 허용)을 거쳐 `CONTRACT_PENDING`으로, `markNegotiationFailed`는 기존 `failNegotiation()`으로 `NEGOTIATION_FAILED`로 전환. 단위 테스트 4개(`MatchingNegotiationOutcomeServiceTest`) 작성, `./gradlew build` 통과 확인. **negotiation(5번) 쪽에 남은 일**: `NegotiationLoopService.agree()`/`.fail()`이 이 포트를 호출하도록 이어붙이는 작업 — negotiation 도메인 코드라 매칭이 대신 하지 않음, 5번에게 전달 필요.
 - **참고**: 위 3개 브랜치(`fix/rerecommend-quantity-validation`, `docs/budgetcap-week-conversion-confirmed`, `feature/matching-negotiation-outcome`)가 전부 develop에서 독립적으로 분기돼 아직 서로 merge 안 된 상태라, `.ai/*.md` 문서 쪽에서 merge 시 충돌이 날 수 있음(코드 충돌은 아님, 서로 다른 파일/메서드 건드림). 문서 충돌은 내용 합치면 되는 수준.
-- **PR #53/#55/#56(협상 인바운드 배선)까지 전부 develop에 merge 완료** — 협상↔매칭 양방향 연동 다 이어짐.
-- **매칭 요청 카드 라이브 조회 버그(R32) 수정** (HANDOFF 23번, `fix/matching-request-card-snapshot-read` 브랜치) — 3번이 프로젝트 수정 API(PR #57) 구현 중 발견해 질문, 코드 확인 후 답변, 3번 확인받아 구현. `MatchingRequestResponseAssembler`가 `MatchingSnapshot`을 읽도록 교체.
+- **위 3개 브랜치(PR #53 포함) 전부 develop에 merge 완료.** 5번도 같은 날 `NegotiationLoopService`에 배선을 마쳐 협상↔매칭 양방향 연동이 다 이어짐 — HANDOFF 14번 완전히 종료.
+- **코드 리뷰로 발견한 추가 버그 수정** (재추천 `type`이 `INITIAL`도 그대로 받던 문제, HANDOFF 21번) — 위 PR #53과 같은 브랜치에 포함, `MatchingErrorCode.INVALID_RERECOMMEND_TYPE`(MT_013) 추가.
+- **매칭 요청 카드 라이브 조회 버그(R32) 수정** (HANDOFF 23번, `fix/matching-request-card-snapshot-read` 브랜치) — 3번이 프로젝트 수정 API(PR #57) 구현 중 발견해 질문, 코드 확인 후 답변, 3번 확인받아 구현까지 진행. `MatchingRequestResponseAssembler`가 `MatchingSnapshot`(PROJECT/POSITION)을 읽도록 교체, `companyProfile`만 신규 포트(`findCompanyProfile`)로 계속 라이브 조회. `MatchingIntegrationTest`에 스냅샷 시딩 추가(`seedMatchingSnapshots`). `./gradlew clean build` 통과, push 완료 — **PR #59로 develop에 merge됨**.
 - **3번의 프로젝트 수정 API(PR #57) develop 재동기화 중 새 통합 지점 발견**: `ProjectUpdatedEvent(projectId)`(모집 시작 후 프로젝트 수정 시 발행, 3번이 신규 추가)를 매칭이 안 받고 있었음 — 3번 의도는 "매칭이 이 신호로 포지션 임베딩을 다시 올린다"였음. `ProjectUpdatedEventListener` 신규 추가(HANDOFF 24번, `feature/project-updated-embedding-refresh` 브랜치). 요청 카드용 스냅샷(위 항목)과는 반대 방향이라 서로 안 건드리게 분리 — 임베딩 텍스트 조립을 `PositionEmbeddingTextBuilder`로 공유 추출. 테스트 3개, `./gradlew clean build` 통과.
 
 ## 다음 세션에서 할 일
 
-1. ~~PR #51 CI 결과 확인~~ — develop에 merge 완료.
-1-1. **오픈된 PR 3개 리뷰/머지 대기** — `fix/rerecommend-quantity-validation`(PR #53), `docs/budgetcap-week-conversion-confirmed`, `feature/matching-negotiation-outcome`(PR 생성 대기). 전부 develop에서 독립 분기라 `.ai/*.md` merge 충돌 가능성 있음(위 참고 항목).
-2. ~~`MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 구현~~ — 매칭 쪽 완료. **5번에게 전달할 것**: `NegotiationLoopService.agree()`/`.fail()`에서 이 포트 호출하도록 이어붙이는 작업 필요.
+1. ~~PR #51/#53/`feature/matching-negotiation-outcome` merge, 협상 인바운드 배선~~ — 전부 완료.
+1-1. ~~`fix/matching-request-card-snapshot-read` PR 생성~~ — PR #59 merge 완료.
+1-2. **`feature/project-updated-embedding-refresh` PR 머지 진행 중** — 모집 시작 후 프로젝트 수정 시 임베딩 재생성.
+2. ~~`MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 구현~~ — 매칭+negotiation 양쪽 다 완료.
 3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
 4. ~~budgetCap의 WEEK→개월 환산 규칙~~ — 4주=1개월로 확정, 반영 완료.
+5. **(신규)** 임베딩 텍스트에 `detailScope`/`extraNote`도 빠져있음(HANDOFF 22번) — 백로그 추가.
 5. `resolveFreelancerId`/`findCondition`(freelancerId 기준) — 1번의 account_id↔freelancer_profile.id 조회 메서드 승인되면 `FreelancerDirectoryAdapter` 마저 완전 교체.
 6. `.ai/HANDOFF.md`의 "3일차" 나머지 항목: Pairing-python `_build_prompt` 실구현 + 하드필터 + Stage F 실제 배분 알고리즘 + 등급 타이브레이커 + 통합테스트/문서 동기화.
 7. 임베딩 텍스트(`RecruitingStartedPositionHandler.buildEmbeddingText`)에 mainTask/currentSituation/업무범위/우대사항 추가 — 3번 항목(위 3번)이 정해지고 매칭 쪽 요약에 필드가 생기면 같이 반영.

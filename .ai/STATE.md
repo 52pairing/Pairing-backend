@@ -40,7 +40,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 - **로컬 개발 환경에서 발견·수정한 버그 2건** (코드 정상, 인프라/설정 문제였음):
   - `global/ratelimit/RedisRateLimitConfig`가 빈 생성 시 즉시 Redis에 연결해서 Redis 없는 환경(CI)에서 전체 컨텍스트 로딩이 실패 → `@Lazy`(빈 + 생성자 주입 지점 둘 다)로 지연 연결하도록 수정.
   - `matching_candidate`/`matching_round`의 NUMERIC 컬럼(similarity/base_score/grade_weight/fit_score/cost_amount)에 JPA 엔티티가 `columnDefinition`을 안 줘서 스키마 검증 실패 → 명시해서 해결.
-- **협상(5번) 연동 — 매칭 쪽 완료, negotiation 쪽 대기**: 협상 타결(AGREED)/결렬(FAILED) 통보용 `MatchingNegotiationOutcomeUseCase`를 2026-08-09 매칭 쪽에서 구현 완료(`MatchingRequestService`가 구현). `markNegotiationAgreed(requestId)`는 신규 도메인 메서드 `MatchingRequest.agreeNegotiation()`(NEGOTIATING일 때만 허용, 기존 `failNegotiation()`과 대칭 설계)을 호출해 `CONTRACT_PENDING`으로 전환하고, `markNegotiationFailed(requestId)`는 기존 `failNegotiation()`을 그대로 쓴다. **negotiation 쪽(5번)이 아직 안 한 것**: `NegotiationLoopService.agree()`/`.fail()`이 이 인바운드 포트를 호출하도록 이어붙이는 작업 — negotiation 도메인 코드라 매칭이 대신 구현하지 않았다.
+- **협상(5번) 연동 — 양쪽 다 완료**: 협상 타결(AGREED)/결렬(FAILED) 통보용 `MatchingNegotiationOutcomeUseCase`를 2026-08-09 매칭 쪽에서 구현(`MatchingRequestService`가 구현). `markNegotiationAgreed(requestId)`는 신규 도메인 메서드 `MatchingRequest.agreeNegotiation()`(NEGOTIATING일 때만 허용, 기존 `failNegotiation()`과 대칭 설계)을 호출해 `CONTRACT_PENDING`으로 전환하고, `markNegotiationFailed(requestId)`는 기존 `failNegotiation()`을 그대로 쓴다. **negotiation 쪽(5번)도 같은 날 완료**: `NegotiationLoopService`가 타결/결렬 시점에 이 인바운드 포트를 호출하도록 배선 완료, develop에 merge됨.
 - `newProposalCount`(협상 진행조회 응답)는 "클라가 마지막으로 읽은 시점 이후 온 새 제안 수"로 정의 확정. 실제 반영은 5번의 `feature/negotiation-unread-proposals` 브랜치가 develop에 merge된 뒤 자동 적용됨(우리 코드 수정 불필요).
 - **모집 시작 후 프로젝트 수정 → 포지션 임베딩 재생성 (2026-08-09 신규)**: 3번이 프로젝트 수정 API(PR #57)에서 `ProjectUpdatedEvent(projectId)`를 새로 만들어 발행하는데(수정 커밋 후, headcount 잠긴 이후=결제 완료 후에만), 매칭 쪽에 받는 리스너가 없던 걸 develop 재동기화 중 발견. `ProjectUpdatedEventListener` 신규 추가 — 프로젝트의 포지션마다 최신 정보로 임베딩 재생성. 매칭 요청 카드용 `MatchingSnapshot`(위 R32 스냅샷 항목)은 여기서 절대 안 건드린다 — 그건 최초 모집 시작 시점에 고정해야 하는 값이고, 이건 반대로 AI 검색용 임베딩을 최신 상태로 유지하는 것이라 서로 목적이 다르다. 임베딩 텍스트 조립 로직(`buildEmbeddingText`)을 `RecruitingStartedPositionHandler`에서 `PositionEmbeddingTextBuilder`(공유 클래스)로 추출해 양쪽에서 같이 씀. `feature/project-updated-embedding-refresh` 브랜치.
 
@@ -58,6 +58,16 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 - `com.pairing.matching.presentation.api.MatchingIntegrationTest`(H2 통합테스트, 9개)와 `com.pairing.matching.application.service.RecruitingStartedEventListenerTest`(2개) 신규 작성 — 스텁 어댑터 교체·오늘 버그 수정·이벤트 리스너를 전부 실제 요청/이벤트로 검증. 이 과정에서 `MatchingRoundCreationService.persistCandidates`의 `applyGuard`/`applyGradeWeight` 호출 순서가 뒤바뀌어 있던 것도 별도로 발견해 수정함(실제 추천 라운드 생성 시 매번 예외가 나는 상태였음).
 - **PR #51 오픈** (`feature/matching-directory-adapters` → `develop`). 첫 push 때 CI가 재추천 테스트에서만 500으로 실패 — 원인은 `/rerecommendations`에 걸린 레이트리밋(`RateLimitProvider`)이 Redis 없는 CI에서 실제 연결을 시도해서였음(로컬은 Redis가 떠 있어 안 드러남). 테스트에서 `RateLimitProvider`를 목 처리해서 해결, 커밋·push 완료. 상세는 `.ai/WORKLOG.md` 2026-08-09 참고.
 - **참고**: 이 개발 환경에 GitHub CLI(`gh`)가 없어서 이슈/PR 생성은 AI가 텍스트(제목/본문)만 만들어주고 사용자가 GitHub 웹에서 직접 생성하는 방식으로 진행 중.
+
+## 2026-08-09 갱신 — PR #51/#53/협상 인바운드 merge + 매칭 요청 카드 라이브 조회 버그(R32)
+
+- PR #51/PR #53(`fix/rerecommend-quantity-validation`)/`feature/matching-negotiation-outcome` 전부 develop에 merge. 5번이 `NegotiationLoopService`에 `MatchingNegotiationOutcomeUseCase` 호출 배선까지 완료해 협상↔매칭 양방향 연동이 다 이어졌다.
+- **3번이 프로젝트 수정 API를 구현하면서 발견**: `MatchingRequestResponseAssembler`가 매칭 요청 카드를 조립할 때 `ProjectDirectoryPort.findPositionSummary`로 프로젝트 정보를 매번 라이브 조회하고 있었다. project는 결제 후 등록 정보 수정을 허용하도록 바뀌는데(프로젝트 수정 API), 그러면 이미 수락된 매칭 요청 카드(제목/직무/스킬/경력/근무조건/기간/시작일)가 클라이언트의 수정 내용으로 통째로 바뀌어버린다 — R32("매칭 중에는 정보 수정 가능하지만 AI 매칭 시 활용하는 정보는 수정 전 정보")를 어기는 상태였다.
+  - 확인해보니 모집 시작 이벤트(`RecruitingStartedPositionHandler.freezeSnapshot`)가 이미 필요한 필드를 전부 `MatchingSnapshot`(PROJECT/POSITION)에 얼려두고 있어서, 새 필드 추가 없이 **읽는 쪽만** 스냅샷을 보도록 바꾸면 해결됐다.
+  - `companyProfile`(업종·직원수)은 account 도메인 값이라(프로젝트 수정 범위 밖) 계속 라이브로 읽는다 — `ProjectDirectoryPort.findCompanyProfile(projectId)` 신규 추가.
+  - **3번과 확인한 것**: 스냅샷은 "최초 모집 시작 시점"에 딱 1번만 얼리고 재추천마다 다시 얼리지 않는 지금 설계가 맞다(재추천마다 다시 얼리면 "수정 전" 기준이 계속 밀리고, 먼저 수락한 프리랜서와 나중 프리랜서가 서로 다른 조건을 보게 됨). 3번 쪽에서도 결제 후 인원·포지션 추가삭제·예산을 이미 잠가둬서(재추천 계산에 쓰이는 값들이라) 다시 얼릴 이유가 없다고 확인.
+  - `MatchingIntegrationTest`가 `RecruitingStartedEvent` 플로우를 안 타고 라운드를 직접 심어서(seedRound) 스냅샷이 없었던 것도 같이 시딩하도록 수정(`seedMatchingSnapshots`).
+  - `fix/matching-request-card-snapshot-read` 브랜치, `./gradlew clean build` 통과 확인, push 완료.
 
 ## 확정된 설계 결정 (요약, 상세 근거는 각 요구사항 R01~R05/정책 P02~P09 참고)
 
