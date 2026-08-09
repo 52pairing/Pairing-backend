@@ -177,6 +177,21 @@ class RecruitingStartedEventListenerTest {
         Long clientProfileId = clientProfileRepository.findByAccountIdAndDeletedAtIsNull(clientAccountId)
                 .orElseThrow().getId();
         seedProjectWithPosition(clientProfileId);
+        // MatchingRoundCreationService가 등급 타이브레이커에서 FreelancerDirectoryPort.findCardSummary를
+        // 부르므로, AI 서버 응답에 쓰는 freelancerId(999_001L)도 실제로 조회 가능해야 한다.
+        seedFreelancerProfile(999_001L, "SENIOR");
+    }
+
+    private void seedFreelancerProfile(long freelancerId, String grade) {
+        jdbcTemplate.update(
+                "INSERT INTO account (id, email, role, name, phone, signup_type, status, email_verified, "
+                        + "login_fail_count, is_temp_password) "
+                        + "VALUES (?, ?, 'FREELANCER', ?, ?, 'EMAIL', 'ACTIVE', true, 0, false)",
+                freelancerId, "freelancer-" + freelancerId + "@pairing.com", "이프리", "010-9999-0001");
+        jdbcTemplate.update(
+                "INSERT INTO freelancer_profile (id, account_id, birth_date, ai_matching_agreed, grade) "
+                        + "VALUES (?, ?, ?, true, ?)",
+                freelancerId, freelancerId, LocalDate.of(1995, 1, 1), grade);
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {

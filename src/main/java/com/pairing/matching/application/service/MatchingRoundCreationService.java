@@ -1,5 +1,7 @@
 package com.pairing.matching.application.service;
 
+import com.pairing.freelancer.domain.model.FreelancerGrade;
+import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
 import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.MatchingRecommendation;
@@ -13,9 +15,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 회차(라운드) 생성: Stage C~E(AI 서버 호출) -&gt; Stage F(가드) -&gt; 저장까지 한 번에 처리한다.
@@ -44,6 +49,7 @@ class MatchingRoundCreationService {
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingCandidateRepository matchingCandidateRepository;
     private final ProjectDirectoryPort projectDirectoryPort;
+    private final FreelancerDirectoryPort freelancerDirectoryPort;
     private final ClientGradeResolver clientGradeResolver;
 
     MatchingRound createRound(Long projectId, Long positionId, RecommendationType roundType, int recruitCount,
@@ -64,8 +70,10 @@ class MatchingRoundCreationService {
             return matchingRoundRepository.save(round);
         }
 
+        List<RankedFreelancer> ranked = breakScoreTiesByGrade(filtered);
+
         double gradeWeightPercent = clientGradeResolver.resolveMatchingWeightPercent(projectId);
-        boolean lowScoreWarned = persistCandidates(round, positionId, recruitCount, filtered, gradeWeightPercent);
+        boolean lowScoreWarned = persistCandidates(round, positionId, recruitCount, ranked, gradeWeightPercent);
 
         if (lowScoreWarned) {
             round.warnLowScore();
@@ -77,6 +85,24 @@ class MatchingRoundCreationService {
     private List<RankedFreelancer> excludePreviouslySurfaced(Long projectId, List<RankedFreelancer> candidates) {
         Set<Long> excluded = new HashSet<>(matchingCandidateRepository.findFreelancerIdsByProjectId(projectId));
         return candidates.stream().filter(candidate -> !excluded.contains(candidate.freelancerId())).toList();
+    }
+
+    /**
+     * LLM은 이미 base_score 내림차순으로 순위를 매겨서 돌려주지만, 동점일 때 어느 쪽을 앞에
+     * 둘지는 정해주지 않는다. 이럴 때는 등급이 높은 쪽(마스터&gt;시니어&gt;주니어)을 앞에 둔다.
+     * 안정 정렬이라 점수와 등급이 모두 같으면 LLM이 준 순서가 그대로 유지된다.
+     */
+    private List<RankedFreelancer> breakScoreTiesByGrade(List<RankedFreelancer> candidates) {
+        Map<Long, FreelancerGrade> gradeByFreelancerId = candidates.stream()
+                .collect(Collectors.toMap(RankedFreelancer::freelancerId,
+                        candidate -> freelancerDirectoryPort.findCardSummary(candidate.freelancerId()).grade()));
+
+        Comparator<RankedFreelancer> byScoreThenGrade = Comparator
+                .comparingDouble(RankedFreelancer::score).reversed()
+                .thenComparing(candidate -> gradeByFreelancerId.get(candidate.freelancerId()).ordinal(),
+                        Comparator.reverseOrder());
+
+        return candidates.stream().sorted(byScoreThenGrade).toList();
     }
 
     private boolean persistCandidates(MatchingRound round, Long positionId, int exposeCount,
