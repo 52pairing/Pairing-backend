@@ -11,6 +11,7 @@ import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
 import com.pairing.matching.application.port.out.NegotiationPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.ProjectPositionSummary;
+import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCase;
 import com.pairing.matching.application.usecase.MatchingRequestCommandUseCase;
 import com.pairing.matching.application.usecase.MatchingRequestQueryUseCase;
 import com.pairing.matching.domain.model.MatchingCandidate;
@@ -38,7 +39,8 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
-public class MatchingRequestService implements MatchingRequestCommandUseCase, MatchingRequestQueryUseCase {
+public class MatchingRequestService implements MatchingRequestCommandUseCase, MatchingRequestQueryUseCase,
+        MatchingNegotiationOutcomeUseCase {
 
     private static final List<MatchingStatus> NON_ACTIVE_STATUSES =
             List.of(MatchingStatus.REJECTED, MatchingStatus.NEGOTIATION_FAILED, MatchingStatus.TERMINATED);
@@ -150,6 +152,24 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         request.reject();
         matchingRequestRepository.save(request);
         return matchingRequestResponseAssembler.build(request, accountId);
+    }
+
+    @Override
+    @Transactional
+    public void markNegotiationAgreed(Long requestId) {
+        MatchingRequest request = matchingRequestRepository.findById(requestId)
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
+        request.agreeNegotiation();
+        matchingRequestRepository.save(request);
+    }
+
+    @Override
+    @Transactional
+    public void markNegotiationFailed(Long requestId) {
+        MatchingRequest request = matchingRequestRepository.findById(requestId)
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
+        request.failNegotiation();
+        matchingRequestRepository.save(request);
     }
 
     private MatchingRequest getOwnedByFreelancer(Long requestId, Long accountId) {
