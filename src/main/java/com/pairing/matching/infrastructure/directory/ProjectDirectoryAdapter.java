@@ -90,7 +90,9 @@ public class ProjectDirectoryAdapter implements ProjectDirectoryPort {
                 source.startDesiredDate(),
                 source.budgetAmount(),
                 source.headcount(),
-                source.totalHeadcount()
+                source.totalHeadcount(),
+                source.detailScope(),
+                source.extraNote()
         );
     }
 }
