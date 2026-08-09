@@ -16,6 +16,8 @@ import com.pairing.auth.application.port.SessionRegistryPort;
 import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
+import com.pairing.freelancer.application.command.UpsertConditionCommand;
+import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.RankedFreelancer;
@@ -27,6 +29,14 @@ import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingCandidateRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRequestRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRoundRepository;
+import com.pairing.meta.domain.model.JobCategory;
+import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.PayUnit;
+import com.pairing.meta.domain.model.PeriodUnit;
+import com.pairing.meta.domain.model.SkillCode;
+import com.pairing.meta.domain.model.SkillLevel;
+import com.pairing.meta.domain.model.WorkForm;
+import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.project.application.event.RecruitingStartedEvent;
 import com.pairing.terms.domain.model.TermsCode;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsAgreementRepository;
@@ -112,6 +122,8 @@ class RecruitingStartedEventListenerTest {
     @Autowired
     private MatchingSnapshotRepository matchingSnapshotRepository;
     @Autowired
+    private FreelancerConditionUseCase freelancerConditionUseCase;
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
@@ -192,6 +204,14 @@ class RecruitingStartedEventListenerTest {
                 "INSERT INTO freelancer_profile (id, account_id, birth_date, ai_matching_agreed, grade) "
                         + "VALUES (?, ?, ?, true, ?)",
                 freelancerId, freelancerId, LocalDate.of(1995, 1, 1), grade);
+
+        // Stage F 가드(직무·스킬 재검증)가 findCondition을 실제로 부른다. seedProjectWithPosition의
+        // 포지션 요구조건(BACKEND, SPRING_BOOT)과 일치시켜야 가드를 통과해 기존 노출 검증이 유지된다.
+        freelancerConditionUseCase.upsert(new UpsertConditionCommand(
+                freelancerId, JobCategory.DEVELOPMENT, JobRole.BACKEND, null,
+                WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 6_000_000L, 5_000_000L,
+                LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 5,
+                List.of(new UpsertConditionCommand.Skill(SkillCode.SPRING_BOOT, SkillLevel.ADVANCED))));
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {

@@ -134,3 +134,11 @@
 12. ~~프리랜서 임베딩이 실환경에서 한 번도 생성되지 않던 결함~~ — 완료(위 참고). 이걸로 Stage C가 이제야 실제로 검색할 대상이 생김.
 13. **Stage E(LLM 최종선정) 재설계** — 확정 설계는 "프로젝트당 1회 호출, 전체 포지션 한번에"인데 지금은 포지션마다 따로 호출함. Python `MatchingRequest`가 `position_id` 단일값만 받는 구조라 API 계약 자체를 바꿔야 함(여러 포지션 id + 포지션별 후보 풀을 한 번에 받아서 LLM 프롬프트도 여러 포지션을 한꺼번에 판단하게). 범위가 커서 착수 전 사용자와 우선순위 논의 필요.
 14. Pairing-python `fix/directory-repository-column-names` PR — 리뷰/머지 대기(2번이 컬럼명 confirm 완료, 코드는 맞게 고쳐져 있음).
+
+## 2026-08-09 (계속) — Stage F 가드 실제 구현
+
+- `MatchingRoundCreationService.applyGuard(true, null)` placeholder를 실제 검증으로 교체(HANDOFF 11번 하위 항목). R02.3 요구사항 원문("가드 AI로 마지막 검증 (직무, 스킬 검증)")만 그대로 구현 — **예산 조합 재검증은 넣지 않음**. 이전에 STATE.md에 "예산 조합 재검증"이 가드 범위로 적혀 있었는데, 이번에 다시 요구사항 원문을 확인해보니 근거가 없었음(Stage B 조건필터가 근거 없이 끼워넣은 가정이었던 것과 같은 패턴). budgetCap은 협상 단계(`NegotiationConditionCalculator`)에서 이미 별도로 재검증되고 있어서 가드에 중복으로 넣을 이유도 없음.
+- `findCondition(freelancerId)`로 프리랜서 실제 조건을 가져와 `ProjectDirectoryPort.findPositionSummary`(실시간 조회, 스냅샷 아님)의 jobRole/requiredSkills와 비교. 가드에 떨어진 후보는 `guardPassed=false`로 기록은 남기되 노출(`expose`)하지 않고, 노출 인원(exposeCount) 자리는 다음 순위의 가드 통과 후보가 채우도록 `persistCandidates`의 노출 카운팅 로직을 별도 카운터(`exposedCount`)로 분리.
+- **테스트 빈틈 발견·보완**: `RecruitingStartedEventListenerTest`가 그동안 freelancerId(999_001L)에 `freelancer_condition`을 전혀 안 심고도 통과하고 있었음 — 가드가 placeholder라 `findCondition`을 실제로 안 불렀기 때문. 가드가 실제로 호출하게 되면서 예외가 나서 발견, 포지션 요구조건(BACKEND/SPRING_BOOT)과 일치하는 조건을 `freelancerConditionUseCase.upsert()`로 심도록 수정.
+- `MatchingIntegrationTest`에 가드 탈락 시나리오 신규 테스트 추가: 점수가 더 높지만(95점) 요구 스킬(SPRING_BOOT)이 없는 후보와 점수가 낮지만(80점) 스킬이 일치하는 후보를 같이 LLM 응답으로 주고, 가드 통과한 후자만 노출되는지 확인(가드가 없었다면 95점 후보가 노출됐을 것이므로 실질적인 검증이 됨).
+- `./gradlew build` 전체 통과. `feature/matching-stage-f-guard` 브랜치.
