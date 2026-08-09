@@ -1,23 +1,29 @@
 package com.pairing.support.presentation.api;
 
+import com.pairing.account.domain.model.Role;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
-import com.pairing.support.domain.model.InquiryCategory;
+import com.pairing.support.application.usecase.InquiryAdminUseCase;
+import com.pairing.support.application.usecase.InquiryUseCase;
 import com.pairing.support.domain.model.InquiryStatus;
+import com.pairing.support.exception.InquiryErrorCode;
 import com.pairing.support.presentation.api.request.ChatbotAskRequest;
 import com.pairing.support.presentation.api.request.InquiryAnswerRequest;
 import com.pairing.support.presentation.api.request.InquiryCreateRequest;
 import com.pairing.support.presentation.api.response.ChatbotAnswerResponse;
 import com.pairing.support.presentation.api.response.ChatbotQuotaResponse;
-import com.pairing.support.presentation.api.response.InquiryFileResponse;
 import com.pairing.support.presentation.api.response.InquiryResponse;
+import com.pairing.support.presentation.api.response.InquirySummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,13 +44,16 @@ import java.util.List;
  * <p>둘은 서로 독립된 창구다. 챗봇을 거쳐야 문의할 수 있는 구조가 아니라 사용자가 원하는 쪽을 고른다.
  * 챗봇은 하루 10회로 제한되고, LLM 호출은 AI 서버가 담당한다.
  *
- * <p>스켈레톤이라 고정 응답을 돌려준다.
+ * <p>1:1 문의는 실제 로직으로 연결되어 있다. 챗봇(R44)은 AI 서버 연동 전까지 스켈레톤 고정 응답을 유지한다.
  */
 @RestController
 @RequestMapping("/api/v1/support")
 @RequiredArgsConstructor
 @Tag(name = "18. Support", description = "챗봇/1:1 문의 API")
 public class SupportController {
+
+    private final InquiryUseCase inquiryUseCase;
+    private final InquiryAdminUseCase inquiryAdminUseCase;
 
     // ==========================================
     // 챗봇 (R44)
@@ -109,9 +118,9 @@ public class SupportController {
             @Valid @RequestBody InquiryCreateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 문의 저장 (상태 PENDING)
+        InquiryResponse response = InquiryResponse.from(inquiryUseCase.create(request.toCommand(accountId)));
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created("INQUIRY_CREATED", "문의를 접수했습니다.", sampleInquiry(null)));
+                .body(ApiResponse.created("INQUIRY_CREATED", "문의를 접수했습니다.", response));
     }
 
     @GetMapping("/inquiries/mine")
@@ -122,54 +131,58 @@ public class SupportController {
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 내 문의 조회
-        return ResponseEntity.ok(ApiResponse.success("INQUIRIES_FOUND", "조회에 성공했습니다.",
-                new PageResponse<>(List.of(sampleInquiry(null)), page, size, 1, 1, true, true)));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        PageResponse<InquiryResponse> response = PageResponse.from(
+                inquiryUseCase.findMine(accountId, status, pageable).map(InquiryResponse::from));
+        return ResponseEntity.ok(ApiResponse.success("INQUIRIES_FOUND", "조회에 성공했습니다.", response));
     }
 
     @GetMapping("/inquiries/{inquiryId}")
     @Operation(summary = "문의 상세")
+    @ApiErrorCodeExample(domain = InquiryErrorCode.class, value = {"INQUIRY_NOT_FOUND", "INQUIRY_FORBIDDEN"})
     public ResponseEntity<ApiResponse<InquiryResponse>> findInquiry(
             @PathVariable Long inquiryId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 작성자 본인 또는 관리자만 열람
-        return ResponseEntity.ok(ApiResponse.success("INQUIRY_FOUND", "조회에 성공했습니다.", sampleInquiry(null)));
+        InquiryResponse response = InquiryResponse.from(inquiryUseCase.findOne(accountId, inquiryId));
+        return ResponseEntity.ok(ApiResponse.success("INQUIRY_FOUND", "조회에 성공했습니다.", response));
     }
 
     // ==========================================
     // 관리자 (R45)
     // ==========================================
 
+    @GetMapping("/admin/inquiries/summary")
+    @Operation(summary = "[관리자] 문의 요약", description = "목록 상단 요약 카드(전체/답변 대기/답변 완료/오늘 접수)입니다.")
+    public ResponseEntity<ApiResponse<InquirySummaryResponse>> findInquirySummaryForAdmin() {
+        InquirySummaryResponse response = InquirySummaryResponse.from(inquiryAdminUseCase.getSummary());
+        return ResponseEntity.ok(ApiResponse.success("INQUIRY_SUMMARY_FOUND", "조회에 성공했습니다.", response));
+    }
+
     @GetMapping("/admin/inquiries")
-    @Operation(summary = "[관리자] 문의 목록", description = "상태로 필터링합니다.")
+    @Operation(summary = "[관리자] 문의 목록",
+            description = "keyword 는 회원명·제목·문의번호를 한 번에 검색합니다. 회원유형·상태로도 필터링합니다.")
     public ResponseEntity<ApiResponse<PageResponse<InquiryResponse>>> findInquiriesForAdmin(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Role writerRole,
             @RequestParam(required = false) InquiryStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size
     ) {
-        // TODO: 전체 문의 조회
-        return ResponseEntity.ok(ApiResponse.success("INQUIRIES_FOUND", "조회에 성공했습니다.",
-                new PageResponse<>(List.of(sampleInquiry("홍길동")), page, size, 1, 1, true, true)));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        PageResponse<InquiryResponse> response = PageResponse.from(
+                inquiryAdminUseCase.findAll(keyword, writerRole, status, pageable).map(InquiryResponse::from));
+        return ResponseEntity.ok(ApiResponse.success("INQUIRIES_FOUND", "조회에 성공했습니다.", response));
     }
 
     @PostMapping("/admin/inquiries/{inquiryId}/answer")
     @Operation(summary = "[관리자] 문의 답변", description = "답변하면 상태가 ANSWERED 로 바뀌고 사용자에게 알림이 발송됩니다.")
+    @ApiErrorCodeExample(domain = InquiryErrorCode.class, value = {"INQUIRY_NOT_FOUND"})
     public ResponseEntity<ApiResponse<InquiryResponse>> answerInquiry(
             @PathVariable Long inquiryId,
             @Valid @RequestBody InquiryAnswerRequest request
     ) {
-        // TODO: 답변 저장 -> 상태 ANSWERED -> 알림 발송
-        return ResponseEntity.ok(ApiResponse.success("INQUIRY_ANSWERED", "답변을 등록했습니다.",
-                sampleInquiry("홍길동")));
-    }
-
-    private InquiryResponse sampleInquiry(String writerName) {
-        return new InquiryResponse("QNA-20260805-0012", InquiryCategory.PAYMENT,
-                1300L, writerName, "착수금 수수료 결제 문의",
-                "착수금 수수료 결제 버튼이 활성화되지 않습니다. 프로젝트를 등록하고 AI 검수를 완료했는데도 결제가 진행되지 않아 문의드립니다.",
-                InquiryStatus.PENDING, null, null, null,
-                List.of(new InquiryFileResponse(42L, "오류화면.png", "inquiries/uuid.png")),
-                LocalDateTime.now());
+        InquiryResponse response = InquiryResponse.from(inquiryAdminUseCase.answer(inquiryId, request.answer()));
+        return ResponseEntity.ok(ApiResponse.success("INQUIRY_ANSWERED", "답변을 등록했습니다.", response));
     }
 }

@@ -16,7 +16,8 @@ public enum FilePurpose {
     COMPANY_LOGO("기업 로고", 5, "jpg, jpeg, png"),
     PORTFOLIO("포트폴리오", 100, "pdf"),
     PROJECT_FILE("프로젝트 자료", 100, "pdf, jpg, jpeg, png"),
-    SIGNATURE("서명 이미지", 5, "jpg, jpeg, png");
+    SIGNATURE("서명 이미지", 5, "jpg, jpeg, png"),
+    INQUIRY_ATTACHMENT("1:1 문의 첨부파일", 10, "pdf, jpg, jpeg, png");
 
     private final String label;
     private final int maxSizeMb;
