@@ -76,12 +76,14 @@
 - **참고**: 위 3개 브랜치(`fix/rerecommend-quantity-validation`, `docs/budgetcap-week-conversion-confirmed`, `feature/matching-negotiation-outcome`)가 전부 develop에서 독립적으로 분기돼 아직 서로 merge 안 된 상태라, `.ai/*.md` 문서 쪽에서 merge 시 충돌이 날 수 있음(코드 충돌은 아님, 서로 다른 파일/메서드 건드림). 문서 충돌은 내용 합치면 되는 수준.
 - **위 3개 브랜치(PR #53 포함) 전부 develop에 merge 완료.** 5번도 같은 날 `NegotiationLoopService`에 배선을 마쳐 협상↔매칭 양방향 연동이 다 이어짐 — HANDOFF 14번 완전히 종료.
 - **코드 리뷰로 발견한 추가 버그 수정** (재추천 `type`이 `INITIAL`도 그대로 받던 문제, HANDOFF 21번) — 위 PR #53과 같은 브랜치에 포함, `MatchingErrorCode.INVALID_RERECOMMEND_TYPE`(MT_013) 추가.
-- **매칭 요청 카드 라이브 조회 버그(R32) 수정** (HANDOFF 23번, `fix/matching-request-card-snapshot-read` 브랜치) — 3번이 프로젝트 수정 API 구현 중 발견해 질문, 코드 확인 후 답변, 3번 확인받아 구현까지 진행. `MatchingRequestResponseAssembler`가 `MatchingSnapshot`(PROJECT/POSITION)을 읽도록 교체, `companyProfile`만 신규 포트(`findCompanyProfile`)로 계속 라이브 조회. `MatchingIntegrationTest`에 스냅샷 시딩 추가(`seedMatchingSnapshots`). `./gradlew clean build` 통과, push 완료. 상세는 `.ai/STATE.md` 2026-08-09 갱신 섹션.
+- **매칭 요청 카드 라이브 조회 버그(R32) 수정** (HANDOFF 23번, `fix/matching-request-card-snapshot-read` 브랜치) — 3번이 프로젝트 수정 API(PR #57) 구현 중 발견해 질문, 코드 확인 후 답변, 3번 확인받아 구현까지 진행. `MatchingRequestResponseAssembler`가 `MatchingSnapshot`(PROJECT/POSITION)을 읽도록 교체, `companyProfile`만 신규 포트(`findCompanyProfile`)로 계속 라이브 조회. `MatchingIntegrationTest`에 스냅샷 시딩 추가(`seedMatchingSnapshots`). `./gradlew clean build` 통과, push 완료 — **PR #59로 develop에 merge됨**.
+- **3번의 프로젝트 수정 API(PR #57) develop 재동기화 중 새 통합 지점 발견**: `ProjectUpdatedEvent(projectId)`(모집 시작 후 프로젝트 수정 시 발행, 3번이 신규 추가)를 매칭이 안 받고 있었음 — 3번 의도는 "매칭이 이 신호로 포지션 임베딩을 다시 올린다"였음. `ProjectUpdatedEventListener` 신규 추가(HANDOFF 24번, `feature/project-updated-embedding-refresh` 브랜치). 요청 카드용 스냅샷(위 항목)과는 반대 방향이라 서로 안 건드리게 분리 — 임베딩 텍스트 조립을 `PositionEmbeddingTextBuilder`로 공유 추출. 테스트 3개, `./gradlew clean build` 통과.
 
 ## 다음 세션에서 할 일
 
 1. ~~PR #51/#53/`feature/matching-negotiation-outcome` merge, 협상 인바운드 배선~~ — 전부 완료.
-1-1. **`fix/matching-request-card-snapshot-read` PR 생성 대기** — 매칭 요청 카드 R32 버그 수정.
+1-1. ~~`fix/matching-request-card-snapshot-read` PR 생성~~ — PR #59 merge 완료.
+1-2. **`feature/project-updated-embedding-refresh` PR 머지 진행 중** — 모집 시작 후 프로젝트 수정 시 임베딩 재생성.
 2. ~~`MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 구현~~ — 매칭+negotiation 양쪽 다 완료.
 3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
 4. ~~budgetCap의 WEEK→개월 환산 규칙~~ — 4주=1개월로 확정, 반영 완료.
