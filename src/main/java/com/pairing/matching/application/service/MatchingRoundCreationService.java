@@ -1,22 +1,24 @@
 package com.pairing.matching.application.service;
 
 import com.pairing.freelancer.domain.model.FreelancerGrade;
+import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
 import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
 import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.MatchingRecommendation;
+import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.matching.application.result.RankedFreelancer;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
+import com.pairing.meta.domain.model.SkillCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,16 +29,19 @@ import java.util.stream.Collectors;
  *
  * <p>재추천(2일차)과 최초 추천(결제 완료 트리거, 3일차 예정) 둘 다 이 서비스를 공유한다.
  *
- * <p><b>알아둘 단순화 2가지(2026-08-07)</b>:
- * <ul>
- *   <li>similarity: {@code MatchingPort.recommend()}가 Pairing-python 내부에서 Stage C~E를 한 번에
- *       처리해 최종 순위만 돌려주므로, Spring이 별도로 받는 유사도 값이 없다. 0.0을 임시로 채운다
- *       (참고용 필드라 랭킹/응답에는 안 쓰인다).</li>
- *   <li>Stage F 가드: 규칙 기반 재검증(직무·스킬, 예산 조합) 알고리즘은 아직 없어 항상 통과 처리한다.
- *       3일차에 {@code applyGuard} 호출부만 실제 검증으로 교체하면 된다.</li>
- * </ul>
- * 이전에 노출됐던 프리랜서(R02 예외조건 5, 프로젝트 전체 기준) 제외는 Pairing-python이 아직
- * 하드필터를 안 갖고 있어(3일차 예정) 여기서 결과를 받은 뒤 걸러낸다.
+ * <p><b>알아둘 단순화(2026-08-07)</b>: similarity는 {@code MatchingPort.recommend()}가
+ * Pairing-python 내부에서 Stage C~E를 한 번에 처리해 최종 순위만 돌려주므로, Spring이 별도로 받는
+ * 유사도 값이 없다. 0.0을 임시로 채운다(참고용 필드라 랭킹/응답에는 안 쓰인다).
+ *
+ * <p><b>Stage F 가드(2026-08-09 구현)</b>: R02.3 요구사항 그대로 직무·스킬만 재검증한다("가드 AI로
+ * 마지막 검증 (직무, 스킬 검증)"). 예산은 가드 대상이 아니다 — budgetCap은 협상 단계
+ * ({@code NegotiationConditionCalculator})에서 이미 별도로 재검증되고, 요구사항에 "예산 조합"을
+ * 가드에 넣으라는 근거가 없어서(이전에 STATE.md에 적혀있던 문구는 우리 자체 추정이었음, Stage B
+ * 조건필터 폐기와 같은 사유) 넣지 않는다. 가드에 떨어진 후보는 노출되지 않고 다음 순위 후보가
+ * 노출 인원 자리를 채운다.
+ *
+ * <p>이전에 노출됐던 프리랜서(R02 예외조건 5, 프로젝트 전체 기준) 제외는 Pairing-python이 벡터 검색
+ * 전에 미리 걸러준다(2026-08-09) — 여기서는 그 목록을 조회해서 넘기기만 한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -62,29 +67,27 @@ class MatchingRoundCreationService {
                 costAmount, recruitCount, poolSize);
         round = matchingRoundRepository.save(round);
 
-        MatchingRecommendation recommendation = matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER);
-        List<RankedFreelancer> filtered = excludePreviouslySurfaced(projectId, recommendation.candidates());
+        List<Long> excludedFreelancerIds = matchingCandidateRepository.findFreelancerIdsByProjectId(projectId);
+        MatchingRecommendation recommendation =
+                matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER, excludedFreelancerIds);
 
-        if (filtered.isEmpty()) {
+        if (recommendation.candidates().isEmpty()) {
             round.exhaust();
             return matchingRoundRepository.save(round);
         }
 
-        List<RankedFreelancer> ranked = breakScoreTiesByGrade(filtered);
+        List<RankedFreelancer> ranked = breakScoreTiesByGrade(recommendation.candidates());
 
+        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
         double gradeWeightPercent = clientGradeResolver.resolveMatchingWeightPercent(projectId);
-        boolean lowScoreWarned = persistCandidates(round, positionId, recruitCount, ranked, gradeWeightPercent);
+        boolean lowScoreWarned =
+                persistCandidates(round, positionId, recruitCount, ranked, gradeWeightPercent, position);
 
         if (lowScoreWarned) {
             round.warnLowScore();
         }
         round.complete();
         return matchingRoundRepository.save(round);
-    }
-
-    private List<RankedFreelancer> excludePreviouslySurfaced(Long projectId, List<RankedFreelancer> candidates) {
-        Set<Long> excluded = new HashSet<>(matchingCandidateRepository.findFreelancerIdsByProjectId(projectId));
-        return candidates.stream().filter(candidate -> !excluded.contains(candidate.freelancerId())).toList();
     }
 
     /**
@@ -106,26 +109,59 @@ class MatchingRoundCreationService {
     }
 
     private boolean persistCandidates(MatchingRound round, Long positionId, int exposeCount,
-                                      List<RankedFreelancer> ranked, double gradeWeightPercent) {
+                                      List<RankedFreelancer> ranked, double gradeWeightPercent,
+                                      ProjectPositionSummary position) {
         List<MatchingCandidate> candidates = new ArrayList<>();
         boolean lowScoreWarned = false;
-        int rank = 1;
+        int exposedCount = 0;
         for (RankedFreelancer item : ranked) {
             MatchingCandidate candidate = MatchingCandidate.createFromEmbedding(round.getId(), positionId,
                     item.freelancerId(), 0.0);
             candidate.applyLlmResult(item.score(), item.reason());
             candidate.applyGradeWeight(gradeWeightPercent);
-            candidate.applyGuard(true, null);
 
-            if (rank <= exposeCount) {
-                candidate.expose(rank);
-            } else if (candidate.isBelowQualityThreshold(LOW_SCORE_THRESHOLD)) {
-                lowScoreWarned = true;
+            GuardVerdict guard = evaluateGuard(item.freelancerId(), position);
+            candidate.applyGuard(guard.passed(), guard.reason());
+
+            if (guard.passed()) {
+                if (exposedCount < exposeCount) {
+                    candidate.expose(++exposedCount);
+                } else if (candidate.isBelowQualityThreshold(LOW_SCORE_THRESHOLD)) {
+                    lowScoreWarned = true;
+                }
             }
             candidates.add(candidate);
-            rank++;
         }
         matchingCandidateRepository.saveAll(candidates);
         return lowScoreWarned;
+    }
+
+    /** Stage F 가드: 직무·스킬만 재검증한다(R02.3). 가드에 떨어져도 후보 기록은 남기고 노출만 안 한다. */
+    private GuardVerdict evaluateGuard(Long freelancerId, ProjectPositionSummary position) {
+        FreelancerConditionResponse condition = freelancerDirectoryPort.findCondition(freelancerId);
+
+        if (condition.jobRole() != position.jobRole()) {
+            return GuardVerdict.failed("직무 불일치: " + condition.jobRole());
+        }
+
+        Set<SkillCode> heldSkills = condition.skills().stream()
+                .map(FreelancerConditionResponse.Skill::skillCode)
+                .collect(Collectors.toSet());
+        List<SkillCode> missingSkills = position.requiredSkills().stream()
+                .filter(required -> !heldSkills.contains(required))
+                .toList();
+        if (!missingSkills.isEmpty()) {
+            return GuardVerdict.failed("요구 스킬 미달: " + missingSkills);
+        }
+
+        return GuardVerdict.PASSED;
+    }
+
+    private record GuardVerdict(boolean passed, String reason) {
+        private static final GuardVerdict PASSED = new GuardVerdict(true, null);
+
+        private static GuardVerdict failed(String reason) {
+            return new GuardVerdict(false, reason);
+        }
     }
 }

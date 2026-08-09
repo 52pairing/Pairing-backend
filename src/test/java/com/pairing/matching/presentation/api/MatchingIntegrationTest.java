@@ -75,6 +75,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -504,7 +505,7 @@ class MatchingIntegrationTest {
     @DisplayName("재추천을 요청하면 AI 서버(Pairing-python) 응답으로 새 회차/후보가 만들어진다")
     void rerecommendCreatesNewRoundFromAiServerResponse() throws Exception {
         seedRound(2);
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3)))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
                         List.of(new RankedFreelancer(freelancerAccountId, 91.0,
                                 "요구 스킬 3개 중 3개 일치|경력 조건 충족"))));
@@ -517,6 +518,66 @@ class MatchingIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.candidates.length()").value(1))
                 .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
+    }
+
+    @Test
+    @DisplayName("재추천 시 이전 회차에서 이미 노출됐던 프리랜서 id를 AI 서버 호출의 제외 목록으로 넘긴다")
+    void rerecommendPassesPreviouslySurfacedFreelancerIdsAsExcluded() throws Exception {
+        MatchingRound firstRound = seedRound(2);
+        seedExposedCandidate(firstRound.getId(), 1);
+
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.candidates.length()").value(0));
+
+        verify(matchingPort).recommend(POSITION_ID, 2, 3, List.of(freelancerAccountId));
+    }
+
+    @Test
+    @DisplayName("가드에서 요구 스킬이 부족한 후보는 노출되지 않고 다음 순위 후보가 그 자리를 채운다")
+    void rerecommendSkipsGuardFailingCandidateAndExposesNextRanked() throws Exception {
+        seedRound(1);
+        long guardFailFreelancerId = 7_009_001L;
+        seedGuardFailingFreelancer(guardFailFreelancerId);
+
+        given(matchingPort.recommend(eq(POSITION_ID), eq(1), eq(3), eq(List.of()))).willReturn(
+                new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
+                        new RankedFreelancer(guardFailFreelancerId, 95.0, "경력 우수"),
+                        new RankedFreelancer(freelancerAccountId, 80.0, "요구 스킬 3개 중 3개 일치"))));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":1}"""))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.candidates.length()").value(1))
+                .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
+    }
+
+    /** 포지션이 요구하는 SPRING_BOOT를 안 갖춘 프리랜서 — 가드의 스킬 재검증에서 떨어져야 한다. */
+    private void seedGuardFailingFreelancer(long freelancerId) {
+        jdbcTemplate.update(
+                "INSERT INTO account (id, email, role, name, phone, signup_type, status, email_verified, "
+                        + "login_fail_count, is_temp_password) "
+                        + "VALUES (?, ?, 'FREELANCER', ?, ?, 'EMAIL', 'ACTIVE', true, 0, false)",
+                freelancerId, "freelancer-" + freelancerId + "@pairing.com", "박프리", "010-9999-0002");
+        jdbcTemplate.update(
+                "INSERT INTO freelancer_profile (id, account_id, birth_date, ai_matching_agreed, grade) "
+                        + "VALUES (?, ?, ?, true, 'JUNIOR')",
+                freelancerId, freelancerId, LocalDate.of(1998, 5, 5));
+        freelancerConditionUseCase.upsert(new UpsertConditionCommand(
+                freelancerId, JobCategory.DEVELOPMENT, JobRole.BACKEND, null,
+                WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 4_000_000L, 3_500_000L,
+                LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 2,
+                List.of(new UpsertConditionCommand.Skill(SkillCode.PYTHON, SkillLevel.ADVANCED))));
     }
 
     @Test

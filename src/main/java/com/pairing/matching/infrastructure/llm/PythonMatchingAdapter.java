@@ -70,11 +70,13 @@ public class PythonMatchingAdapter implements MatchingPort {
 
     @Override
     @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "recommendFallback")
-    public MatchingRecommendation recommend(Long positionId, int recruitCount, int poolMultiplier) {
+    public MatchingRecommendation recommend(Long positionId, int recruitCount, int poolMultiplier,
+                                            List<Long> excludedFreelancerIds) {
         Map<String, Object> requestBody = Map.of(
                 "position_id", positionId,
                 "recruit_count", recruitCount,
-                "pool_multiplier", poolMultiplier
+                "pool_multiplier", poolMultiplier,
+                "excluded_freelancer_ids", excludedFreelancerIds
         );
 
         PythonApiResponse<RecommendationData> response = restClient.post()
@@ -142,7 +144,7 @@ public class PythonMatchingAdapter implements MatchingPort {
     }
 
     private MatchingRecommendation recommendFallback(Long positionId, int recruitCount, int poolMultiplier,
-                                                      Throwable t) {
+                                                      List<Long> excludedFreelancerIds, Throwable t) {
         log.error("[Pairing-python] 추천 실패/서킷 오픈 (positionId={}, 원인: {})", positionId, t.getMessage());
         throw new BusinessException(MatchingErrorCode.AI_SERVER_CALL_FAILED);
     }

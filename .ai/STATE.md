@@ -23,7 +23,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 - `PUT /api/v1/embeddings/freelancers`, `PUT /api/v1/embeddings/positions` — 임베딩 upsert (해시 비교로 재계산 스킵)
 - `GET /api/v1/embeddings/positions/{id}/candidates?limit=` — pgvector 코사인 검색
 - `POST /api/v1/matchings/recommendations` — 후보풀 조회 + Gemini 재랭킹(`{freelancer_id, score, reason}` 구조화 출력). `_build_prompt`는 실제 포지션 요구조건+프리랜서 이력서 원문을 채움(2026-08-09 완료).
-- **미구현**: 하드필터(직군/직무/AI매칭 동의/일정/단가)가 검색에 전혀 없음 — 순수 벡터 유사도만 봄(HANDOFF 10번). AI매칭 동의+직군/직무는 기준이 명확해 착수 직전, 일정/근무조건/단가 "느슨하게"는 정확한 허용 범위가 문서에 없어 3번에게 재질문 대기 중(사전검수 P02와는 무관, WORKLOG 참고).
+- **(2026-08-09 완료)** 하드필터(직군/직무/AI매칭 동의)를 벡터 검색에 추가(HANDOFF 10번). `EmbeddingRepository.search_similar_freelancers`가 `freelancer_profile`(ai_matching_agreed)+`account`(status=ACTIVE)+`freelancer_condition`(job_category/job_role)을 조인해서 필터링. `MatchingService.recommend()`는 포지션 조회를 벡터 검색보다 먼저 하도록 순서를 바꿔 job_category/job_role을 넘긴다. 이전에 노출된 프리랜서 제외(`excludePreviouslySurfaced`)도 Java 후처리에서 Python 사전필터로 이동(`MatchingRequest.excluded_freelancer_ids`). **일정/근무조건/단가는 하드필터 대상에서 제외 확정** — 아래 "Stage B 조건필터 폐기" 참고, Stage E 감점으로 이동(미착수, HANDOFF 10-2번).
 - **(2026-08-09 발견·수정) `directory_repository.py` 컬럼명 버그 2건**: `freelancer_condition`/`resume`을 `freelancer_id`로 조회하고 있었는데 실제 컬럼은 `account_id`(2번 확인 완료) — `freelancer_profile` 경유해서 다리 놓게 수정. `project_position.preferred_note`도 존재하지 않는 컬럼이라 제거(우대사항은 `project.extra_note`로 통일돼 있음). `fix/directory-repository-column-names` 브랜치, PR 리뷰 대기.
 - **(신규 발견·해결, 2026-08-09) 치명적 결함이었던 것**: 스프링 쪽에서 `PUT /embeddings/freelancers`를 부르는 코드가 어디에도 없었다. 프로젝트 포지션 임베딩(`upsertPositionEmbedding`)은 잘 연결돼 있었는데 프리랜서 쪽은 `MatchingPort`에 메서드 자체가 없었음 — `freelancer_embedding` 테이블이 실환경에서 영원히 비어 있었다는 뜻(Stage C가 검색할 대상이 없음). 테스트가 통과했던 건 `MatchingPort.recommend()`를 목 처리해서 실제 벡터 검색을 건너뛰었기 때문. `MatchingPort.upsertFreelancerEmbedding` 신규 추가 + 이력서 저장(`ResumeService.upsert`) 시 `ResumeUpdatedEvent` 발행 + 매칭의 `ResumeUpdatedEventListener`가 받아서 자기소개+경력사항으로 임베딩 재생성하도록 연결. `feature/matching-freelancer-embedding-trigger` 브랜치.
 
@@ -37,7 +37,8 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
   - `NegotiationPort` ← `infrastructure/negotiation/NegotiationAdapter` — **완전 교체**. negotiation의 `NegotiationCommandUseCase`(생성)/`NegotiationProgressUseCase`(진행조회) 위임 호출.
   - `FreelancerDirectoryPort` ← `infrastructure/directory/FreelancerDirectoryAdapter` — **완전 교체**(2026-08-09). `findCardSummary`(`FreelancerCandidateSummaryUseCase`)는 기존대로, `resolveFreelancerId`/`findCondition`도 `AccountQueryUseCase.findFreelancerProfileByAccountId/ById` + `FreelancerConditionUseCase.findMyCondition`으로 실구현 교체 완료 — 2번 확인 결과 account 도메인 승인·포트는 이미 다 있었고 매칭 쪽 어댑터만 안 바꿔놨던 상태였음. 못 찾으면 `MatchingErrorCode.FREELANCER_NOT_FOUND`(MT_015).
 - `budgetCap`(수수료율 구간×클라이언트등급)과 `grade_weight`(0/1/2%) 계산은 `ClientGradeResolver`/`BudgetCapCalculator`가 실제 리포지토리를 조회해서 처리한다.
-- Stage F 가드(직무/스킬·예산 조합 재검증)는 지금 항상 통과 처리(placeholder). budgetCap 배분은 **2026-08-09 A안(현재 공식 유지)으로 확정** — 3번이 정책·요구사항 전수 확인한 결과 "포지션별 1순위 조합" 같은 배분 알고리즘 규칙은 원래 확정된 적이 없었고(HANDOFF 11번의 전제 자체가 틀렸음), 포지션별 예산 입력란도 없어 재료가 없음. `BudgetCapCalculator`는 코드 변경 없이 그대로 유지. Stage F 가드 자체(직무/스킬/예산 재검증 로직)는 여전히 미착수 — 필요해지면 findCondition(이제 실구현) 기반으로 새로 설계.
+- budgetCap 배분은 **2026-08-09 A안(현재 공식 유지)으로 확정** — 3번이 정책·요구사항 전수 확인한 결과 "포지션별 1순위 조합" 같은 배분 알고리즘 규칙은 원래 확정된 적이 없었고(HANDOFF 11번의 전제 자체가 틀렸음), 포지션별 예산 입력란도 없어 재료가 없음. `BudgetCapCalculator`는 코드 변경 없이 그대로 유지.
+- **(2026-08-09 완료) Stage F 가드 실제 구현.** `MatchingRoundCreationService.applyGuard(true, null)` placeholder를 R02.3 요구사항("가드 AI로 마지막 검증 (직무, 스킬 검증)") 그대로 **직무+스킬만** 재검증하도록 교체. 예산 조합 재검증은 이번에도 요구사항에 근거가 없어서(Stage B 조건필터 폐기와 같은 사유) 가드에 넣지 않음 — budgetCap은 협상 단계(`NegotiationConditionCalculator`)에서 이미 따로 재검증됨. `findCondition(freelancerId)` 실조회 + `ProjectDirectoryPort.findPositionSummary`(실시간)로 jobRole/requiredSkills를 비교, 가드 탈락 후보는 기록은 남기되(`guardPassed=false`) 노출 안 하고 다음 순위 후보가 노출 자리를 채움. `feature/matching-stage-f-guard` 브랜치.
 - fitReason은 DB에 `"|"`로 이어붙인 문자열로 저장하고 API 응답에서 다시 나눠 태그 리스트로 돌려준다(`CandidateResponseAssembler`). ~~Pairing-python이 이 구분자로 합친 문자열을 내려주도록 `_build_prompt`/응답 스키마를 맞춰야 한다~~ — 2026-08-09 완료(Pairing-python `feature/matching-prompt-real-implementation`).
 - **로컬 개발 환경에서 발견·수정한 버그 2건** (코드 정상, 인프라/설정 문제였음):
   - `global/ratelimit/RedisRateLimitConfig`가 빈 생성 시 즉시 Redis에 연결해서 Redis 없는 환경(CI)에서 전체 컨텍스트 로딩이 실패 → `@Lazy`(빈 + 생성자 주입 지점 둘 다)로 지연 연결하도록 수정.
@@ -108,7 +109,8 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
 
 ## 확정된 설계 결정 (요약, 상세 근거는 각 요구사항 R01~R05/정책 P02~P09 참고)
 
-1. **파이프라인**: 하드필터(AI매칭 동의, 직군/직무) → 조건필터(일정/근무조건/단가, 느슨하게) → 임베딩 유사도(자기소개+경력사항 ↔ 프로젝트설명+담당업무+업무범위+우대사항) → 상위 (모집인원×3) 추림 → LLM 1회 호출(포지션당, 전체 포지션 후보 한번에, 프로젝트당 1회 원칙) → 규칙기반 가드(직무/스킬 재검증 + 예산 조합 재검증)
+1. **파이프라인 (2026-08-09 수정)**: 하드필터(AI매칭 동의, 직군/직무) → 임베딩 유사도(자기소개+경력사항 ↔ 프로젝트설명+담당업무+업무범위+우대사항) → 상위 (모집인원×3) 추림 → LLM 1회 호출(포지션당, 전체 포지션 후보 한번에, 프로젝트당 1회 원칙, **일정/근무조건/단가 불일치는 여기서 감점+사유로만 반영, 후보 배제 안 함**) → 규칙기반 가드(직무/스킬 재검증 + 예산 조합 재검증)
+   - ~~조건필터(일정/근무조건/단가, 느슨하게)~~ 단계는 **삭제**. 근거 없이 우리가 자체적으로 끼워넣은 가정이었음이 밝혀짐 — 아래 "2026-08-09 갱신 — Stage B 조건필터 폐기" 참고.
 2. **점수**: 사람이 가중치 배점 안 함. LLM이 최종 점수·근거 산출. 0~100 스케일 가정(팀 정책 회의 "월요일 확정" 대기 중). 50점 미만이면 경고 — **최초 추천화면에서 미리 보여줌**(대기 순번 N+1~3N도 이미 한 번의 LLM 호출로 채점되어 있어서 가능). 점수 숫자 자체는 화면·API 응답에 노출 안 함.
 3. **예산**: 순예산 = 입력예산×(1-수수료율), 수수료율 = 금액구간(1억)×클라등급(다이아 -2%). 프리랜서 단가는 월단가로 통일(일급×20일, 시급×160시간). 조합 총액 ≤ 순예산×1.2 허용.
 4. **임베딩 쓰기**: 프리랜서는 이력서 저장 시마다 PUT 호출(해시로 중복 스킵) — **2026-08-09 실제 연결 완료**(그 전엔 설계만 있고 코드가 없었음, 위 "치명적 결함" 참고). 프로젝트(포지션)는 **검수 통과 시점에 딱 1번**(프로젝트는 등록 후 수정 불가능이라 재계산 불필요). 매칭 실행(추천)은 착수금 결제 완료 시점에 트리거.
@@ -120,6 +122,23 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
    - 경력연차·스킬은 매칭 필터로만 쓰고 diff 대상 아님
    - `budgetCap`: 3일 마감 때문에 1단계는 "순예산÷확정인원"으로 단순화, 나중에 Stage F 정확한 배분값으로 교체(필드명 동일 유지)
    - ~~블로커: negotiation 도메인에 application 계층이 아직 없음~~ — 2026-08-08 해소. `NegotiationCommandUseCase`/`NegotiationProgressUseCase` 실구현 완료, `NegotiationAdapter`로 연동함.
+
+## 2026-08-09 갱신 — Stage B 조건필터(일정/근무조건/단가) 폐기, Stage E 감점으로 이동
+
+3번에게 재확인 요청을 보낸 결과, 애초에 이 필터가 정책/명세에 근거가 없던 우리 자체 가정이었음이 드러났다. 3번 논거: 사전검수(P02)가 안내하는 후보 수는 직무일치+요구스킬 전부보유+계정ACTIVE+AI매칭동의만 본 값인데, 매칭이 여기에 일정/근무조건/단가 필터를 더 얹으면 "사전검수 예상 후보 5명 → 착수금 결제 → 실제 추천 1명" 같은 상황이 생길 수 있고, 착수금은 환불이 없어서 클레임 구조가 된다는 것.
+
+코드·문서로 직접 재확인함:
+- `policy.md` P03/P04: 매칭 파이프라인은 "임베딩 1차 추림 → LLM 최종 선정"이 전부. 조건필터 단계는 정책에 원래 없었다.
+- `requirements.md` R02.3: 가드 AI도 "직무, 스킬"만 검증한다고 명시. 일정/단가는 가드 대상도 아니다.
+- `ProjectPreReviewService`/`FreelancerCandidateCountService` 코드: 사전검수 후보 수 계산이 정확히 3번이 말한 4개 조건(직무+스킬AND+ACTIVE+AI매칭동의)만 쓴다. 일정/근무조건/단가는 전혀 안 봄 — 3번 말이 코드로도 확인됨.
+- 사용자가 팀 회의에서 기억하던 "단가 20% 오차" 규칙은 별개인 budgetCap 조합 총액 규칙(순예산×1.2 허용, 위 결정 3번)이었음을 재확인 — Stage B/E용으로 따로 정해진 수치는 없었음.
+
+**결론**: Stage B에서 일정/근무조건/단가는 필터링(하드/느슨하게 불문)하지 않는다. 하드필터는 AI매칭 동의+직군/직무만 남긴다(사전검수와 동일 기준이라 후보수 불일치 위험 없음). 일정/근무조건/단가 불일치는 Stage E(LLM 최종선정) 프롬프트에서 감점 요인+추천 사유로만 반영 — 후보를 풀에서 배제하지 않는다. 이건 정책 P09("적합도 낮은 후보도 부족하면 노출될 수 있다")와 정확히 같은 패턴이라 새 정책 근거가 필요 없다. 계산식(퍼센트 등)은 우리가 직접 만들지 않고 LLM이 원본 데이터를 보고 판단하게 한다.
+
+이 필터(HANDOFF #10)는 착수 시점부터 이 방향으로 구현한다:
+- Python `FreelancerProfile`/`PositionRequirement`(`app/domains/matching/repository.py`)에 조건 필드 추가 — 프리랜서 쪽 `freelancer_condition.pay_unit/pay_amount/work_style/work_form/available_from`, 포지션 쪽 `project_position`/`project`의 예산·기간·희망시작일(Java `ProjectPositionSummary`가 이미 `workStyle/workForm/periodValue/periodUnit/startDesiredDate/budgetAmount`로 들고 있는 것과 대응).
+- `_build_prompt`/`_describe_candidate`/`_describe_position`에 이 필드들 채우고, "조건 불일치해도 제외하지 말고 감점+사유로 반영하라"는 프롬프트 지시 추가.
+- Stage F 가드는 원래도 직무/스킬만 검증하는 설계였으니 변경 불필요.
 
 ## 아직 팀 확인 대기 중인 것
 
