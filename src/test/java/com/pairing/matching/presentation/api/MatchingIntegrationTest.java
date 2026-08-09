@@ -75,6 +75,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -517,6 +518,26 @@ class MatchingIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.candidates.length()").value(1))
                 .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
+    }
+
+    @Test
+    @DisplayName("재추천 시 이전 회차에서 이미 노출됐던 프리랜서 id를 AI 서버 호출의 제외 목록으로 넘긴다")
+    void rerecommendPassesPreviouslySurfacedFreelancerIdsAsExcluded() throws Exception {
+        MatchingRound firstRound = seedRound(2);
+        seedExposedCandidate(firstRound.getId(), 1);
+
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.candidates.length()").value(0));
+
+        verify(matchingPort).recommend(POSITION_ID, 2, 3, List.of(freelancerAccountId));
     }
 
     @Test
