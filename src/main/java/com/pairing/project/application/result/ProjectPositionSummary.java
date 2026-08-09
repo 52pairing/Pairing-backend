@@ -44,6 +44,8 @@ public record ProjectPositionSummary(
 
         /** 프리랜서가 보는 매칭 요청 카드의 상세 정보. */
         String currentSituation,
-        String mainTask
+        String mainTask,
+        String detailScope,
+        String extraNote
 ) {
 }

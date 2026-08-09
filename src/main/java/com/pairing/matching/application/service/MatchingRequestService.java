@@ -27,6 +27,8 @@ import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.exception.MatchingErrorCode;
 import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
+import com.pairing.project.application.usecase.ProjectCommandUseCase;
+import com.pairing.project.domain.model.ProjectStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -44,6 +46,11 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
 
     private static final List<MatchingStatus> NON_ACTIVE_STATUSES =
             List.of(MatchingStatus.REJECTED, MatchingStatus.NEGOTIATION_FAILED, MatchingStatus.TERMINATED);
+    private static final List<MatchingStatus> NEGOTIATING_STATUSES =
+            List.of(MatchingStatus.ACCEPTED, MatchingStatus.NEGOTIATING);
+    private static final List<MatchingStatus> CONTRACT_PENDING_STATUSES =
+            List.of(MatchingStatus.CONTRACT_PENDING, MatchingStatus.CONTRACTED, MatchingStatus.IN_PROGRESS,
+                    MatchingStatus.COMPLETION_PENDING);
 
     private final MatchingRequestRepository matchingRequestRepository;
     private final MatchingCandidateRepository matchingCandidateRepository;
@@ -52,6 +59,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
     private final ProjectDirectoryPort projectDirectoryPort;
     private final FreelancerDirectoryPort freelancerDirectoryPort;
     private final NegotiationPort negotiationPort;
+    private final ProjectCommandUseCase projectCommandUseCase;
     private final BudgetCapCalculator budgetCapCalculator;
     private final MatchingRequestResponseAssembler matchingRequestResponseAssembler;
     private final ObjectMapper objectMapper;
@@ -83,6 +91,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         if (!projectDirectoryPort.isOwnedByAccount(projectId, accountId)) {
             throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
         }
+        assertRecruiting(projectId);
         if (matchingRequestRepository.findByPositionIdAndFreelancerId(positionId, candidate.getFreelancerId())
                 .isPresent()) {
             throw new BusinessException(MatchingErrorCode.INVALID_MATCHING_STATE);
@@ -116,6 +125,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
 
         request.advanceStatus(MatchingStatus.NEGOTIATING);
         matchingRequestRepository.save(request);
+        projectCommandUseCase.startNegotiating(request.getProjectId());
         return matchingRequestResponseAssembler.build(request, accountId);
     }
 
@@ -137,6 +147,26 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
                 SnapshotType.FREELANCER, writeJson(payload));
     }
 
+    /**
+     * 모집 종료·취소된 프로젝트면 매칭 요청 발송/재추천을 막는다. RECRUITING 이후(협상중·계약대기 등)는
+     * 허용한다 — 같은 프로젝트의 다른 포지션이 앞서가도 이 포지션은 여전히 자리가 남아있을 수 있어서다.
+     * 모집 종료로 강제 마감된 포지션은 인원이 안 찼어도 CLOSED라 인원 초과 검증만으로는 못 막는다.
+     */
+    private void assertRecruiting(Long projectId) {
+        ProjectStatus status = projectDirectoryPort.findStatus(projectId);
+        if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
+            throw new BusinessException(MatchingErrorCode.PROJECT_RECRUITING_CLOSED);
+        }
+    }
+
+    private void syncProjectStage(Long projectId) {
+        boolean hasContractPending = matchingRequestRepository.existsByProjectIdAndStatusIn(projectId,
+                CONTRACT_PENDING_STATUSES);
+        boolean hasNegotiating = matchingRequestRepository.existsByProjectIdAndStatusIn(projectId,
+                NEGOTIATING_STATUSES);
+        projectCommandUseCase.syncStage(projectId, hasContractPending, hasNegotiating);
+    }
+
     private String writeJson(Object payload) {
         try {
             return objectMapper.writeValueAsString(payload);
@@ -151,6 +181,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         MatchingRequest request = getOwnedByFreelancer(requestId, accountId);
         request.reject();
         matchingRequestRepository.save(request);
+        syncProjectStage(request.getProjectId());
         return matchingRequestResponseAssembler.build(request, accountId);
     }
 
@@ -170,6 +201,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
         request.failNegotiation();
         matchingRequestRepository.save(request);
+        syncProjectStage(request.getProjectId());
     }
 
     private MatchingRequest getOwnedByFreelancer(Long requestId, Long accountId) {

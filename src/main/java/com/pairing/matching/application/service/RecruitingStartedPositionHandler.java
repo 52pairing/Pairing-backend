@@ -48,7 +48,7 @@ class RecruitingStartedPositionHandler {
 
         ProjectPositionSummary summary = projectDirectoryPort.findPositionSummary(projectId, positionId);
         freezeSnapshot(projectId, positionId, summary);
-        matchingPort.upsertPositionEmbedding(positionId, buildEmbeddingText(summary));
+        matchingPort.upsertPositionEmbedding(positionId, PositionEmbeddingTextBuilder.buildText(summary));
         matchingRoundCreationService.createRound(projectId, positionId, RecommendationType.INITIAL,
                 summary.headcount(), 0L);
     }
@@ -79,22 +79,6 @@ class RecruitingStartedPositionHandler {
         }
         matchingSnapshotRepository.save(MatchingSnapshot.create(projectId, positionId, null, type,
                 writeJson(payload)));
-    }
-
-    /**
-     * 임베딩 대조 대상(자기소개+경력사항 ↔ 프로젝트설명+담당업무+업무범위+우대사항, .ai/STATE.md
-     * "확정된 설계 결정 1")과 완전히 같지는 않다 — mainTask/currentSituation/업무범위/우대사항은
-     * 아직 매칭 쪽 요약({@link ProjectPositionSummary})에 없다(Task #4 결정 대기). 결정되면
-     * 이 메서드만 채워 넣으면 된다.
-     */
-    private String buildEmbeddingText(ProjectPositionSummary summary) {
-        return String.join("\n",
-                summary.projectTitle(),
-                summary.jobRole() != null ? summary.jobRole().getLabel() : "",
-                String.valueOf(summary.requiredSkills()),
-                "경력 " + summary.minCareerYears() + "년 이상",
-                summary.workLabel(),
-                summary.periodLabel());
     }
 
     private String writeJson(Object payload) {

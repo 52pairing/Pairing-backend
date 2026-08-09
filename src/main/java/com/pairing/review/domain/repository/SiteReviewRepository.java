@@ -19,6 +19,9 @@ public interface SiteReviewRepository {
     Page<SiteReview> search(Integer score, PartyRole writerRole, SiteReviewVisibility visibility, Boolean promoted,
                             Pageable pageable);
 
+    /** [비로그인 메인] 공개 + 홍보 활용 + 별점 하한 이상, 최신순. */
+    List<SiteReview> findPromoted(int minScore, Pageable pageable);
+
     long count();
 
     long countByCreatedAtAfter(LocalDateTime from);

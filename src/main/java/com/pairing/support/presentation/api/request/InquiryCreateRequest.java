@@ -1,6 +1,6 @@
 package com.pairing.support.presentation.api.request;
 
-import com.pairing.support.domain.model.InquiryCategory;
+import com.pairing.support.application.command.CreateInquiryCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -14,10 +14,6 @@ import java.util.List;
  */
 @Schema(description = "1:1 문의 등록 요청")
 public record InquiryCreateRequest(
-
-        // 작성 화면에는 선택 UI 가 없다. 비워 보내면 서버가 내용으로 분류한다.
-        @Schema(description = "문의 유형. 생략 가능", example = "PAYMENT")
-        InquiryCategory category,
 
         @Schema(description = "제목", example = "정산 관련 문의드립니다")
         @NotBlank(message = "제목은 필수입니다.")
@@ -33,4 +29,8 @@ public record InquiryCreateRequest(
         @Schema(description = "첨부파일 ID 목록. 선택", example = "[42]")
         List<Long> fileIds
 ) {
+
+    public CreateInquiryCommand toCommand(Long writerAccountId) {
+        return new CreateInquiryCommand(writerAccountId, title, content, fileIds);
+    }
 }

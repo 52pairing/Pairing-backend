@@ -32,6 +32,8 @@ public record ProjectPositionSummary(
         LocalDate startDesiredDate,
         Long budgetAmount,
         int headcount,
-        int totalHeadcount
+        int totalHeadcount,
+        String detailScope,
+        String extraNote
 ) {
 }

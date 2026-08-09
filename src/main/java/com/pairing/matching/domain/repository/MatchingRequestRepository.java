@@ -42,4 +42,7 @@ public interface MatchingRequestRepository {
      * NEGOTIATION_FAILED는 협상 결렬로 별도 사유이며 이 조건 판단에서는 제외한다(정책 문서 명시).
      */
     boolean existsActiveByProjectId(Long projectId);
+
+    /** 프로젝트의 매칭 요청 중 주어진 상태들 중 하나라도 있는지. 프로젝트 대표 단계 재계산(syncStage)에 쓴다. */
+    boolean existsByProjectIdAndStatusIn(Long projectId, List<MatchingStatus> statuses);
 }

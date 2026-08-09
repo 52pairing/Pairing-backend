@@ -33,4 +33,8 @@ public interface SpringDataSiteReviewRepository extends JpaRepository<SiteReview
     Page<SiteReviewJpaEntity> search(@Param("score") Integer score, @Param("writerRole") PartyRole writerRole,
                                      @Param("visibility") SiteReviewVisibility visibility,
                                      @Param("promoted") Boolean promoted, Pageable pageable);
+
+    @Query("SELECT s FROM SiteReviewJpaEntity s "
+            + "WHERE s.visibility = 'PUBLIC' AND s.promoted = true AND s.score >= :minScore")
+    List<SiteReviewJpaEntity> findPromoted(@Param("minScore") int minScore, Pageable pageable);
 }

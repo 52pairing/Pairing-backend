@@ -76,18 +76,22 @@
 - **참고**: 위 3개 브랜치(`fix/rerecommend-quantity-validation`, `docs/budgetcap-week-conversion-confirmed`, `feature/matching-negotiation-outcome`)가 전부 develop에서 독립적으로 분기돼 아직 서로 merge 안 된 상태라, `.ai/*.md` 문서 쪽에서 merge 시 충돌이 날 수 있음(코드 충돌은 아님, 서로 다른 파일/메서드 건드림). 문서 충돌은 내용 합치면 되는 수준.
 - **위 3개 브랜치(PR #53 포함) 전부 develop에 merge 완료.** 5번도 같은 날 `NegotiationLoopService`에 배선을 마쳐 협상↔매칭 양방향 연동이 다 이어짐 — HANDOFF 14번 완전히 종료.
 - **코드 리뷰로 발견한 추가 버그 수정** (재추천 `type`이 `INITIAL`도 그대로 받던 문제, HANDOFF 21번) — 위 PR #53과 같은 브랜치에 포함, `MatchingErrorCode.INVALID_RERECOMMEND_TYPE`(MT_013) 추가.
-- **매칭 요청 카드 라이브 조회 버그(R32) 수정** (HANDOFF 23번, `fix/matching-request-card-snapshot-read` 브랜치) — 3번이 프로젝트 수정 API 구현 중 발견해 질문, 코드 확인 후 답변, 3번 확인받아 구현까지 진행. `MatchingRequestResponseAssembler`가 `MatchingSnapshot`(PROJECT/POSITION)을 읽도록 교체, `companyProfile`만 신규 포트(`findCompanyProfile`)로 계속 라이브 조회. `MatchingIntegrationTest`에 스냅샷 시딩 추가(`seedMatchingSnapshots`). `./gradlew clean build` 통과, push 완료. 상세는 `.ai/STATE.md` 2026-08-09 갱신 섹션.
+- **매칭 요청 카드 라이브 조회 버그(R32) 수정** (HANDOFF 23번, `fix/matching-request-card-snapshot-read` 브랜치) — 3번이 프로젝트 수정 API 구현 중 발견해 질문, 코드 확인 후 답변, 3번 확인받아 구현까지 진행. `MatchingRequestResponseAssembler`가 `MatchingSnapshot`(PROJECT/POSITION)을 읽도록 교체, `companyProfile`만 신규 포트(`findCompanyProfile`)로 계속 라이브 조회. `MatchingIntegrationTest`에 스냅샷 시딩 추가(`seedMatchingSnapshots`). `./gradlew clean build` 통과, push 완료 — **PR #59로 develop에 merge됨**.
+- **모집 시작 후 프로젝트 수정 → 포지션 임베딩 재생성** (HANDOFF 24번, `feature/project-updated-embedding-refresh` 브랜치) — 3번의 `ProjectUpdatedEvent`(PR #57에서 신규 발행, 매칭이 안 받고 있던 걸 develop 재동기화 중 발견) 처리하는 `ProjectUpdatedEventListener` 신규. 위 R32 스냅샷 수정과는 반대 방향(요청 카드는 고정, 임베딩은 최신화)이라 안 겹침. `PositionEmbeddingTextBuilder` 공유 클래스로 추출. 테스트 3개, `./gradlew clean build` 통과, push 완료 — **PR #61로 develop에 merge됨**.
+- **매칭↔프로젝트 상태 연동 3건** (HANDOFF 25번, `feature/matching-project-stage-sync` 브랜치) — 3번이 PR #59 코드 리뷰 중 발견: 매칭이 `ProjectStatus`를 전혀 참조 안 해서 모집 종료·취소된 프로젝트에도 재추천/요청 발송이 되고 있었음. 3번이 이미 project 쪽에 만들어둔 `findStatus`/`startNegotiating`/`syncStage`를 매칭이 그냥 안 부르고 있었던 것(호출 0건 확인). 3가지 다 연결: ①요청 발송·재추천 전 `assertRecruiting()`(CANCELED/CLOSED만 차단) ②`accept()` 끝에 `startNegotiating` ③`markNegotiationFailed`/`reject`에 `syncStage`(카운트 기준 새 리포지토리 메서드 `existsByProjectIdAndStatusIn` 추가, 기존 `existsActiveByProjectId`는 기준이 달라 재사용 안 함). 회귀 테스트 추가하면서 `MatchingNegotiationOutcomeServiceTest`가 실존하지 않는 더미 projectId(1L)를 쓰고 있던 것도 발견해 실제 프로젝트 row 시딩으로 수정. `./gradlew clean build` 통과, push 완료. 상세는 `.ai/STATE.md` 2026-08-09 갱신 섹션.
 
 ## 다음 세션에서 할 일
 
 1. ~~PR #51/#53/`feature/matching-negotiation-outcome` merge, 협상 인바운드 배선~~ — 전부 완료.
-1-1. **`fix/matching-request-card-snapshot-read` PR 생성 대기** — 매칭 요청 카드 R32 버그 수정.
+1-1. ~~`fix/matching-request-card-snapshot-read` PR 생성~~ — PR #59 merge 완료.
+1-2. ~~`feature/project-updated-embedding-refresh` PR 머지~~ — PR #61 merge 완료.
+1-3. **`feature/matching-project-stage-sync` PR 리뷰/머지 대기** — 매칭↔프로젝트 상태 연동 3건.
 2. ~~`MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 구현~~ — 매칭+negotiation 양쪽 다 완료.
 3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
 4. ~~budgetCap의 WEEK→개월 환산 규칙~~ — 4주=1개월로 확정, 반영 완료.
-5. **(신규)** 임베딩 텍스트에 `detailScope`/`extraNote`도 빠져있음(HANDOFF 22번) — 백로그 추가.
-5. `resolveFreelancerId`/`findCondition`(freelancerId 기준) — 1번의 account_id↔freelancer_profile.id 조회 메서드 승인되면 `FreelancerDirectoryAdapter` 마저 완전 교체.
-6. `.ai/HANDOFF.md`의 "3일차" 나머지 항목: Pairing-python `_build_prompt` 실구현 + 하드필터 + Stage F 실제 배분 알고리즘 + 등급 타이브레이커 + 통합테스트/문서 동기화.
-7. 임베딩 텍스트(`RecruitingStartedPositionHandler.buildEmbeddingText`)에 mainTask/currentSituation/업무범위/우대사항 추가 — 3번 항목(위 3번)이 정해지고 매칭 쪽 요약에 필드가 생기면 같이 반영.
-8. ~~`AI매칭_API_화면매핑_최신본.md` 반영 확인~~ — 2026-08-09 완료. 사용자가 반영했고 재검토까지 끝남.
-9. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.
+5. 임베딩 텍스트에 `detailScope`/`extraNote`도 빠져있음(HANDOFF 22번) — 백로그, 아직 미착수.
+6. `resolveFreelancerId`/`findCondition`(freelancerId 기준) — 1번의 account_id↔freelancer_profile.id 조회 메서드 승인되면 `FreelancerDirectoryAdapter` 마저 완전 교체.
+7. `expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현 — 나중에 만들 때 `syncStage` 호출도 같이 넣을 것(HANDOFF 25번 참고).
+8. ~~`AI매칭_API_화면매핑_최신본.md`(MT_009/quantity 경고) 반영 확인~~ — 완료. 그 이후 코드가 또 바뀌어서(MT_012 실제 검증 추가, MT_013/MT_014 신규) 문서가 다시 뒤처짐 — 사용자가 직접 갱신할 항목.
+9. `.ai/HANDOFF.md`의 "3일차" 나머지 항목: Pairing-python `_build_prompt` 실구현 + 하드필터 + Stage F 실제 배분 알고리즘 + 등급 타이브레이커 + 통합테스트/문서 동기화.
+10. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.

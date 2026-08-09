@@ -35,13 +35,14 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
   - `NegotiationPort` ← `infrastructure/negotiation/NegotiationAdapter` — **완전 교체**. negotiation의 `NegotiationCommandUseCase`(생성)/`NegotiationProgressUseCase`(진행조회) 위임 호출.
   - `FreelancerDirectoryPort` ← `infrastructure/directory/FreelancerDirectoryAdapter` — **부분 교체**. `findCardSummary`만 실구현(`FreelancerCandidateSummaryUseCase`). `resolveFreelancerId`/`findCondition`은 account_id↔freelancer_profile.id 양방향 조회가 account 도메인에 아직 없어(2번이 1번에게 승인 요청, 대기 중) 스텁 유지 — 로그 경고로 표시해둠.
 - `budgetCap`(수수료율 구간×클라이언트등급)과 `grade_weight`(0/1/2%) 계산은 `ClientGradeResolver`/`BudgetCapCalculator`가 실제 리포지토리를 조회해서 처리한다.
-- Stage F 가드(직무/스킬·예산 조합 재검증)는 지금 항상 통과 처리(placeholder). 규칙 기반 실제 검증은 아직 남음.
-- fitReason은 DB에 `"|"`로 이어붙인 문자열로 저장하고 API 응답에서 다시 나눠 태그 리스트로 돌려준다(`CandidateResponseAssembler`). Pairing-python이 이 구분자로 합친 문자열을 내려주도록 `_build_prompt`/응답 스키마를 맞춰야 한다(아직 안 함).
+- Stage F 가드(직무/스킬·예산 조합 재검증)는 지금 항상 통과 처리(placeholder). **2026-08-09 착수 보류 결정**: 검증할 프리랜서 실데이터(`findCondition`)가 아직 스텁이고, budgetCap 배분 알고리즘 규칙도 미확정이라 지금 손대면 다시 뜯어고칠 위험이 큼(HANDOFF 11번 참고).
+- fitReason은 DB에 `"|"`로 이어붙인 문자열로 저장하고 API 응답에서 다시 나눠 태그 리스트로 돌려준다(`CandidateResponseAssembler`). ~~Pairing-python이 이 구분자로 합친 문자열을 내려주도록 `_build_prompt`/응답 스키마를 맞춰야 한다~~ — 2026-08-09 완료(Pairing-python `feature/matching-prompt-real-implementation`).
 - **로컬 개발 환경에서 발견·수정한 버그 2건** (코드 정상, 인프라/설정 문제였음):
   - `global/ratelimit/RedisRateLimitConfig`가 빈 생성 시 즉시 Redis에 연결해서 Redis 없는 환경(CI)에서 전체 컨텍스트 로딩이 실패 → `@Lazy`(빈 + 생성자 주입 지점 둘 다)로 지연 연결하도록 수정.
   - `matching_candidate`/`matching_round`의 NUMERIC 컬럼(similarity/base_score/grade_weight/fit_score/cost_amount)에 JPA 엔티티가 `columnDefinition`을 안 줘서 스키마 검증 실패 → 명시해서 해결.
 - **협상(5번) 연동 — 양쪽 다 완료**: 협상 타결(AGREED)/결렬(FAILED) 통보용 `MatchingNegotiationOutcomeUseCase`를 2026-08-09 매칭 쪽에서 구현(`MatchingRequestService`가 구현). `markNegotiationAgreed(requestId)`는 신규 도메인 메서드 `MatchingRequest.agreeNegotiation()`(NEGOTIATING일 때만 허용, 기존 `failNegotiation()`과 대칭 설계)을 호출해 `CONTRACT_PENDING`으로 전환하고, `markNegotiationFailed(requestId)`는 기존 `failNegotiation()`을 그대로 쓴다. **negotiation 쪽(5번)도 같은 날 완료**: `NegotiationLoopService`가 타결/결렬 시점에 이 인바운드 포트를 호출하도록 배선 완료, develop에 merge됨.
 - `newProposalCount`(협상 진행조회 응답)는 "클라가 마지막으로 읽은 시점 이후 온 새 제안 수"로 정의 확정. 실제 반영은 5번의 `feature/negotiation-unread-proposals` 브랜치가 develop에 merge된 뒤 자동 적용됨(우리 코드 수정 불필요).
+- **모집 시작 후 프로젝트 수정 → 포지션 임베딩 재생성 (2026-08-09 신규)**: 3번이 프로젝트 수정 API(PR #57)에서 `ProjectUpdatedEvent(projectId)`를 새로 만들어 발행하는데(수정 커밋 후, headcount 잠긴 이후=결제 완료 후에만), 매칭 쪽에 받는 리스너가 없던 걸 develop 재동기화 중 발견. `ProjectUpdatedEventListener` 신규 추가 — 프로젝트의 포지션마다 최신 정보로 임베딩 재생성. 매칭 요청 카드용 `MatchingSnapshot`(위 R32 스냅샷 항목)은 여기서 절대 안 건드린다 — 그건 최초 모집 시작 시점에 고정해야 하는 값이고, 이건 반대로 AI 검색용 임베딩을 최신 상태로 유지하는 것이라 서로 목적이 다르다. 임베딩 텍스트 조립 로직(`buildEmbeddingText`)을 `RecruitingStartedPositionHandler`에서 `PositionEmbeddingTextBuilder`(공유 클래스)로 추출해 양쪽에서 같이 씀. `feature/project-updated-embedding-refresh` 브랜치.
 
 ## 2026-08-09 갱신 — 3번 연동 버그 수정 + 결제→매칭 이벤트 리스너
 
@@ -66,7 +67,42 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
   - `companyProfile`(업종·직원수)은 account 도메인 값이라(프로젝트 수정 범위 밖) 계속 라이브로 읽는다 — `ProjectDirectoryPort.findCompanyProfile(projectId)` 신규 추가.
   - **3번과 확인한 것**: 스냅샷은 "최초 모집 시작 시점"에 딱 1번만 얼리고 재추천마다 다시 얼리지 않는 지금 설계가 맞다(재추천마다 다시 얼리면 "수정 전" 기준이 계속 밀리고, 먼저 수락한 프리랜서와 나중 프리랜서가 서로 다른 조건을 보게 됨). 3번 쪽에서도 결제 후 인원·포지션 추가삭제·예산을 이미 잠가둬서(재추천 계산에 쓰이는 값들이라) 다시 얼릴 이유가 없다고 확인.
   - `MatchingIntegrationTest`가 `RecruitingStartedEvent` 플로우를 안 타고 라운드를 직접 심어서(seedRound) 스냅샷이 없었던 것도 같이 시딩하도록 수정(`seedMatchingSnapshots`).
-  - `fix/matching-request-card-snapshot-read` 브랜치, `./gradlew clean build` 통과 확인, push 완료.
+  - `fix/matching-request-card-snapshot-read` 브랜치, `./gradlew clean build` 통과 확인, push 완료 — **PR #59로 develop에 merge됨**.
+
+## 2026-08-09 갱신 — 매칭↔프로젝트 상태 연동 3건 (3번 코드 리뷰로 발견)
+
+3번이 PR #59(위 스냅샷 수정) 리뷰 중에 매칭이 project 도메인의 상태 전이 API를 전혀 안 쓰고 있다는 걸
+지적함. 확인해보니 project 쪽엔 이미 `ProjectQueryUseCase.findStatus`/`ProjectCommandUseCase.
+startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 존재) 매칭이 한 번도 호출한 적이
+없었다(`grep`으로 참조 0건 확인). 3번이 준 계산 기준·javadoc이 project 쪽 실제 구현과 100% 일치해서
+그대로 반영:
+
+- **① 프로젝트 상태 체크**: `ProjectDirectoryPort.findStatus(projectId)` 신규(project의 기존 메서드 위임).
+  `MatchingRequestService.sendOneRequest()`(요청 발송)와 `MatchingRerecommendService.rerecommend()`
+  (재추천) 양쪽 진입부에 `assertRecruiting()` 추가. **CANCELED/CLOSED만 막고 RECRUITING 엄격 강제는
+  안 함** — 같은 프로젝트의 다른 포지션이 협상중/계약대기로 앞서가도(프로젝트 대표 상태는 "가장 앞선
+  단계"라서) 이 포지션 자체는 여전히 열려있을 수 있기 때문(3번이 판단 위임, 이 방향으로 결정).
+  기존엔 `isOwnedByAccount`만 검사해서, 모집 종료로 강제 마감된(인원 미충족 CLOSED) 포지션에도 재추천이
+  돌고 새 요청이 나갈 수 있었음(실제 버그).
+- **② 수락 시 프로젝트를 협상중으로**: `MatchingRequestService.accept()` 끝에
+  `projectCommandUseCase.startNegotiating(projectId)` 추가. 같은 트랜잭션이라 프로젝트가 이미
+  취소·종료(PJ_012)면 수락도 함께 롤백됨 — matching 쪽에서 별도로 안 잡음(3번이 이미 그렇게 설계).
+  여러 번 불러도 안전(`Project.advanceTo`가 이미 지난 단계면 무시).
+- **③ 협상 결렬/거절 시 프로젝트 단계 재계산**: `MatchingNegotiationOutcomeUseCase.markNegotiationFailed()`
+  와 `MatchingRequestCommandUseCase.reject()`(직접 거절) 양쪽에서 `projectCommandUseCase.syncStage(
+  projectId, hasContractPending, hasNegotiating)` 호출. 두 값은 그 프로젝트의 매칭 요청 전체를 상태
+  변경 직후 다시 세서 계산(`MatchingRequestRepository.existsByProjectIdAndStatusIn` 신규) — 기존
+  `existsActiveByProjectId()`는 P41 무료 재추천 판정용이라 REQUEST_PENDING도 "있음"으로 세서 기준이
+  다르다고 3번이 명시적으로 경고, 재사용 안 함. `markNegotiationAgreed()`(타결)는 안 건드림 — 계약
+  대기 전이는 계약 도메인이 계약서 생성 시점에 `awaitContract()`로 직접 넘기기로 함(요구사항 1233).
+  `expire()`(응답기한 만료)는 실제로 호출하는 곳이 아직 없어서(자동 만료 스케줄러 자체가 미구현) 지금은
+  훅 지점이 없음 — 나중에 만들 때 같이 syncStage 넣을 것.
+- 회귀 테스트: `MatchingIntegrationTest`에 CLOSED/CANCELED 프로젝트 차단 2건 + accept 시 프로젝트
+  상태가 실제로 NEGOTIATING으로 바뀌는지 검증 추가. `MatchingNegotiationOutcomeServiceTest`에 결렬 후
+  프로젝트가 RECRUITING으로 되돌아가는지 검증 추가(프로젝트 row를 실제로 심어야 함 — `syncStage`/
+  `startNegotiating`이 project row가 없으면 PJ_001을 던지므로, 기존에 `projectId=1L`처럼 실존하지 않는
+  더미 값을 쓰던 테스트는 실제 프로젝트 row 시딩으로 다 바꿔야 했음).
+- `feature/matching-project-stage-sync` 브랜치, `./gradlew clean build` 통과 확인.
 
 ## 확정된 설계 결정 (요약, 상세 근거는 각 요구사항 R01~R05/정책 P02~P09 참고)
 
