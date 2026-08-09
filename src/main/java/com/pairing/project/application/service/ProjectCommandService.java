@@ -131,14 +131,6 @@ public class ProjectCommandService implements ProjectCommandUseCase {
     }
 
     @Override
-    public void cancel(Long projectId, Long accountId) {
-        Project project = loadOwned(projectId, accountId);
-
-        project.cancel(LocalDate.now().plusYears(RETENTION_YEARS));
-        projectRepository.updateState(project);
-    }
-
-    @Override
     public void complete(Long projectId, Long accountId) {
         ClientProfileReaderPort.ClientProfileView client =
                 clientProfileReaderPort.getByAccountId(accountId);
@@ -212,6 +204,46 @@ public class ProjectCommandService implements ProjectCommandUseCase {
 
         // 임베딩 저장과 최초 추천은 AI 서버를 호출한다. 커밋 후로 미뤄 결제가 AI 장애에 묶이지 않게 한다.
         eventPublisher.publishEvent(new RecruitingStartedEvent(projectId));
+    }
+
+    @Override
+    public void startNegotiating(Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        project.startNegotiating();
+        projectRepository.updateState(project);
+    }
+
+    @Override
+    public void awaitContract(Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        project.awaitContract();
+        projectRepository.updateState(project);
+    }
+
+    @Override
+    public void syncStage(Long projectId, boolean hasContractPending, boolean hasNegotiating) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        project.syncStage(hasContractPending, hasNegotiating);
+        projectRepository.updateState(project);
+    }
+
+    @Override
+    public void confirmPosition(Long positionId) {
+        Long projectId = projectRepository.findProjectIdByPositionId(positionId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.POSITION_NOT_FOUND));
+
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        project.confirmPosition(positionId);
+        // 인원이 다 차면 그 포지션이 CLOSED 로 닫힌다. 포지션 상태까지 옮기는 경로를 쓴다.
+        projectRepository.updateStateWithPositions(project);
     }
 
     @Override

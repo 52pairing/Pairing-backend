@@ -118,21 +118,6 @@ public class ProjectController {
                 ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
-    @PostMapping("/{projectId}/cancellation")
-    @PreAuthorize("hasRole('CLIENT')")
-    @Operation(summary = "프로젝트 취소",
-            description = "모집·협상·계약을 더 이상 진행하지 않습니다. 계약 체결 이후에는 위약금이 발생할 수 있습니다.")
-    @ApiErrorCodeExample(domain = ProjectErrorCode.class,
-            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "INVALID_STATUS"})
-    public ResponseEntity<ApiResponse<Void>> cancel(
-            @PathVariable Long projectId,
-            @CurrentAccountId Long accountId
-    ) {
-        projectCommandUseCase.cancel(projectId, accountId);
-
-        return ResponseEntity.ok(ApiResponse.success("PROJECT_CANCELED", "프로젝트를 취소했습니다."));
-    }
-
     @GetMapping("/mine")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "내 프로젝트 목록",

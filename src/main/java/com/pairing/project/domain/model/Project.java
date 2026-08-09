@@ -302,6 +302,91 @@ public class Project {
         this.recruitDeadline = this.recruitStartedAt.plusWeeks(RECRUIT_WEEKS);
     }
 
+    /**
+     * 정상 흐름을 목표 단계까지 민다.
+     *
+     * <p>여러 명을 모집하면 같은 전이가 인원 수만큼 들어온다. 이미 같거나 앞선 단계면 조용히
+     * 넘어간다. 1명이 계약 대기까지 갔는데 2번째가 그제야 수락한다고 협상중으로 되돌리면 안 된다.
+     * 프로젝트는 가장 앞선 단계를 대표로 표시한다. (요구사항 R29)
+     *
+     * <p>반대로 취소·종료된 프로젝트는 예외로 알린다. 조용히 넘기면 호출한 도메인이 성공으로
+     * 알고 죽은 프로젝트에 협상·계약을 붙인다.
+     */
+    private void advanceTo(ProjectStatus target) {
+        if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
+            throw new BusinessException(ProjectErrorCode.PROJECT_ALREADY_CLOSED);
+        }
+        if (status.isBefore(target)) {
+            this.status = target;
+        }
+    }
+
+    /**
+     * 협상 시작. 프리랜서가 매칭 요청을 수락하면 매칭 도메인이 호출한다. (요구사항 1227)
+     *
+     * <p>매칭 요청을 <b>보낸</b> 시점은 아직 모집중이다. 후보 추천·요청 발송·응답 대기·재추천이
+     * 전부 모집중에 들어간다. 수락이 있어야 조건 조율이 시작된다.
+     */
+    public void startNegotiating() {
+        advanceTo(ProjectStatus.NEGOTIATING);
+    }
+
+    /** 계약 대기. 협상이 끝나 계약서가 만들어지면 계약 도메인이 호출한다. (요구사항 1233) */
+    public void awaitContract() {
+        advanceTo(ProjectStatus.CONTRACT_PENDING);
+    }
+
+    /**
+     * 인원별 진행 단계에 맞춰 대표 상태를 다시 맞춘다. 협상 결렬·거절·기한 만료 뒤 매칭이 호출한다.
+     *
+     * <p>{@link #advanceTo} 와 달리 뒤로도 간다. 협상하던 사람이 전부 빠지면 다시 후보를 찾아야 하고,
+     * 요구사항 1221 은 "거절 후 재추천"을 모집중에 넣고 있다. 응답 대기만 남은 경우도 모집중이다.
+     *
+     * <p>인원별 상태는 매칭만 안다. 세는 일은 호출부가 하고, 어느 상태가 되는지는 여기서 정한다.
+     *
+     * <p>진행중 이후로는 손대지 않는다. 전원 확정으로 프로젝트가 실제 시작됐기 때문이다.
+     * 취소·종료된 프로젝트도 조용히 넘어간다. 취소하면서 매칭 요청을 정리할 때 이 호출이 따라올 수
+     * 있는데, 여기서 예외를 던지면 그 정리가 통째로 롤백된다.
+     *
+     * @param hasContractPending 계약 대기 이상인 요청이 하나라도 있는가
+     * @param hasNegotiating     수락·협상중인 요청이 하나라도 있는가
+     */
+    public void syncStage(boolean hasContractPending, boolean hasNegotiating) {
+        if (status != ProjectStatus.NEGOTIATING && status != ProjectStatus.CONTRACT_PENDING) {
+            return;
+        }
+        if (hasContractPending) {
+            this.status = ProjectStatus.CONTRACT_PENDING;
+        } else if (hasNegotiating) {
+            this.status = ProjectStatus.NEGOTIATING;
+        } else {
+            this.status = ProjectStatus.RECRUITING;
+        }
+    }
+
+    /**
+     * 인원 1명 확정. 양측 서명이 끝나면 계약 도메인이 호출한다.
+     *
+     * <p>필요 인원이 <b>모두</b> 확정돼야 진행중으로 넘어간다. (요구사항 1241)
+     * 3명 중 2명만 계약했으면 가장 앞선 단계가 진행중이어도 계약 대기에 머문다.
+     */
+    public void confirmPosition(Long positionId) {
+        if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
+            throw new BusinessException(ProjectErrorCode.PROJECT_ALREADY_CLOSED);
+        }
+        Position target = positions.stream()
+                .filter(p -> Objects.equals(p.getId(), positionId))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.POSITION_NOT_FOUND));
+
+        target.confirm();
+        this.confirmedHeadcount = positions.stream().mapToInt(Position::getConfirmedCount).sum();
+
+        if (positions.stream().allMatch(Position::isFilled)) {
+            advanceTo(ProjectStatus.IN_PROGRESS);
+        }
+    }
+
     /** 1주 단위, 최대 2회. 상한을 넘겨 중단하면 클라이언트 파기로 본다. */
     public void extendRecruit() {
         requireStatus(ProjectStatus.RECRUITING);
@@ -384,15 +469,6 @@ public class Project {
         this.retentionUntil = retentionUntil;
 
         return hasConfirmedMember();
-    }
-
-    public void cancel(LocalDate retentionUntil) {
-        if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
-            throw new BusinessException(ProjectErrorCode.INVALID_STATUS);
-        }
-        this.status = ProjectStatus.CANCELED;
-        this.canceledAt = LocalDateTime.now();
-        this.retentionUntil = retentionUntil;
     }
 
     /**

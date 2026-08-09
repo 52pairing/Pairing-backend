@@ -24,7 +24,11 @@ public enum ProjectErrorCode implements BaseErrorCode {
     HEADCOUNT_BELOW_CONFIRMED(HttpStatus.BAD_REQUEST, "PJ_009",
             "이미 확정된 인원보다 적게 줄일 수 없습니다."),
     EXTENSION_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "PJ_010",
-            "모집 기간은 최대 2회까지 연장할 수 있습니다.");
+            "모집 기간은 최대 2회까지 연장할 수 있습니다."),
+    PROJECT_ALREADY_CLOSED(HttpStatus.BAD_REQUEST, "PJ_012",
+            "취소되었거나 종료된 프로젝트입니다."),
+    POSITION_ALREADY_FILLED(HttpStatus.BAD_REQUEST, "PJ_013",
+            "이미 모집이 마감된 직군입니다.");
 
     private final HttpStatus status;
     private final String code;

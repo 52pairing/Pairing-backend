@@ -18,14 +18,6 @@ public interface ProjectCommandUseCase {
     void update(UpdateProjectCommand command);
 
     /**
-     * 취소. 모집·협상·계약을 더 이상 진행하지 않는다.
-     *
-     * <p>소유자가 아니면 PJ_003. 이미 취소·종료됐으면 PJ_006.
-     * 행은 남는다. 보존 기한(정책 P52, 5년)을 찍어두고 상태만 CANCELED 로 바꾼다.
-     */
-    void cancel(Long projectId, Long accountId);
-
-    /**
      * 완료 처리. 진행중 -> 완료 대기. 성공보수 정산이 함께 만들어진다. (정책 P30)
      *
      * <p>소유자가 아니면 PJ_003. 진행중이 아니면 PJ_006.
@@ -67,6 +59,40 @@ public interface ProjectCommandUseCase {
      * <p>REGISTERED 가 아니면 PJ_006. 권한 확인은 결제 쪽에서 이미 끝났으므로 여기서는 하지 않는다.
      */
     void startRecruiting(Long projectId);
+
+    /**
+     * 협상 시작. 프리랜서가 매칭 요청을 수락하면 매칭 도메인이 호출한다. (요구사항 1227)
+     *
+     * <p>여러 명을 모집하면 인원 수만큼 들어온다. 이미 앞선 단계면 아무 일도 하지 않는다.
+     * 취소·종료된 프로젝트면 PJ_012. 매칭 수락과 같은 트랜잭션에서 부르면 함께 롤백된다.
+     */
+    void startNegotiating(Long projectId);
+
+    /**
+     * 계약 대기. 계약서가 만들어지면 계약 도메인이 호출한다. (요구사항 1233)
+     *
+     * <p>전이 규칙은 {@link #startNegotiating} 과 같다.
+     */
+    void awaitContract(Long projectId);
+
+    /**
+     * 인원별 진행 단계에 맞춰 대표 상태를 다시 맞춘다. 협상 결렬·거절·기한 만료 뒤 매칭이 호출한다.
+     *
+     * <p>{@link #startNegotiating} 과 달리 뒤로도 간다. 둘 다 없으면 모집중으로 돌아간다.
+     * 진행중 이후·취소·종료면 아무 일도 하지 않는다.
+     *
+     * @param hasContractPending 계약 대기 이상인 요청이 하나라도 있는가 (종결 상태는 제외)
+     * @param hasNegotiating     수락·협상중인 요청이 하나라도 있는가
+     */
+    void syncStage(Long projectId, boolean hasContractPending, boolean hasNegotiating);
+
+    /**
+     * 인원 확정. 양측 서명이 끝나면 계약 도메인이 호출한다.
+     *
+     * <p>필요 인원이 모두 확정되면 진행중으로 넘어간다. 아니면 상태를 그대로 둔다. (요구사항 1241)
+     * 포지션이 없으면 PJ_002, 이미 마감된 직군이면 PJ_013, 취소·종료된 프로젝트면 PJ_012.
+     */
+    void confirmPosition(Long positionId);
 
     /**
      * 종료. 성공보수 결제가 끝나면 정산 도메인이 호출한다. (정책 P30)

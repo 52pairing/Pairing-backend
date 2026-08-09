@@ -94,6 +94,7 @@ public class SettlementController {
     @Operation(summary = "수수료 결제",
             description = "결제 가능한 상태에서만 호출합니다. "
                     + "클라이언트 착수금이면 결제와 동시에 프로젝트가 모집중으로 전환됩니다. "
+                    + "클라이언트 성공보수면 프로젝트가 종료로 전환됩니다. "
                     + "PG 연동 전이라 승인 절차 없이 즉시 완료 처리됩니다.")
     @ApiErrorCodeExample(domain = SettlementErrorCode.class,
             value = {"SETTLEMENT_NOT_FOUND", "NOT_PAYER", "NOT_PAYABLE"})
