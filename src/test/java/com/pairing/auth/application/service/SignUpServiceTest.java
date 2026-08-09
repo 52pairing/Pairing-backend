@@ -53,6 +53,7 @@ class SignUpServiceTest {
     private static final String PHONE_STORED = "01012345678";
     private static final String PASSWORD = "Passw0rd!";
     private static final String BUSINESS_NO = "1234567890";
+    private static final String ADDRESS = "서울 강남구 테헤란로 1";
 
     @Mock
     private AccountCommandUseCase accountCommandUseCase;
@@ -93,7 +94,7 @@ class SignUpServiceTest {
     private ClientSignUpCommand clientCommand() {
         return new ClientSignUpCommand(EMAIL, PASSWORD, PASSWORD, "홍길동", PHONE_INPUT,
                 "주식회사 페어링", BUSINESS_NO, BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_10_49,
-                card(), bankAccount(), agreements(), "JUnit");
+                ADDRESS, card(), bankAccount(), agreements(), "JUnit");
     }
 
     private FreelancerSignUpCommand freelancerCommand(LocalDate birthDate) {
@@ -207,7 +208,7 @@ class SignUpServiceTest {
     void passwordConfirmMismatch() {
         ClientSignUpCommand command = new ClientSignUpCommand(EMAIL, PASSWORD, "Different1!", "홍길동",
                 PHONE_INPUT, "주식회사 페어링", BUSINESS_NO, BusinessField.IT_CONTENTS_AI,
-                EmployeeCount.SIZE_10_49, card(), bankAccount(), agreements(), "JUnit");
+                EmployeeCount.SIZE_10_49, ADDRESS, card(), bankAccount(), agreements(), "JUnit");
 
         assertThatThrownBy(() -> signUpService.signUpClient(command))
                 .isInstanceOf(BusinessException.class)

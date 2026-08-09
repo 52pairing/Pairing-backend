@@ -13,6 +13,8 @@ public record CreateClientAccountCommand(
         String businessNo,
         BusinessField businessField,
         EmployeeCount employeeCount,
+        /** 기업 주소(필수). 계약서 갑 표시에 쓰인다. */
+        String address,
         CardCommand card,
         BankAccountCommand bankAccount
 ) {

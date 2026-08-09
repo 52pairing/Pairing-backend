@@ -7,8 +7,6 @@ import com.pairing.matching.application.result.MatchingRecommendation;
  * AI 서버(Pairing-python) 호출 포트.
  *
  * <p>임베딩 계산 자체(1차 추림)와 LLM 최종 선정 모두 AI 서버가 수행한다. 여기는 호출만 한다.
- * 임베딩 upsert(PUT /embeddings/*)는 프리랜서/프로젝트 저장 시점에 그 도메인에서 별도로 호출한다
- * (여기서는 다루지 않음 — 3일차 작업).
  */
 public interface MatchingPort {
 
@@ -23,4 +21,10 @@ public interface MatchingPort {
      * 딱 1번 호출한다(프로젝트는 등록 후 수정 불가능이라 재계산 불필요).
      */
     void upsertPositionEmbedding(Long positionId, String text);
+
+    /**
+     * 프리랜서 임베딩을 upsert한다(PUT /embeddings/freelancers). 이력서 저장(자기소개+경력사항이
+     * 바뀔 때)마다 호출한다 — {@code matching.application.service.ResumeUpdatedEventListener} 참고.
+     */
+    void upsertFreelancerEmbedding(Long freelancerId, String text);
 }

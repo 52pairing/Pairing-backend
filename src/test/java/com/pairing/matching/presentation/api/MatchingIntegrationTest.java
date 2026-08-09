@@ -17,6 +17,8 @@ import com.pairing.auth.application.port.SessionRegistryPort;
 import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
+import com.pairing.freelancer.application.command.UpsertConditionCommand;
+import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.global.ratelimit.RateLimitPolicy;
 import com.pairing.global.ratelimit.RateLimitProvider;
 import com.pairing.matching.application.port.out.MatchingPort;
@@ -33,8 +35,14 @@ import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingCandidateRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRequestRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRoundRepository;
+import com.pairing.meta.domain.model.JobCategory;
 import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.PayUnit;
+import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.SkillCode;
+import com.pairing.meta.domain.model.SkillLevel;
+import com.pairing.meta.domain.model.WorkForm;
+import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.project.domain.model.ProjectStatus;
 import com.pairing.terms.domain.model.TermsCode;
@@ -76,10 +84,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 후보 조회 -&gt; 요청 발송/조회 -&gt; 수락(협상 생성) -&gt; 재추천까지, 다른 도메인 어댑터가 실제로
  * 붙은 상태에서 실제 요청으로 확인한다.
  *
- * <p>ProjectDirectoryPort/NegotiationPort는 project/negotiation 도메인을 그대로 타므로 이 테스트가
- * 통과하면 그 두 어댑터 교체가 실제로 맞물려 동작한다는 뜻이다. FreelancerDirectoryPort의
- * resolveFreelancerId는 아직 accountId를 그대로 쓰는 스텁이라, freelancer_profile.id를 그 프리랜서의
- * accountId와 같게 맞춰 심는다(seedFreelancerProfile 참고) — 실제 서비스 동작과 동일한 전제다.
+ * <p>ProjectDirectoryPort/NegotiationPort/FreelancerDirectoryPort 전부 실제 도메인을 그대로 타므로
+ * 이 테스트가 통과하면 어댑터 교체가 실제로 맞물려 동작한다는 뜻이다(seedFreelancerProfile 참고).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -124,6 +130,8 @@ class MatchingIntegrationTest {
     private MatchingSnapshotRepository matchingSnapshotRepository;
     @Autowired
     private ProjectQueryUseCase projectQueryUseCase;
+    @Autowired
+    private FreelancerConditionUseCase freelancerConditionUseCase;
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -215,9 +223,9 @@ class MatchingIntegrationTest {
 
     /**
      * 회원가입이 만든 freelancer_profile(자동 채번 id)을 지우고, id를 freelancerAccountId와 같게
-     * 다시 심는다. matching의 FreelancerDirectoryPort.resolveFreelancerId가 아직 accountId를 그대로
-     * freelancerId로 쓰는 스텁이라, 이 테스트에서도 같은 전제(freelancerId == accountId)를 맞춰야
-     * 후보 카드 조회(findCardSummary)와 수락 권한 체크(resolveFreelancerId)가 같은 사람을 가리킨다.
+     * 다시 심는다. matching의 FreelancerDirectoryPort.resolveFreelancerId는 accountId로
+     * freelancer_profile을 찾아 그 id를 돌려주므로, id를 accountId와 같게 맞춰두면 후보 카드
+     * 조회(findCardSummary)와 수락 권한 체크(resolveFreelancerId)가 항상 같은 사람을 가리킨다.
      */
     private void seedFreelancerProfile() {
         jdbcTemplate.update("DELETE FROM freelancer_profile WHERE account_id = ?", freelancerAccountId);
@@ -230,6 +238,17 @@ class MatchingIntegrationTest {
         // 충돌할 수 있어(PRIMARY KEY violation), 카운터를 명시적으로 앞으로 당겨둔다.
         jdbcTemplate.execute("ALTER TABLE freelancer_profile ALTER COLUMN id RESTART WITH "
                 + (freelancerAccountId + 1));
+
+        // FreelancerDirectoryAdapter.findCondition이 실구현으로 바뀌면서 freelancer_condition이
+        // 실제로 있어야 accept()가 성공한다. work_style은 의도적으로 REMOTE로 둔다 — 프로젝트가
+        // ONSITE라(seedProjectWithPosition) 수락 시 조건이 갈려서 협상이 "조건 불일치"로 정상
+        // 생성된다(조건이 하나도 안 갈리면 즉시 타결 경로로 빠져 이 테스트 범위를 벗어난다).
+        freelancerConditionUseCase.upsert(new UpsertConditionCommand(
+                freelancerAccountId, JobCategory.DEVELOPMENT, JobRole.BACKEND, null,
+                WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 6_500_000L, 5_500_000L,
+                LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 5,
+                List.of(new UpsertConditionCommand.Skill(SkillCode.JAVA, SkillLevel.ADVANCED),
+                        new UpsertConditionCommand.Skill(SkillCode.SPRING_BOOT, SkillLevel.ADVANCED))));
     }
 
     /**
@@ -237,9 +256,9 @@ class MatchingIntegrationTest {
      * 만드는 것과 같은 모양이지만, 이 테스트는 project 자체가 아니라 matching이 그 데이터를
      * 제대로 읽어오는지가 목적이라 JDBC로 직접 채운다(ReviewIntegrationTest와 동일 방식).
      *
-     * <p>work_style을 ONSITE로 둔 건 의도적이다 — FreelancerDirectoryAdapter의 findCondition
-     * 스텁이 항상 REMOTE를 돌려주므로, 수락 시 두 조건이 갈려야 협상이 "조건 불일치"로 정상
-     * 생성된다(조건이 하나도 안 갈리면 즉시 타결 + 채팅방 생성 경로로 빠져 이 테스트 범위를 벗어난다).
+     * <p>work_style을 ONSITE로 둔 건 의도적이다 — seedFreelancerProfile이 심는 조건이 REMOTE라,
+     * 수락 시 두 조건이 갈려야 협상이 "조건 불일치"로 정상 생성된다(조건이 하나도 안 갈리면 즉시
+     * 타결 + 채팅방 생성 경로로 빠져 이 테스트 범위를 벗어난다).
      */
     private void seedProjectWithPosition(Long clientProfileId) {
         jdbcTemplate.update(
@@ -296,6 +315,7 @@ class MatchingIntegrationTest {
         body.put("businessNo", "1234567890");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
+        body.put("address", "서울 강남구 테헤란로 1");
         body.put("email", CLIENT_EMAIL);
         body.put("name", "김클라");
         body.put("phone", "010-1111-2222");

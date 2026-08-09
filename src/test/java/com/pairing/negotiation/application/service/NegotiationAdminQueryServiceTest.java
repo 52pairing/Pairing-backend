@@ -67,7 +67,7 @@ class NegotiationAdminQueryServiceTest {
     void setUp() {
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 CLIENT_ACCOUNT_ID, "삼성전자", "1234567890",
-                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299)).getId();
+                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
         Long freelancerProfileId = freelancerProfileRepository.save(
                 FreelancerProfile.create(FREELANCER_ACCOUNT_ID, java.time.LocalDate.of(1990, 1, 1))).getId();
         // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.

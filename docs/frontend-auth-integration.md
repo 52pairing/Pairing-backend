@@ -270,6 +270,7 @@ POST /api/v1/auth/signup/client        → 201
   "businessNo": "1234567890",          // 하이픈 없이 숫자 10자리
   "businessField": "IT_CONTENTS_AI",   // GET /meta/business-fields
   "employeeCount": "SIZE_10_49",       // GET /meta/employee-counts
+  "address": "서울 강남구 테헤란로 1",   // 기업 주소. 필수, 255자 이하
   "email": "owner@pairing.com",
   "name": "김담당",
   "phone": "01012345678",
@@ -289,6 +290,9 @@ POST /api/v1/auth/signup/client        → 201
 - **가입 성공만으로 로그인되지 않습니다.** 쿠키가 발급되지 않으니 로그인 화면으로 보내세요. (소셜 가입만 예외)
 - 카드·계좌 번호는 하이픈을 넣어도 됩니다. 서버가 숫자만 남겨 암호화 저장합니다.
 - `bankCode` 는 `GET /meta/banks` 의 코드입니다. 목록에 없으면 `AC_006`.
+- `address` 는 **필수**입니다. 빈 문자열·공백만 보내도 `GLOBAL_002` 로 막힙니다. 계약서의 갑(기업) 주소로 쓰이며,
+  가입 후에는 `PATCH /api/v1/clients/me` 에서 수정합니다. 우편번호·상세주소를 따로 받지 않고 **한 줄 문자열 하나**입니다.
+  주소 검색 UI를 쓴다면 도로명주소와 상세주소를 프론트에서 합쳐 한 값으로 보내세요.
 
 ### 4-4. 프리랜서 가입
 

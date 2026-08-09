@@ -5,6 +5,7 @@ import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.file.application.usecase.FileQueryUseCase;
 import com.pairing.freelancer.application.command.UpsertResumeCommand;
+import com.pairing.freelancer.application.event.ResumeUpdatedEvent;
 import com.pairing.freelancer.application.result.ResumeResult;
 import com.pairing.freelancer.application.usecase.ResumeUseCase;
 import com.pairing.freelancer.domain.model.Career;
@@ -15,6 +16,7 @@ import com.pairing.freelancer.domain.model.ResumeAgreements;
 import com.pairing.freelancer.domain.model.ResumeLink;
 import com.pairing.freelancer.domain.repository.ResumeRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,7 @@ public class ResumeService implements ResumeUseCase {
     private final ResumeRepository resumeRepository;
     private final AccountQueryUseCase accountQueryUseCase;
     private final FileQueryUseCase fileQueryUseCase;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -68,8 +71,8 @@ public class ResumeService implements ResumeUseCase {
                         command.portfolioFileId(), educations, careers, certificates, links,
                         toAgreements(command.agreements())));
 
-        // TODO: ai-server 연동 준비되면 저장 후 이력서 임베딩 재생성 요청
         Resume saved = resumeRepository.save(resume);
+        eventPublisher.publishEvent(new ResumeUpdatedEvent(command.accountId()));
         return toResult(command.accountId(), saved);
     }
 
