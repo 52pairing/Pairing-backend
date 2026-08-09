@@ -66,7 +66,7 @@ public class FileCommandService implements FileCommandUseCase {
         return switch (purpose) {
             case PROFILE_IMAGE, COMPANY_LOGO, SIGNATURE -> detected == FileType.IMAGE;
             case PORTFOLIO -> detected == FileType.PDF;
-            case PROJECT_FILE -> detected == FileType.PDF || detected == FileType.IMAGE;
+            case PROJECT_FILE, INQUIRY_ATTACHMENT -> detected == FileType.PDF || detected == FileType.IMAGE;
         };
     }
 }

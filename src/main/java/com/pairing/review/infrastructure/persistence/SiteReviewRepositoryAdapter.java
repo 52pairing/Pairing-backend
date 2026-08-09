@@ -39,6 +39,13 @@ public class SiteReviewRepositoryAdapter implements SiteReviewRepository {
     }
 
     @Override
+    public List<SiteReview> findPromoted(int minScore, Pageable pageable) {
+        return springDataRepository.findPromoted(minScore, pageable).stream()
+                .map(siteReviewMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public long count() {
         return springDataRepository.count();
     }

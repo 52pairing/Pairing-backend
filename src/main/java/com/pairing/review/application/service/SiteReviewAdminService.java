@@ -6,6 +6,7 @@ import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.review.application.result.SiteReviewResult;
 import com.pairing.review.application.result.SiteReviewSummaryResult;
 import com.pairing.review.application.usecase.SiteReviewAdminUseCase;
+import com.pairing.review.application.usecase.SiteReviewPublicUseCase;
 import com.pairing.review.domain.model.SiteReview;
 import com.pairing.review.domain.model.SiteReviewVisibility;
 import com.pairing.review.domain.repository.SiteReviewRepository;
@@ -13,12 +14,15 @@ import com.pairing.review.exception.ReviewErrorCode;
 import com.pairing.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -29,7 +33,10 @@ import java.util.Map;
  */
 @Service
 @RequiredArgsConstructor
-public class SiteReviewAdminService implements SiteReviewAdminUseCase {
+public class SiteReviewAdminService implements SiteReviewAdminUseCase, SiteReviewPublicUseCase {
+
+    /** 비로그인 메인에는 이 점수 이상인 홍보 리뷰만 내려간다. */
+    private static final int HOME_MIN_SCORE = 4;
 
     private final SiteReviewRepository siteReviewRepository;
     private final ProjectQueryUseCase projectQueryUseCase;
@@ -60,6 +67,15 @@ public class SiteReviewAdminService implements SiteReviewAdminUseCase {
                 siteReviewRepository.countByVisibility(SiteReviewVisibility.PUBLIC),
                 distribution
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SiteReviewResult> findPromoted(int limit) {
+        Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return siteReviewRepository.findPromoted(HOME_MIN_SCORE, pageable).stream()
+                .map(this::toResult)
+                .toList();
     }
 
     @Override
