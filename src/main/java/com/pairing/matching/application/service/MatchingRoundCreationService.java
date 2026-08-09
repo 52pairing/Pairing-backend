@@ -16,10 +16,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -35,8 +33,8 @@ import java.util.stream.Collectors;
  *   <li>Stage F 가드: 규칙 기반 재검증(직무·스킬, 예산 조합) 알고리즘은 아직 없어 항상 통과 처리한다.
  *       3일차에 {@code applyGuard} 호출부만 실제 검증으로 교체하면 된다.</li>
  * </ul>
- * 이전에 노출됐던 프리랜서(R02 예외조건 5, 프로젝트 전체 기준) 제외는 Pairing-python이 아직
- * 하드필터를 안 갖고 있어(3일차 예정) 여기서 결과를 받은 뒤 걸러낸다.
+ * 이전에 노출됐던 프리랜서(R02 예외조건 5, 프로젝트 전체 기준) 제외는 Pairing-python이 벡터 검색
+ * 전에 미리 걸러준다(2026-08-09) — 여기서는 그 목록을 조회해서 넘기기만 한다.
  */
 @Component
 @RequiredArgsConstructor
@@ -62,15 +60,16 @@ class MatchingRoundCreationService {
                 costAmount, recruitCount, poolSize);
         round = matchingRoundRepository.save(round);
 
-        MatchingRecommendation recommendation = matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER);
-        List<RankedFreelancer> filtered = excludePreviouslySurfaced(projectId, recommendation.candidates());
+        List<Long> excludedFreelancerIds = matchingCandidateRepository.findFreelancerIdsByProjectId(projectId);
+        MatchingRecommendation recommendation =
+                matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER, excludedFreelancerIds);
 
-        if (filtered.isEmpty()) {
+        if (recommendation.candidates().isEmpty()) {
             round.exhaust();
             return matchingRoundRepository.save(round);
         }
 
-        List<RankedFreelancer> ranked = breakScoreTiesByGrade(filtered);
+        List<RankedFreelancer> ranked = breakScoreTiesByGrade(recommendation.candidates());
 
         double gradeWeightPercent = clientGradeResolver.resolveMatchingWeightPercent(projectId);
         boolean lowScoreWarned = persistCandidates(round, positionId, recruitCount, ranked, gradeWeightPercent);
@@ -80,11 +79,6 @@ class MatchingRoundCreationService {
         }
         round.complete();
         return matchingRoundRepository.save(round);
-    }
-
-    private List<RankedFreelancer> excludePreviouslySurfaced(Long projectId, List<RankedFreelancer> candidates) {
-        Set<Long> excluded = new HashSet<>(matchingCandidateRepository.findFreelancerIdsByProjectId(projectId));
-        return candidates.stream().filter(candidate -> !excluded.contains(candidate.freelancerId())).toList();
     }
 
     /**

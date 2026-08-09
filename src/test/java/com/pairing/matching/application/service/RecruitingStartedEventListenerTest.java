@@ -263,7 +263,7 @@ class RecruitingStartedEventListenerTest {
     @Test
     @DisplayName("모집 시작 이벤트를 받으면 스냅샷을 얼리고 임베딩을 올리고 최초 추천 라운드를 만든다")
     void recruitingStartedEventCreatesSnapshotEmbeddingAndInitialRound() {
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3)))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
                         List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치|경력 조건 충족"))));
 
@@ -285,7 +285,7 @@ class RecruitingStartedEventListenerTest {
     @Test
     @DisplayName("이미 라운드가 있는 포지션은 이벤트를 다시 받아도 새 라운드를 또 만들지 않는다(멱등)")
     void recruitingStartedEventIsIdempotentPerPosition() {
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3)))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
                         List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치"))));
 

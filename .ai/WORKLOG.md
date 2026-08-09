@@ -120,9 +120,14 @@
 6. ~~`resolveFreelancerId`/`findCondition`(freelancerId 기준)~~ — 완료. 계정 승인은 이미 끝나 있었고 매칭 어댑터만 안 바꿔놓은 상태였음.
 7. `expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현 — 나중에 만들 때 `syncStage` 호출도 같이 넣을 것(HANDOFF 25번 참고).
 8. ~~`AI매칭_API_화면매핑_최신본.md`(MT_009/quantity 경고) 반영 확인~~ — 완료. 그 이후 코드가 또 바뀌어서(MT_012 실제 검증 추가, MT_013/MT_014/MT_015 신규) 문서가 다시 뒤처짐 — 사용자가 직접 갱신할 항목.
-9. Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번) — 착수 직전.
-    - **AI매칭 동의 + 직군/직무 일치**: 기준 명확함, 바로 구현.
-    - **일정/근무조건/단가(느슨하게)**: 정확한 허용 범위(며칠까지/몇 %까지)가 문서에 없어 3번에게 확인 요청 보냄 → 3번이 "사전 검수"(정책 P02, 프로젝트 등록 시점에 직무+요구스킬만 보는 별개 기능)를 답변했는데 무관한 것으로 확인됨. **Stage B 느슨한 필터라고 다시 명확히 구분해서 재질문 필요 — 아직 답변 대기.**
+9. ~~Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번)~~ — **2026-08-09 완료.**
+    - **AI매칭 동의 + 직군/직무 일치**: `freelancer_embedding`→`freelancer_profile`→`freelancer_condition`/`account` 조인으로 벡터 검색 자체에서 필터링(`EmbeddingRepository.search_similar_freelancers`). `MatchingService.recommend()`가 포지션 조회를 먼저 하도록 순서 변경(job_category/job_role을 얻으려고). `GET /embeddings/positions/{id}/candidates`(Java에서 실제로 부르는 곳이 없는 죽은 엔드포인트)는 job_category/job_role이 없으면 필터 없이 그대로 동작하도록 옵셔널 처리해서 안 건드림.
+    - **이전에 노출된 프리랜서 제외도 같이 이동**: Java `MatchingRoundCreationService.excludePreviouslySurfaced`(사후 필터) 삭제, `findFreelancerIdsByProjectId` 결과를 `MatchingPort.recommend(..., excludedFreelancerIds)`로 미리 넘기도록 변경. Python `MatchingRequest.excluded_freelancer_ids` 신규 필드로 받아 SQL `NOT IN`으로 반영.
+    - Java 3곳 수정: `MatchingPort`/`PythonMatchingAdapter`(요청 바디에 `excluded_freelancer_ids` 추가, fallback 시그니처도 맞춤)/`MatchingRoundCreationService`. 기존 목 스텁 3건(`MatchingIntegrationTest`, `RecruitingStartedEventListenerTest` 2건)이 3-arg `recommend()`를 stub하고 있어서 4-arg(`eq(List.of())`)로 갱신. `./gradlew build` 통과.
+    - Python 4개 파일 수정: `embedding/repository.py`(조인 추가), `embedding/service.py`/`matching/service.py`(파라미터 전달)/`matching/schemas.py`+`router.py`(요청 필드 추가). `pytest`(10개)/`ruff` 통과.
+    - ~~일정/근무조건/단가(느슨하게)~~ 폐기(위 참고). Stage E 감점 반영은 아직 미착수(HANDOFF 10-2번) — Python `FreelancerProfile`/`PositionRequirement`에 조건 필드 추가 + 프롬프트 지시 추가가 남음.
+    - ~~일정/근무조건/단가(느슨하게)~~ **(2026-08-09 방향 확정) 폐기.** 3번 재확인 답변: 사전검수(P02)는 직무+요구스킬+계정ACTIVE+AI매칭동의만 보고 후보 수를 안내하는데, 매칭이 여기에 일정/단가 필터를 더 얹으면 사전검수가 안내한 후보 수보다 실제 추천이 줄 수 있고 착수금은 환불이 없어 클레임 구조가 된다는 논거. `policy.md` P03/P04(파이프라인은 "임베딩→LLM"이 전부, 조건필터 단계 자체가 정책에 없었음), `requirements.md` R02.3(가드도 직무·스킬만 검증), `ProjectPreReviewService`/`FreelancerCandidateCountService` 코드로 직접 재확인해 3번 말이 맞음을 확인. 사용자가 기억하던 "단가 20% 오차"는 이거와는 다른, 이미 구현된 budgetCap 1.2배 규칙이었고 Stage B용으로 따로 정해진 수치는 없었음을 재확인.
+      **결론: Stage B는 AI매칭 동의+직군/직무만 하드필터. 일정/근무조건/단가 불일치는 Stage E(LLM 최종선정)에서 감점+추천사유로만 반영, 후보 배제 안 함(P09 "적합도 낮은 후보도 노출될 수 있다"와 동일 패턴). 계산식은 안 만들고 LLM이 원본 데이터 보고 판단.** 상세는 `.ai/STATE.md` "2026-08-09 갱신 — Stage B 조건필터 폐기" 참고.
     - 이전에 노출된 프리랜서 제외(`excludePreviouslySurfaced`)도 Java가 결과 받은 뒤 후처리하는 대신 Python이 검색 전에 미리 빼도록 옮기는 것도 이 작업 범위(풀 크기 줄어드는 문제 해결). Python `/recommendations` 요청 스키마에 제외 id 목록 추가 필요.
 10. budgetCap Stage F(HANDOFF 11번) — 배분 알고리즘 규칙 자체가 확정된 적 없음이 3번 확인으로 밝혀짐. 현재 공식(A안) 유지로 결정, 팀 회의에서 경력 차등(B안)/LLM 조합(C안) 여부만 다시 논의될 수 있음.
 11. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.

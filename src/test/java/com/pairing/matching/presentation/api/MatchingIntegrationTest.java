@@ -504,7 +504,7 @@ class MatchingIntegrationTest {
     @DisplayName("재추천을 요청하면 AI 서버(Pairing-python) 응답으로 새 회차/후보가 만들어진다")
     void rerecommendCreatesNewRoundFromAiServerResponse() throws Exception {
         seedRound(2);
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3)))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
                         List.of(new RankedFreelancer(freelancerAccountId, 91.0,
                                 "요구 스킬 3개 중 3개 일치|경력 조건 충족"))));
