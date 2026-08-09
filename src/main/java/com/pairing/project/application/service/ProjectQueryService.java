@@ -132,7 +132,9 @@ public class ProjectQueryService implements ProjectQueryUseCase {
                 project.getBudgetAmount(),
                 project.getTotalHeadcount(),
                 project.getCurrentSituation(),
-                project.getMainTask());
+                project.getMainTask(),
+                project.getDetailScope(),
+                project.getExtraNote());
     }
 
     @Override
