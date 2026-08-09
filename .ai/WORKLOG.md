@@ -87,6 +87,19 @@
 - **`FreelancerDirectoryAdapter` 완전 교체** — 2번이 "account 도메인 승인은 이미 끝났고 필요한 포트(`AccountQueryUseCase.findFreelancerProfileById/ByAccountId`, `FreelancerConditionUseCase.findMyCondition`)도 이미 있는데 매칭 어댑터만 안 바꿔놨다"고 확인해줘서 `resolveFreelancerId`/`findCondition` 실구현으로 교체. `MatchingErrorCode.FREELANCER_NOT_FOUND`(MT_015) 신규. `feature/matching-freelancer-directory-real-impl` 브랜치, push 완료. 이걸로 budgetCap Stage F 블로커 중 findCondition 쪽은 해소됨(배분 규칙은 여전히 미확정).
 - **budgetCap 배분 정책 결론** — 3번이 정책·요구사항 전수 확인한 결과 "포지션별 1순위 조합" 같은 확정 규칙은 원래 존재한 적이 없었음(HANDOFF 11번이 애초에 잘못된 전제였던 것 확인). 포지션별 예산/기간 입력란 자체가 없어(클라이언트는 총액만 입력) 재료도 없음. 현재 공식(순예산÷인원÷개월수, 경력 무관 동일 상한)을 그대로 유지하는 A안으로 확정 — **코드 변경 없음**. 경력별 차등(B안)이나 LLM 조합 배분(C안)은 제품 결정이 필요해 팀 회의 안건으로 남김.
 - **문서 동기화(HANDOFF 13번)**: `.ai/API.md` 에러 코드 표에 MT_001~MT_015 전부 추가(기존엔 매칭 에러코드가 하나도 없었음). `docs/api-dto.csv`의 `RerecommendRequest.type`/`quantity` 설명에 실제 검증 규칙(MT_012/MT_013) 명시. `docs/spec/requirements.md` 클라이언트 회원가입 명세에 회사주소 필드 반영(`feature/client-address-plus`로 이미 구현·merge된 게 명세엔 누락돼 있었음).
+- **전체 파이프라인(Stage A~F) 재검증** — 사용자가 준 단계별 스펙과 코드를 하나씩 대조:
+  - Stage C(임베딩 랭킹)/D(추림 컷)는 정상. Stage A/B(하드필터·조건필터)는 여전히 미구현(HANDOFF 10번). Stage F(가드)도 여전히 placeholder.
+  - **Stage E(LLM 최종선정) 불일치 발견**: 확정 설계는 "프로젝트당 1회 호출, 전체 포지션 한번에"인데 실제 코드는 포지션마다 따로 `matchingPort.recommend()`를 호출함(`RecruitingStartedEventListener`가 포지션 순회). Python API(`MatchingRequest`)도 `position_id` 하나만 받는 구조라 여러 포지션을 한 번에 처리할 수 없음. 재설계 필요 — 아직 손 안 댐, 범위가 커서 별도 논의 필요할 수 있음.
+  - **치명적 결함 발견·해결**: 프리랜서 임베딩(자기소개+경력사항)이 실환경에서 한 번도 생성된 적이 없었음(`MatchingPort`에 메서드 자체가 없었고 freelancer 도메인 어디서도 호출 안 함) — `freelancer_embedding` 테이블이 영원히 비어 있어 Stage C가 검색할 대상이 없는 상태였다. 상세는 아래 신규 배치 참고.
+- **프리랜서 임베딩 트리거 신규 연결** (`feature/matching-freelancer-embedding-trigger` 브랜치):
+  - `MatchingPort.upsertFreelancerEmbedding(freelancerId, text)` 신규 + `PythonMatchingAdapter`에 구현(`PUT /embeddings/freelancers`, 서킷브레이커 포함, `upsertPositionEmbedding`과 대칭).
+  - `matching.application.result.FreelancerResumeSummary`(selfIntroduction + 경력 목록) 신규, `FreelancerDirectoryPort.findResumeSummary(freelancerId)` 신규 — `FreelancerDirectoryAdapter`가 freelancerId→accountId 역조회 후 `ResumeUseCase.findMyResume`으로 실제 조회.
+  - `matching.application.service.FreelancerEmbeddingTextBuilder` 신규 — `PositionEmbeddingTextBuilder`와 대칭, 자기소개+경력사항(회사명/직급/담당업무) 조립.
+  - `freelancer.application.event.ResumeUpdatedEvent(accountId)` 신규 — `ResumeService.upsert()`가 저장 후 발행(기존 TODO 주석 자리를 실제 발행 코드로 교체).
+  - `matching.application.service.ResumeUpdatedEventListener` 신규 — `@TransactionalEventListener(AFTER_COMMIT)`로 받아서 freelancerId 조회 → 이력서 요약 조회 → 텍스트 조립 → 임베딩 upsert. 매칭 자신의 DB에 쓰는 게 없어 `ProjectUpdatedEventListener`와 같은 이유로 별도 REQUIRES_NEW 빈 분리는 필요 없음.
+  - 트리거 시점은 **이력서(Resume) 저장**으로 잡음 — 임베딩 텍스트가 자기소개/경력사항(Resume 도메인 필드)이라, `.ai/STATE.md`에 적혀 있던 "조건(Condition) 저장 시마다"는 실제 텍스트 구성과 안 맞아서 이력서 저장 시점으로 정정.
+  - `ResumeUpdatedEventListenerTest` 신규(이력서 저장 → 임베딩 upsert 호출 검증), `./gradlew clean build` 통과.
+  - 이전에 held-back 상태였던 문서 동기화 커밋(HANDOFF 13번, 회사주소 명세 포함)도 이 브랜치에 같이 실어서 push — "문서만 고친 건 단독 브랜치로 안 올리고 기능 브랜치에 묻어간다"는 사용자 피드백 반영.
 
 ## 다음 세션에서 할 일
 
@@ -101,6 +114,8 @@
 6. ~~`resolveFreelancerId`/`findCondition`(freelancerId 기준)~~ — 완료. 계정 승인은 이미 끝나 있었고 매칭 어댑터만 안 바꿔놓은 상태였음.
 7. `expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현 — 나중에 만들 때 `syncStage` 호출도 같이 넣을 것(HANDOFF 25번 참고).
 8. ~~`AI매칭_API_화면매핑_최신본.md`(MT_009/quantity 경고) 반영 확인~~ — 완료. 그 이후 코드가 또 바뀌어서(MT_012 실제 검증 추가, MT_013/MT_014/MT_015 신규) 문서가 다시 뒤처짐 — 사용자가 직접 갱신할 항목.
-9. Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번) — 아직 미착수. 3일차 나머지 항목 중 남은 유일한 것.
+9. Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번) — 아직 미착수.
 10. budgetCap Stage F(HANDOFF 11번) — 배분 알고리즘 규칙 자체가 확정된 적 없음이 3번 확인으로 밝혀짐. 현재 공식(A안) 유지로 결정, 팀 회의에서 경력 차등(B안)/LLM 조합(C안) 여부만 다시 논의될 수 있음.
 11. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.
+12. ~~프리랜서 임베딩이 실환경에서 한 번도 생성되지 않던 결함~~ — 완료(위 참고). 이걸로 Stage C가 이제야 실제로 검색할 대상이 생김.
+13. **Stage E(LLM 최종선정) 재설계** — 확정 설계는 "프로젝트당 1회 호출, 전체 포지션 한번에"인데 지금은 포지션마다 따로 호출함. Python `MatchingRequest`가 `position_id` 단일값만 받는 구조라 API 계약 자체를 바꿔야 함(여러 포지션 id + 포지션별 후보 풀을 한 번에 받아서 LLM 프롬프트도 여러 포지션을 한꺼번에 판단하게). 범위가 커서 착수 전 사용자와 우선순위 논의 필요.

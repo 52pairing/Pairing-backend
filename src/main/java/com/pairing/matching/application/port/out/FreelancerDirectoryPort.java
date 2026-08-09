@@ -2,14 +2,12 @@ package com.pairing.matching.application.port.out;
 
 import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
 import com.pairing.matching.application.result.FreelancerCardSummary;
+import com.pairing.matching.application.result.FreelancerResumeSummary;
 
 /**
  * freelancer 도메인 조회 포트. 매칭은 이 인터페이스로만 프리랜서 정보를 읽는다.
  *
- * <p>{@code infrastructure.directory.FreelancerDirectoryAdapter}가 구현한다.
- * {@code findCardSummary}는 실제 조회로 교체됨. {@code resolveFreelancerId}/{@code findCondition}은
- * account_id ↔ freelancer_profile.id 양방향 조회가 account 도메인에 아직 없어 스텁으로 남아있다
- * (어댑터 클래스의 Javadoc 참고).
+ * <p>{@code infrastructure.directory.FreelancerDirectoryAdapter}가 실제 구현체다.
  */
 public interface FreelancerDirectoryPort {
 
@@ -24,4 +22,10 @@ public interface FreelancerDirectoryPort {
      * freelancer 도메인이 이미 정의한 {@code FreelancerConditionResponse}를 그대로 재사용한다.
      */
     FreelancerConditionResponse findCondition(Long freelancerId);
+
+    /**
+     * 프리랜서 임베딩 텍스트(자기소개+경력사항) 조립에 쓰는 이력서 요약.
+     * {@code ResumeUpdatedEventListener}가 이력서 저장 이벤트를 받을 때마다 호출한다.
+     */
+    FreelancerResumeSummary findResumeSummary(Long freelancerId);
 }

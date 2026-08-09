@@ -107,6 +107,21 @@ public class PythonMatchingAdapter implements MatchingPort {
         requireData(response);
     }
 
+    @Override
+    @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "upsertFreelancerEmbeddingFallback")
+    public void upsertFreelancerEmbedding(Long freelancerId, String text) {
+        Map<String, Object> requestBody = Map.of("freelancer_id", freelancerId, "text", text);
+
+        PythonApiResponse<EmbeddingData> response = restClient.put()
+                .uri("/api/v1/embeddings/freelancers")
+                .headers(this::withCommonHeaders)
+                .body(requestBody)
+                .retrieve()
+                .body(new org.springframework.core.ParameterizedTypeReference<PythonApiResponse<EmbeddingData>>() {
+                });
+        requireData(response);
+    }
+
     private void withCommonHeaders(org.springframework.http.HttpHeaders headers) {
         headers.add(INTERNAL_API_KEY_HEADER, internalApiKey);
         headers.add(TRACE_ID_HEADER, TraceIdFilter.currentTraceId());
@@ -134,6 +149,11 @@ public class PythonMatchingAdapter implements MatchingPort {
 
     private void upsertPositionEmbeddingFallback(Long positionId, String text, Throwable t) {
         log.error("[Pairing-python] 포지션 임베딩 저장 실패/서킷 오픈 (positionId={}, 원인: {})", positionId, t.getMessage());
+        throw new BusinessException(MatchingErrorCode.AI_SERVER_CALL_FAILED);
+    }
+
+    private void upsertFreelancerEmbeddingFallback(Long freelancerId, String text, Throwable t) {
+        log.error("[Pairing-python] 프리랜서 임베딩 저장 실패/서킷 오픈 (freelancerId={}, 원인: {})", freelancerId, t.getMessage());
         throw new BusinessException(MatchingErrorCode.AI_SERVER_CALL_FAILED);
     }
 
