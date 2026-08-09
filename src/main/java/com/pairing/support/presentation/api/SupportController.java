@@ -4,11 +4,12 @@ import com.pairing.account.domain.model.Role;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
-import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
+import com.pairing.support.application.usecase.ChatbotUseCase;
 import com.pairing.support.application.usecase.InquiryAdminUseCase;
 import com.pairing.support.application.usecase.InquiryUseCase;
 import com.pairing.support.domain.model.InquiryStatus;
+import com.pairing.support.exception.ChatbotErrorCode;
 import com.pairing.support.exception.InquiryErrorCode;
 import com.pairing.support.presentation.api.request.ChatbotAskRequest;
 import com.pairing.support.presentation.api.request.InquiryAnswerRequest;
@@ -34,17 +35,15 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
  * FAQ 챗봇과 1:1 문의. (요구사항 R44, R45)
  *
  * <p>둘은 서로 독립된 창구다. 챗봇을 거쳐야 문의할 수 있는 구조가 아니라 사용자가 원하는 쪽을 고른다.
- * 챗봇은 하루 10회로 제한되고, LLM 호출은 AI 서버가 담당한다.
+ * 챗봇은 하루 10회로 제한되고, LLM 호출은 AI 서버(Pairing-python)가 담당한다.
  *
- * <p>1:1 문의는 실제 로직으로 연결되어 있다. 챗봇(R44)은 AI 서버 연동 전까지 스켈레톤 고정 응답을 유지한다.
+ * <p>추천 질문 목록만 아직 고정 문구다(README 기준 초기엔 고정 문구로 두어도 된다).
  */
 @RestController
 @RequestMapping("/api/v1/support")
@@ -52,6 +51,7 @@ import java.util.List;
 @Tag(name = "18. Support", description = "챗봇/1:1 문의 API")
 public class SupportController {
 
+    private final ChatbotUseCase chatbotUseCase;
     private final InquiryUseCase inquiryUseCase;
     private final InquiryAdminUseCase inquiryAdminUseCase;
 
@@ -62,15 +62,14 @@ public class SupportController {
     @PostMapping("/chatbot/questions")
     @Operation(summary = "챗봇 질의",
             description = "FAQ·이용안내·정책 범위에서 답합니다. 하루 10회를 넘기면 429 로 막힙니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST"})
+    @ApiErrorCodeExample(domain = ChatbotErrorCode.class,
+            value = {"SESSION_NOT_FOUND", "SESSION_FORBIDDEN", "QUOTA_EXCEEDED", "AI_SERVER_CALL_FAILED"})
     public ResponseEntity<ApiResponse<ChatbotAnswerResponse>> ask(
             @Valid @RequestBody ChatbotAskRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 일일 한도 확인 -> AI 서버 호출 -> 세션/메시지 저장 -> 사용량 증가
-        ChatbotAnswerResponse data = new ChatbotAnswerResponse(1200L, request.question(),
-                "착수금 수수료는 계약 체결 시점에 발생합니다.", 9, LocalDateTime.now());
-
+        ChatbotAnswerResponse data = ChatbotAnswerResponse.from(
+                chatbotUseCase.ask(request.toCommand(accountId)));
         return ResponseEntity.ok(ApiResponse.success("CHATBOT_ANSWERED", "응답했습니다.", data));
     }
 
@@ -91,21 +90,21 @@ public class SupportController {
     @GetMapping("/chatbot/quota")
     @Operation(summary = "챗봇 잔여 한도 조회", description = "자정에 초기화됩니다.")
     public ResponseEntity<ApiResponse<ChatbotQuotaResponse>> findQuota(@CurrentAccountId Long accountId) {
-        // TODO: chatbot_quota 조회
-        return ResponseEntity.ok(ApiResponse.success("CHATBOT_QUOTA_FOUND", "조회에 성공했습니다.",
-                new ChatbotQuotaResponse(LocalDate.now(), 10, 1, 9)));
+        ChatbotQuotaResponse data = ChatbotQuotaResponse.from(chatbotUseCase.getQuota(accountId));
+        return ResponseEntity.ok(ApiResponse.success("CHATBOT_QUOTA_FOUND", "조회에 성공했습니다.", data));
     }
 
     @GetMapping("/chatbot/sessions/{sessionId}/messages")
     @Operation(summary = "챗봇 대화 이력", description = "한 세션의 질문·답변을 시간순으로 반환합니다.")
+    @ApiErrorCodeExample(domain = ChatbotErrorCode.class, value = {"SESSION_NOT_FOUND", "SESSION_FORBIDDEN"})
     public ResponseEntity<ApiResponse<List<ChatbotAnswerResponse>>> findChatbotMessages(
             @PathVariable Long sessionId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 본인 세션인지 확인 후 메시지 조회
-        return ResponseEntity.ok(ApiResponse.success("CHATBOT_MESSAGES_FOUND", "조회에 성공했습니다.",
-                List.of(new ChatbotAnswerResponse(sessionId, "착수금 수수료는 언제 결제하나요?",
-                        "계약 체결 시점에 발생합니다.", 9, LocalDateTime.now()))));
+        List<ChatbotAnswerResponse> data = chatbotUseCase.findMessages(accountId, sessionId).stream()
+                .map(ChatbotAnswerResponse::from)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success("CHATBOT_MESSAGES_FOUND", "조회에 성공했습니다.", data));
     }
 
     // ==========================================

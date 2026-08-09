@@ -1,5 +1,6 @@
 package com.pairing.support.presentation.api.request;
 
+import com.pairing.support.application.command.AskChatbotCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -21,4 +22,8 @@ public record ChatbotAskRequest(
         @Size(max = 500, message = "질문은 500자 이하여야 합니다.")
         String question
 ) {
+
+    public AskChatbotCommand toCommand(Long accountId) {
+        return new AskChatbotCommand(accountId, sessionId, question);
+    }
 }

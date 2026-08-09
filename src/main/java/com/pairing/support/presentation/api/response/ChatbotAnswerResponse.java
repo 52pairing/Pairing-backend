@@ -1,5 +1,6 @@
 package com.pairing.support.presentation.api.response;
 
+import com.pairing.support.application.result.ChatbotAnswerResult;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
@@ -14,4 +15,9 @@ public record ChatbotAnswerResponse(
         @Schema(description = "오늘 남은 질의 횟수", example = "9") int remainingQuota,
         @Schema(description = "응답 시각") LocalDateTime createdAt
 ) {
+
+    public static ChatbotAnswerResponse from(ChatbotAnswerResult result) {
+        return new ChatbotAnswerResponse(result.sessionId(), result.question(), result.answer(),
+                result.remainingQuota(), result.createdAt());
+    }
 }
