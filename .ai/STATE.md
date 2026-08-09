@@ -35,8 +35,8 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
   - `NegotiationPort` ← `infrastructure/negotiation/NegotiationAdapter` — **완전 교체**. negotiation의 `NegotiationCommandUseCase`(생성)/`NegotiationProgressUseCase`(진행조회) 위임 호출.
   - `FreelancerDirectoryPort` ← `infrastructure/directory/FreelancerDirectoryAdapter` — **부분 교체**. `findCardSummary`만 실구현(`FreelancerCandidateSummaryUseCase`). `resolveFreelancerId`/`findCondition`은 account_id↔freelancer_profile.id 양방향 조회가 account 도메인에 아직 없어(2번이 1번에게 승인 요청, 대기 중) 스텁 유지 — 로그 경고로 표시해둠.
 - `budgetCap`(수수료율 구간×클라이언트등급)과 `grade_weight`(0/1/2%) 계산은 `ClientGradeResolver`/`BudgetCapCalculator`가 실제 리포지토리를 조회해서 처리한다.
-- Stage F 가드(직무/스킬·예산 조합 재검증)는 지금 항상 통과 처리(placeholder). 규칙 기반 실제 검증은 아직 남음.
-- fitReason은 DB에 `"|"`로 이어붙인 문자열로 저장하고 API 응답에서 다시 나눠 태그 리스트로 돌려준다(`CandidateResponseAssembler`). Pairing-python이 이 구분자로 합친 문자열을 내려주도록 `_build_prompt`/응답 스키마를 맞춰야 한다(아직 안 함).
+- Stage F 가드(직무/스킬·예산 조합 재검증)는 지금 항상 통과 처리(placeholder). **2026-08-09 착수 보류 결정**: 검증할 프리랜서 실데이터(`findCondition`)가 아직 스텁이고, budgetCap 배분 알고리즘 규칙도 미확정이라 지금 손대면 다시 뜯어고칠 위험이 큼(HANDOFF 11번 참고).
+- fitReason은 DB에 `"|"`로 이어붙인 문자열로 저장하고 API 응답에서 다시 나눠 태그 리스트로 돌려준다(`CandidateResponseAssembler`). ~~Pairing-python이 이 구분자로 합친 문자열을 내려주도록 `_build_prompt`/응답 스키마를 맞춰야 한다~~ — 2026-08-09 완료(Pairing-python `feature/matching-prompt-real-implementation`).
 - **로컬 개발 환경에서 발견·수정한 버그 2건** (코드 정상, 인프라/설정 문제였음):
   - `global/ratelimit/RedisRateLimitConfig`가 빈 생성 시 즉시 Redis에 연결해서 Redis 없는 환경(CI)에서 전체 컨텍스트 로딩이 실패 → `@Lazy`(빈 + 생성자 주입 지점 둘 다)로 지연 연결하도록 수정.
   - `matching_candidate`/`matching_round`의 NUMERIC 컬럼(similarity/base_score/grade_weight/fit_score/cost_amount)에 JPA 엔티티가 `columnDefinition`을 안 줘서 스키마 검증 실패 → 명시해서 해결.
