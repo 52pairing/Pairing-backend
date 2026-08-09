@@ -6,6 +6,7 @@ import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.project.domain.model.Position;
+import com.pairing.project.domain.model.ProjectStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -40,6 +41,11 @@ public class ProjectDirectoryAdapter implements ProjectDirectoryPort {
     @Override
     public int findHeadcount(Long positionId) {
         return projectQueryUseCase.findHeadcount(positionId);
+    }
+
+    @Override
+    public ProjectStatus findStatus(Long projectId) {
+        return projectQueryUseCase.findStatus(projectId);
     }
 
     @Override
