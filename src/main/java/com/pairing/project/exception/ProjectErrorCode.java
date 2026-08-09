@@ -28,7 +28,11 @@ public enum ProjectErrorCode implements BaseErrorCode {
     PROJECT_ALREADY_CLOSED(HttpStatus.BAD_REQUEST, "PJ_012",
             "취소되었거나 종료된 프로젝트입니다."),
     POSITION_ALREADY_FILLED(HttpStatus.BAD_REQUEST, "PJ_013",
-            "이미 모집이 마감된 직군입니다.");
+            "이미 모집이 마감된 직군입니다."),
+    RECRUIT_CLOSE_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "PJ_014",
+            "현재는 모집을 종료할 수 없습니다."),
+    REGISTRATION_CANCEL_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "PJ_015",
+            "착수금 결제 전에만 등록을 취소할 수 있습니다.");
 
     private final HttpStatus status;
     private final String code;

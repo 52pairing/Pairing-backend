@@ -152,16 +152,15 @@ public class ProjectCommandService implements ProjectCommandUseCase {
     }
 
     @Override
-    public boolean terminate(Long projectId, Long accountId) {
+    public void cancelRegistration(Long projectId, Long accountId) {
         Project project = loadOwned(projectId, accountId);
 
-        boolean penaltyExpected = project.terminate(LocalDate.now().plusYears(RETENTION_YEARS));
+        project.cancelRegistration(LocalDate.now().plusYears(RETENTION_YEARS));
         // 프로젝트 상태와 포지션 상태가 함께 바뀐다. 수정용 경로는 상태를 옮기지 않는다.
         projectRepository.updateStateWithPositions(project);
 
-        // TODO: 계약 도메인이 붙으면 진행 중인 계약을 여기서 파기한다.
-        //       계약만 살아남으면 안 되므로 같은 트랜잭션에서 직접 호출한다.
-        return penaltyExpected;
+        // 등록을 내렸으니 낼 이유가 없다. 남겨두면 정산 목록에 결제 대기로 계속 뜬다.
+        depositSettlementUseCase.cancelPayable(projectId);
     }
 
     @Override

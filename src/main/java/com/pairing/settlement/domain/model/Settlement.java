@@ -165,6 +165,19 @@ public class Settlement {
         this.feeAmount = feeAmount;
     }
 
+    /**
+     * 프로젝트가 등록 취소돼 낼 이유가 사라졌다. 결제 대상에서 뺀다.
+     *
+     * <p>이미 결제된 건은 건드리지 않는다. 낸 돈을 되돌리는 건 환불이라 별개다.
+     * 등록 취소는 착수금 결제 전에만 가능해 실제로는 PENDING 만 대상이 된다.
+     */
+    public void cancel() {
+        if (!isPayable()) {
+            return;
+        }
+        this.status = SettlementStatus.CANCELED;
+    }
+
     /** 결제 버튼 활성화 기준. 실패한 건은 다시 시도할 수 있다. (P32) */
     public boolean isPayable() {
         return this.status == SettlementStatus.PENDING

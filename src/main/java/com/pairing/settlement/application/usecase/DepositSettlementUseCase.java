@@ -30,4 +30,12 @@ public interface DepositSettlementUseCase {
      * 실제로는 PENDING 상태만 대상이 된다. 대상이 없으면 아무 일도 하지 않는다.
      */
     void recalculateClientDeposit(Long projectId, long budgetAmount, ClientGrade clientGrade);
+
+    /**
+     * 프로젝트 등록이 취소돼 낼 이유가 사라진 정산을 취소한다.
+     *
+     * <p>결제 대기 중인 건만 대상이다. 이미 결제된 건은 건드리지 않는다.
+     * 대상이 없으면 아무 일도 하지 않는다.
+     */
+    void cancelPayable(Long projectId);
 }

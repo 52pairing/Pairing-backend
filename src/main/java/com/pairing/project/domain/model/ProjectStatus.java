@@ -3,9 +3,7 @@ package com.pairing.project.domain.model;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * 프로젝트 전체 상태. (요구사항 R29)
@@ -26,10 +24,6 @@ public enum ProjectStatus {
     CLOSED("종료"),
     CANCELED("취소됨");
 
-    /** 일이 실제로 시작된 뒤의 상태들. */
-    private static final Set<ProjectStatus> STARTED =
-            EnumSet.of(IN_PROGRESS, COMPLETION_PENDING, CLOSED);
-
     /**
      * 정상 진행 순서. 취소됨은 흐름 밖이라 넣지 않는다.
      *
@@ -40,16 +34,6 @@ public enum ProjectStatus {
             IN_PROGRESS, COMPLETION_PENDING, CLOSED);
 
     private final String label;
-
-    /**
-     * 프로젝트가 실제로 시작됐는가.
-     *
-     * <p>중간에 닫을 때 도착 상태를 가른다. 시작 전이면 취소됨, 시작 후여야 종료다.
-     * 협상중에 일부 인원이 계약을 맺었더라도 프로젝트 자체는 아직 시작 전이다.
-     */
-    public boolean isStarted() {
-        return STARTED.contains(this);
-    }
 
     /**
      * 이 상태가 {@code other} 보다 앞 단계인가.
