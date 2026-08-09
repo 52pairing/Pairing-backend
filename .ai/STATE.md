@@ -42,6 +42,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
   - `matching_candidate`/`matching_round`의 NUMERIC 컬럼(similarity/base_score/grade_weight/fit_score/cost_amount)에 JPA 엔티티가 `columnDefinition`을 안 줘서 스키마 검증 실패 → 명시해서 해결.
 - **협상(5번) 연동 — 매칭 쪽 완료, negotiation 쪽 대기**: 협상 타결(AGREED)/결렬(FAILED) 통보용 `MatchingNegotiationOutcomeUseCase`를 2026-08-09 매칭 쪽에서 구현 완료(`MatchingRequestService`가 구현). `markNegotiationAgreed(requestId)`는 신규 도메인 메서드 `MatchingRequest.agreeNegotiation()`(NEGOTIATING일 때만 허용, 기존 `failNegotiation()`과 대칭 설계)을 호출해 `CONTRACT_PENDING`으로 전환하고, `markNegotiationFailed(requestId)`는 기존 `failNegotiation()`을 그대로 쓴다. **negotiation 쪽(5번)이 아직 안 한 것**: `NegotiationLoopService.agree()`/`.fail()`이 이 인바운드 포트를 호출하도록 이어붙이는 작업 — negotiation 도메인 코드라 매칭이 대신 구현하지 않았다.
 - `newProposalCount`(협상 진행조회 응답)는 "클라가 마지막으로 읽은 시점 이후 온 새 제안 수"로 정의 확정. 실제 반영은 5번의 `feature/negotiation-unread-proposals` 브랜치가 develop에 merge된 뒤 자동 적용됨(우리 코드 수정 불필요).
+- **모집 시작 후 프로젝트 수정 → 포지션 임베딩 재생성 (2026-08-09 신규)**: 3번이 프로젝트 수정 API(PR #57)에서 `ProjectUpdatedEvent(projectId)`를 새로 만들어 발행하는데(수정 커밋 후, headcount 잠긴 이후=결제 완료 후에만), 매칭 쪽에 받는 리스너가 없던 걸 develop 재동기화 중 발견. `ProjectUpdatedEventListener` 신규 추가 — 프로젝트의 포지션마다 최신 정보로 임베딩 재생성. 매칭 요청 카드용 `MatchingSnapshot`(위 R32 스냅샷 항목)은 여기서 절대 안 건드린다 — 그건 최초 모집 시작 시점에 고정해야 하는 값이고, 이건 반대로 AI 검색용 임베딩을 최신 상태로 유지하는 것이라 서로 목적이 다르다. 임베딩 텍스트 조립 로직(`buildEmbeddingText`)을 `RecruitingStartedPositionHandler`에서 `PositionEmbeddingTextBuilder`(공유 클래스)로 추출해 양쪽에서 같이 씀. `feature/project-updated-embedding-refresh` 브랜치.
 
 ## 2026-08-09 갱신 — 3번 연동 버그 수정 + 결제→매칭 이벤트 리스너
 
