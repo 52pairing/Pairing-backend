@@ -76,4 +76,9 @@ public class MatchingRequestRepositoryAdapter implements MatchingRequestReposito
     public boolean existsActiveByProjectId(Long projectId) {
         return springDataRepository.existsByProjectIdAndStatusNotIn(projectId, NON_ACTIVE_STATUSES);
     }
+
+    @Override
+    public boolean existsByProjectIdAndStatusIn(Long projectId, List<MatchingStatus> statuses) {
+        return springDataRepository.existsByProjectIdAndStatusIn(projectId, statuses);
+    }
 }

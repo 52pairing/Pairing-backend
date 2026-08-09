@@ -35,6 +35,8 @@ import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRequest
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRoundRepository;
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.SkillCode;
+import com.pairing.project.application.usecase.ProjectQueryUseCase;
+import com.pairing.project.domain.model.ProjectStatus;
 import com.pairing.terms.domain.model.TermsCode;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsAgreementRepository;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsRepository;
@@ -60,6 +62,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -119,6 +122,8 @@ class MatchingIntegrationTest {
     private MatchingCandidateRepository matchingCandidateRepository;
     @Autowired
     private MatchingSnapshotRepository matchingSnapshotRepository;
+    @Autowired
+    private ProjectQueryUseCase projectQueryUseCase;
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -455,6 +460,8 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.status").value("NEGOTIATING"))
                 .andExpect(jsonPath("$.data.negotiationId").isNotEmpty())
                 .andExpect(jsonPath("$.data.currentRound").isNotEmpty());
+
+        assertThat(projectQueryUseCase.findStatus(PROJECT_ID)).isEqualTo(ProjectStatus.NEGOTIATING);
     }
 
     @Test
@@ -518,5 +525,36 @@ class MatchingIntegrationTest {
                                 {"type":"INITIAL","quantity":3}"""))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("MT_013"));
+    }
+
+    @Test
+    @DisplayName("모집이 종료된 프로젝트면 매칭 요청 발송을 막는다")
+    void sendRequestsBlockedWhenProjectClosed() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        jdbcTemplate.update("UPDATE project SET status = ? WHERE id = ?", "CLOSED", PROJECT_ID);
+
+        Map<String, Object> body = Map.of("positionId", POSITION_ID, "candidateIds", List.of(candidate.getId()));
+        mockMvc.perform(post("/api/v1/matchings/requests")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_014"));
+    }
+
+    @Test
+    @DisplayName("취소된 프로젝트면 재추천을 막는다")
+    void rerecommendBlockedWhenProjectCanceled() throws Exception {
+        seedRound(2);
+        jdbcTemplate.update("UPDATE project SET status = ? WHERE id = ?", "CANCELED", PROJECT_ID);
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_014"));
     }
 }

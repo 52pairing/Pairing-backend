@@ -11,6 +11,7 @@ import com.pairing.matching.domain.repository.MatchingRequestRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import com.pairing.matching.exception.MatchingErrorCode;
 import com.pairing.matching.presentation.api.response.CandidateListResponse;
+import com.pairing.project.domain.model.ProjectStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
         if (!projectDirectoryPort.isOwnedByAccount(projectId, accountId)) {
             throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
         }
+        assertRecruiting(projectId);
         ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
 
         int recruitCount;
@@ -62,6 +64,17 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
         MatchingRound round = matchingRoundCreationService.createRound(projectId, positionId, type, recruitCount,
                 costAmount);
         return candidateResponseAssembler.build(round, accountId);
+    }
+
+    /**
+     * 모집 종료·취소된 프로젝트면 재추천을 막는다. RECRUITING 이후(협상중·계약대기 등)는 허용한다 —
+     * 같은 프로젝트의 다른 포지션이 앞서가도 이 포지션은 여전히 재추천 대상일 수 있어서다.
+     */
+    private void assertRecruiting(Long projectId) {
+        ProjectStatus status = projectDirectoryPort.findStatus(projectId);
+        if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
+            throw new BusinessException(MatchingErrorCode.PROJECT_RECRUITING_CLOSED);
+        }
     }
 
     private void assertFreeAvailable(Long projectId) {

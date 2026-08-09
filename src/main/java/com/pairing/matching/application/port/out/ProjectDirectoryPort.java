@@ -1,6 +1,7 @@
 package com.pairing.matching.application.port.out;
 
 import com.pairing.matching.application.result.ProjectPositionSummary;
+import com.pairing.project.domain.model.ProjectStatus;
 
 import java.util.List;
 
@@ -29,6 +30,13 @@ public interface ProjectDirectoryPort {
 
     /** 포지션의 모집 인원. 노출 수·인원 초과 검증에 쓴다. */
     int findHeadcount(Long positionId);
+
+    /**
+     * 프로젝트 대표 상태. 매칭 요청 발송·재추천 전에 모집 종료·취소된 프로젝트를 걸러내는 데 쓴다
+     * (모집 종료로 강제 마감된 포지션은 인원이 안 찼어도 CLOSED라 인원 초과 검증만으로는 못 막는다).
+     * 프로젝트가 없으면 {@code PJ_001}을 던진다.
+     */
+    ProjectStatus findStatus(Long projectId);
 
     /** 프로젝트에 속한 포지션 ID 전체(positionNo 오름차순). 결제 완료 후 포지션별로 초기 라운드를 돌릴 때 쓴다. */
     List<Long> findPositionIds(Long projectId);

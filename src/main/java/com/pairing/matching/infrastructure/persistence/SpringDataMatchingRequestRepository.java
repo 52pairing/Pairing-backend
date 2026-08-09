@@ -22,6 +22,8 @@ public interface SpringDataMatchingRequestRepository extends JpaRepository<Match
 
     boolean existsByProjectIdAndStatusNotIn(Long projectId, List<MatchingStatus> excludedStatuses);
 
+    boolean existsByProjectIdAndStatusIn(Long projectId, List<MatchingStatus> statuses);
+
     @Query("select m from MatchingRequestJpaEntity m where m.projectId in :projectIds "
             + "and (:positionId is null or m.positionId = :positionId) "
             + "and (:status is null or m.status = :status)")
