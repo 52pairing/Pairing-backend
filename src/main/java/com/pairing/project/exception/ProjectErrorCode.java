@@ -19,6 +19,8 @@ public enum ProjectErrorCode implements BaseErrorCode {
             "착수금 결제 후에는 모집 인원을 변경할 수 없습니다."),
     POSITION_NOT_CHANGEABLE(HttpStatus.BAD_REQUEST, "PJ_008",
             "착수금 결제 후에는 모집 직군을 추가하거나 삭제할 수 없습니다."),
+    BUDGET_NOT_CHANGEABLE(HttpStatus.BAD_REQUEST, "PJ_011",
+            "착수금 결제 후에는 예산을 변경할 수 없습니다."),
     HEADCOUNT_BELOW_CONFIRMED(HttpStatus.BAD_REQUEST, "PJ_009",
             "이미 확정된 인원보다 적게 줄일 수 없습니다."),
     EXTENSION_LIMIT_EXCEEDED(HttpStatus.BAD_REQUEST, "PJ_010",

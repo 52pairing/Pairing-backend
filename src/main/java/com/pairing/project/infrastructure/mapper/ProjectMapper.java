@@ -98,6 +98,30 @@ public class ProjectMapper {
                 domain.getRetentionUntil());
     }
 
+    /**
+     * 수정 가능한 스칼라만 덮어쓴다. 상태·확정 인원·재추천 횟수는 건드리지 않는다.
+     *
+     * <p>{@code Project.update} 가 바꾸는 값과 같은 집합이다. 자식 컬렉션은 여기서 다루지 않고
+     * 어댑터가 유니크 제약 순서를 맞춰가며 동기화한다.
+     */
+    public void applyEditable(ProjectJpaEntity entity, Project domain) {
+        entity.applyEditable(
+                domain.getTitle(),
+                domain.getStartDesiredDate(),
+                domain.isStartNegotiable(),
+                domain.getPeriodValue(),
+                domain.getPeriodUnit(),
+                domain.getBudgetAmount(),
+                domain.getWorkStyle(),
+                domain.getWorkForm(),
+                domain.getWorkLocation(),
+                domain.getCurrentSituation(),
+                domain.getMainTask(),
+                domain.getDetailScope(),
+                domain.getExtraNote(),
+                domain.getTotalHeadcount());
+    }
+
     public Project toDomain(ProjectJpaEntity entity) {
         if (entity == null) {
             return null;
@@ -171,7 +195,8 @@ public class ProjectMapper {
                 skills);
     }
 
-    private ProjectPositionJpaEntity toPositionJpaEntity(Position domain) {
+    /** 신규 포지션 1건. 수정에서 추가되는 포지션도 이걸로 만든다. */
+    public ProjectPositionJpaEntity toPositionJpaEntity(Position domain) {
         ProjectPositionJpaEntity entity = new ProjectPositionJpaEntity(
                 domain.getId(),
                 domain.getPositionNo(),

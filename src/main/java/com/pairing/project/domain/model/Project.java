@@ -208,6 +208,10 @@ public class Project {
         if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
             throw new BusinessException(ProjectErrorCode.INVALID_STATUS);
         }
+        // 착수금 수수료가 등록 시점 예산으로 이미 확정·결제됐다. 예산을 바꾸면 낸 금액과 어긋난다.
+        if (!isHeadcountChangeable() && !Objects.equals(this.budgetAmount, budgetAmount)) {
+            throw new BusinessException(ProjectErrorCode.BUDGET_NOT_CHANGEABLE);
+        }
 
         List<Long> safeFileIds = fileIds == null ? List.of() : fileIds;
         validateBasic(title, startDesiredDate, periodValue, periodUnit, budgetAmount,
@@ -252,6 +256,8 @@ public class Project {
         List<Position> result = new ArrayList<>();
         int no = 1;
 
+        // 기존 포지션도 요청 순서대로 번호를 다시 매긴다. 새 포지션을 앞에 끼우면
+        // 기존 번호와 겹쳐 uk_project_position 을 위반하기 때문이다.
         for (PositionUpdate u : updates) {
             if (u.positionId() == null) {
                 if (!changeable) {
@@ -271,8 +277,8 @@ public class Project {
             }
             existing.changeCondition(u.jobCategory(), u.jobRole(),
                     u.minCareerYears(), u.headcount(), u.skills());
+            existing.renumber(no++);
             result.add(existing);
-            no++;
         }
 
         // 요청에 없는 기존 포지션 = 삭제 대상
@@ -306,11 +312,78 @@ public class Project {
         this.recruitDeadline = this.recruitDeadline.plusWeeks(EXTENSION_WEEKS);
     }
 
-    /** 남은 기간과 무관하게 모집을 닫는다. 진행 중인 협상·계약은 그대로 이어진다. */
-    public void closeRecruit() {
+    /**
+     * 남은 기간과 무관하게 모집을 닫는다. 프로젝트는 취소됨으로 넘어간다.
+     *
+     * <p>요구사항의 상태 정의에서 [취소됨] 의 예시가 "클라이언트가 모집을 종료했습니다" 다.
+     * 모집을 닫는다는 것은 더 이상 모집·협상·계약을 진행하지 않겠다는 뜻으로 본다.
+     *
+     * <p>진행 중인 협상이 있는 채로 닫으면 그 협상이 갈 곳이 없어진다. 그 판정은 협상 도메인만
+     * 할 수 있어 여기서는 막지 못한다. 호출부가 먼저 확인해야 한다.
+     */
+    public void closeRecruit(LocalDate retentionUntil) {
         requireStatus(ProjectStatus.RECRUITING);
         positions.stream().filter(p -> !p.isFilled()).forEach(Position::close);
         this.recruitDeadline = LocalDateTime.now();
+        this.status = ProjectStatus.CANCELED;
+        this.canceledAt = LocalDateTime.now();
+        this.retentionUntil = retentionUntil;
+    }
+
+    /**
+     * 모집 기간 만료로 인한 취소. (정책 P46)
+     *
+     * <p>마감이 지났는데 아직 모집 중이면 필요한 인원이 확정되지 않은 것이다.
+     * 인원이 다 찼다면 계약 도메인이 이미 진행중으로 넘겼을 것이기 때문이다. (P47)
+     *
+     * <p>클라이언트가 누른 모집 종료와 결과는 같지만 원인이 다르다. 연장을 다 쓰고도 만료된 경우는
+     * 파기 판정이라 위약금 대상이고, 연장하지 않고 기본 2주가 지난 경우는 대상이 아니다.
+     * 그 구분은 {@code extensionCount} 로 나중에 판정한다.
+     *
+     * <p>{@code recruitDeadline} 은 덮어쓰지 않는다. 언제 만료됐는지가 위약금 산정 근거가 된다.
+     */
+    public void expireRecruit(LocalDate retentionUntil) {
+        requireStatus(ProjectStatus.RECRUITING);
+        positions.stream().filter(p -> !p.isFilled()).forEach(Position::close);
+        this.status = ProjectStatus.CANCELED;
+        this.canceledAt = LocalDateTime.now();
+        this.retentionUntil = retentionUntil;
+    }
+
+    /** 연장 기회를 다 쓰고도 만료됐는가. 파기 판정과 위약금 대상 여부를 가른다. (P46) */
+    public boolean isExtensionExhausted() {
+        return this.extensionCount >= MAX_EXTENSION;
+    }
+
+    /**
+     * 중도 종료. (요구사항 R30)
+     *
+     * <p>도착 상태는 계약자 유무가 아니라 <b>현재 상태</b>가 정한다. 진행중 이전에 닫으면 일이
+     * 시작되지 않은 것이라 취소됨이고, 진행중 이후에 닫아야 종료다.
+     *
+     * <p>계약자 유무는 위약금 안내에만 쓴다. 위약금 산정은 계약 단위이며 이 도메인이 하지 않는다.
+     *
+     * <p>진행 중인 계약을 파기하는 것은 계약 도메인 몫이다. 계약만 살아남으면 안 되므로
+     * 이벤트가 아니라 같은 트랜잭션에서 직접 호출해야 한다.
+     *
+     * @return 위약금 안내 대상 여부
+     */
+    public boolean terminate(LocalDate retentionUntil) {
+        if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
+            throw new BusinessException(ProjectErrorCode.INVALID_STATUS);
+        }
+        positions.forEach(Position::close);
+
+        if (status.isStarted()) {
+            this.status = ProjectStatus.CLOSED;
+            this.closedAt = LocalDateTime.now();
+        } else {
+            this.status = ProjectStatus.CANCELED;
+            this.canceledAt = LocalDateTime.now();
+        }
+        this.retentionUntil = retentionUntil;
+
+        return hasConfirmedMember();
     }
 
     public void cancel(LocalDate retentionUntil) {
@@ -322,8 +395,31 @@ public class Project {
         this.retentionUntil = retentionUntil;
     }
 
+    /**
+     * 완료 처리. 진행중 -> 완료 대기. (정책 P30)
+     *
+     * <p>여기서 끝이 아니다. 성공보수 수수료 결제 버튼이 열릴 뿐이고, 그 결제까지 끝나야
+     * {@link #close} 로 종료가 된다.
+     *
+     * <p>진행중이 아니면 PJ_006. 포지션은 아직 닫지 않는다. 결제가 남아 있어 되돌아올 여지가 있다.
+     */
+    public void requestCompletion() {
+        requireStatus(ProjectStatus.IN_PROGRESS);
+        this.status = ProjectStatus.COMPLETION_PENDING;
+        this.paymentStatus = ProjectPaymentStatus.SUCCESS_FEE_PENDING;
+    }
+
+    /**
+     * 성공보수 결제 완료. 완료 대기 -> 종료. (정책 P30)
+     *
+     * <p>완료 대기가 아니면 PJ_006. 일이 끝났으므로 남아 있는 포지션도 함께 닫는다.
+     * 리뷰 작성은 이 상태부터 열린다. (P51)
+     */
     public void close(LocalDate retentionUntil) {
+        requireStatus(ProjectStatus.COMPLETION_PENDING);
+        positions.forEach(Position::close);
         this.status = ProjectStatus.CLOSED;
+        this.paymentStatus = ProjectPaymentStatus.SUCCESS_FEE_PAID;
         this.closedAt = LocalDateTime.now();
         this.retentionUntil = retentionUntil;
     }
@@ -334,6 +430,11 @@ public class Project {
 
     public boolean isHeadcountChangeable() {
         return status == ProjectStatus.REGISTERED;
+    }
+
+    /** 계약을 맺은 인원이 한 명이라도 있는가. 중도 종료 시 위약금 안내 여부를 가른다. */
+    public boolean hasConfirmedMember() {
+        return positions.stream().anyMatch(p -> p.getConfirmedCount() > 0);
     }
 
     public boolean isOwnedBy(Long clientProfileId) {

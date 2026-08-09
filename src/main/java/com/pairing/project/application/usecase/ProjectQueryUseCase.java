@@ -2,10 +2,15 @@ package com.pairing.project.application.usecase;
 
 import com.pairing.project.application.result.ProjectDetail;
 import com.pairing.project.application.result.ProjectPositionSummary;
+import com.pairing.project.application.result.ProjectSummary;
 import com.pairing.project.domain.model.Project;
 import com.pairing.project.domain.model.ProjectStatus;
+import com.pairing.project.domain.model.ProjectTab;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 프로젝트 조회 인바운드 포트. 매칭·협상·계약 도메인이 이 인터페이스만 호출한다.
@@ -51,5 +56,19 @@ public interface ProjectQueryUseCase {
 
     /** 상세 화면용. 소유자가 아니면 PJ_003. */
     ProjectDetail getDetailForOwner(Long projectId, Long accountId);
+
+    /**
+     * 내 프로젝트 목록. 탭 하나가 여러 상태를 묶는다.
+     *
+     * <p>{@code tab} 이 null 이면 상태 필터 없이 전부 내려간다.
+     */
+    Page<ProjectSummary> findMine(Long accountId, ProjectTab tab, Pageable pageable);
+
+    /**
+     * 탭별 건수. 탭 옆 배지에 쓴다.
+     *
+     * <p>건수가 0인 탭도 키로 포함한다. 화면이 탭을 전부 그려야 하기 때문이다.
+     */
+    Map<ProjectTab, Long> countMyTabs(Long accountId);
 
 }

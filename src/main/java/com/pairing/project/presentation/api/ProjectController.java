@@ -18,6 +18,7 @@ import com.pairing.project.domain.model.PositionStatus;
 import com.pairing.project.domain.model.ProjectPaymentStatus;
 import com.pairing.project.domain.model.ProjectStatus;
 import com.pairing.project.application.usecase.ProjectCommandUseCase;
+import com.pairing.project.application.usecase.ProjectPreReviewUseCase;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.project.exception.ProjectErrorCode;
 import com.pairing.project.presentation.api.request.ProjectCreateRequest;
@@ -32,6 +33,8 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -48,6 +51,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 프로젝트 등록·조회·수정·취소. (요구사항 R28, R29, R30, R32)
@@ -63,6 +67,7 @@ public class ProjectController {
 
     private final ProjectCommandUseCase projectCommandUseCase;
     private final ProjectQueryUseCase projectQueryUseCase;
+    private final ProjectPreReviewUseCase projectPreReviewUseCase;
 
     @PostMapping
     @PreAuthorize("hasRole('CLIENT')")
@@ -107,20 +112,24 @@ public class ProjectController {
             @Valid @RequestBody ProjectUpdateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 소유자 확인 후 수정. REGISTERED 상태면 검수 로직 재실행(정책 P02).
-        //       변경점이 없으면 프론트가 모달로 안내한다.
-        return ResponseEntity.ok(ApiResponse.success("PROJECT_UPDATED", "수정되었습니다.", sampleDetail()));
+        projectCommandUseCase.update(request.toCommand(projectId, accountId));
+
+        return ResponseEntity.ok(ApiResponse.success("PROJECT_UPDATED", "수정되었습니다.",
+                ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
     @PostMapping("/{projectId}/cancellation")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "프로젝트 취소",
             description = "모집·협상·계약을 더 이상 진행하지 않습니다. 계약 체결 이후에는 위약금이 발생할 수 있습니다.")
+    @ApiErrorCodeExample(domain = ProjectErrorCode.class,
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "INVALID_STATUS"})
     public ResponseEntity<ApiResponse<Void>> cancel(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 상태 CANCELED 전환, 진행 중 매칭/협상 정리
+        projectCommandUseCase.cancel(projectId, accountId);
+
         return ResponseEntity.ok(ApiResponse.success("PROJECT_CANCELED", "프로젝트를 취소했습니다."));
     }
 
@@ -135,8 +144,12 @@ public class ProjectController {
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: tab.getStatuses() IN 조건으로 조회
-        return ResponseEntity.ok(ApiResponse.success("PROJECTS_FOUND", "조회에 성공했습니다.", samplePage(page, size)));
+        Page<ProjectSummaryResponse> data = projectQueryUseCase
+                .findMine(accountId, tab, PageRequest.of(page, size))
+                .map(ProjectSummaryResponse::from);
+
+        return ResponseEntity.ok(ApiResponse.success("PROJECTS_FOUND", "조회에 성공했습니다.",
+                PageResponse.from(data)));
     }
 
     @GetMapping("/mine/tab-counts")
@@ -145,10 +158,12 @@ public class ProjectController {
     public ResponseEntity<ApiResponse<List<ProjectTabCountResponse>>> findMyTabCounts(
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 상태별 count 후 탭 단위로 합산
+        Map<ProjectTab, Long> counts = projectQueryUseCase.countMyTabs(accountId);
+
         return ResponseEntity.ok(ApiResponse.success("TAB_COUNTS_FOUND", "조회에 성공했습니다.",
                 Arrays.stream(ProjectTab.values())
-                        .map(tab -> new ProjectTabCountResponse(tab, null, tab.getLabel(), 1))
+                        .map(tab -> new ProjectTabCountResponse(
+                                tab, null, tab.getLabel(), counts.getOrDefault(tab, 0L)))
                         .toList()));
     }
 
@@ -163,73 +178,96 @@ public class ProjectController {
     public ResponseEntity<ApiResponse<ProjectPreReviewResponse>> preReview(
             @Valid @RequestBody ProjectPreReviewRequest request
     ) {
-        // TODO: 요청 positions 를 순서대로 순회하며 1건씩 집계(직무 기준 병합 금지) -> 부족하면 조건 조정 제안 생성
-        return ResponseEntity.ok(ApiResponse.success("PRE_REVIEW_DONE", "검수가 완료되었습니다.", samplePreReview()));
+        return ResponseEntity.ok(ApiResponse.success("PRE_REVIEW_DONE", "검수가 완료되었습니다.",
+                ProjectPreReviewResponse.from(projectPreReviewUseCase.review(request.toCommand()))));
     }
 
     @GetMapping("/{projectId}/pre-review")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "등록 후 검수 결과 조회",
             description = "등록된 포지션 기준으로 다시 집계합니다. 착수금 결제 여부 판단에 사용합니다.")
+    @ApiErrorCodeExample(domain = ProjectErrorCode.class,
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER"})
     public ResponseEntity<ApiResponse<ProjectPreReviewResponse>> findPreReview(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 등록된 포지션 기준 집계
-        return ResponseEntity.ok(ApiResponse.success("PRE_REVIEW_FOUND", "조회에 성공했습니다.", samplePreReview()));
+        return ResponseEntity.ok(ApiResponse.success("PRE_REVIEW_FOUND", "조회에 성공했습니다.",
+                ProjectPreReviewResponse.from(
+                        projectPreReviewUseCase.reviewRegistered(projectId, accountId))));
     }
 
     @PostMapping("/{projectId}/completion")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "프로젝트 완료 처리",
-            description = "완료 버튼을 눌러 프로젝트를 완료처리 합니다. 성공보수 수수료 정산이 생성되고 결제하면 리뷰 작성이 열립니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "ACCESS_DENIED"})
+            description = "진행중인 프로젝트를 완료 대기로 넘깁니다. 성공보수 수수료 정산이 함께 만들어지고 "
+                    + "결제 버튼이 활성화됩니다. 그 결제까지 끝나야 종료 상태가 되고 리뷰 작성이 열립니다.")
+    @ApiErrorCodeExample(domain = ProjectErrorCode.class,
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "INVALID_STATUS"})
     public ResponseEntity<ApiResponse<ProjectResponse>> complete(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 계약 완료 여부 확인 -> 상태 진행중 -> 완료버튼 누름 -> 완료 대기, 성공보수 정산 생성 후 결제 -> 프로젝트 완료, 리뷰 대상 등록
-        return ResponseEntity.ok(ApiResponse.success("PROJECT_COMPLETED", "프로젝트를 완료 처리했습니다.",
-                sampleDetail()));
+        projectCommandUseCase.complete(projectId, accountId);
+
+        return ResponseEntity.ok(ApiResponse.success("PROJECT_COMPLETION_REQUESTED",
+                "완료 처리했습니다. 성공보수 수수료를 결제하면 종료됩니다.",
+                ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
     @PostMapping("/{projectId}/termination")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "프로젝트 중도 종료",
-            description = "진행 중인 계약이 남아 있는 상태에서 닫습니다. 계약별로 위약금이 발생할 수 있습니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "ACCESS_DENIED"})
+            description = "진행하던 프로젝트를 중간에 닫습니다. "
+                    + "진행중 이전이면 취소됨, 진행중 이후면 종료 상태가 됩니다. "
+                    + "계약을 맺은 인원이 있으면 위약금이 발생할 수 있다는 안내가 함께 내려갑니다.")
+    @ApiErrorCodeExample(domain = ProjectErrorCode.class,
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "INVALID_STATUS"})
     public ResponseEntity<ApiResponse<ProjectResponse>> terminate(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 진행 중 계약 TERMINATED 처리 -> 위약금 산정 -> 상태 CLOSED
-        return ResponseEntity.ok(ApiResponse.success("PROJECT_TERMINATED", "프로젝트를 중도 종료했습니다.",
-                sampleDetail()));
+        boolean penaltyExpected = projectCommandUseCase.terminate(projectId, accountId);
+
+        return ResponseEntity.ok(ApiResponse.success("PROJECT_TERMINATED",
+                penaltyExpected
+                        ? "프로젝트를 중도 종료했습니다. 체결된 계약에 대해 위약금이 발생할 수 있습니다."
+                        : "프로젝트를 중도 종료했습니다.",
+                ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
     @PostMapping("/{projectId}/recruit-close")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "모집 종료",
-            description = "남은 모집 기간과 무관하게 모집을 닫습니다. 이미 진행 중인 협상과 계약은 그대로 이어집니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "ACCESS_DENIED"})
+            description = "남은 모집 기간과 무관하게 모집을 닫습니다. "
+                    + "더 이상 모집·협상·계약을 진행하지 않는다는 뜻이므로 프로젝트는 취소됨 상태가 됩니다. "
+                    + "채워지지 않은 모집 직군은 함께 마감됩니다.")
+    @ApiErrorCodeExample(domain = ProjectErrorCode.class,
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "INVALID_STATUS"})
     public ResponseEntity<ApiResponse<ProjectResponse>> closeRecruit(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 모집 중 포지션 CLOSED 처리, 미응답 매칭 요청 만료
-        return ResponseEntity.ok(ApiResponse.success("RECRUIT_CLOSED", "모집을 종료했습니다.", sampleDetail()));
+        projectCommandUseCase.closeRecruit(projectId, accountId);
+
+        return ResponseEntity.ok(ApiResponse.success("RECRUIT_CLOSED", "모집을 종료했습니다.",
+                ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
     @PostMapping("/{projectId}/recruit-extensions")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "모집 기간 연장",
             description = "1주 단위로 최대 2회 연장합니다. 상한을 넘기면 클라이언트 파기로 간주되어 위약금이 발생합니다.")
+    @ApiErrorCodeExample(domain = ProjectErrorCode.class,
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "INVALID_STATUS", "EXTENSION_LIMIT_EXCEEDED"})
     public ResponseEntity<ApiResponse<ProjectResponse>> extendRecruit(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: extension_count 증가, recruit_deadline 1주 연장
-        return ResponseEntity.ok(ApiResponse.success("RECRUIT_EXTENDED", "모집 기간을 연장했습니다.", sampleDetail()));
+        projectCommandUseCase.extendRecruit(projectId, accountId);
+
+        return ResponseEntity.ok(ApiResponse.success("RECRUIT_EXTENDED", "모집 기간을 연장했습니다.",
+                ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
     // ==========================================
@@ -288,7 +326,7 @@ public class ProjectController {
                 List.of(new ProjectResponse.ParticipantFreelancer(7L, "김개발", JobRole.FRONTEND,
                         MatchingStatus.NEGOTIATING, PayUnit.MONTHLY, 6_200_000L, "협상중", 500L, null)),
                 List.of(new ProjectResponse.AttachedFile(1L, "기획서.pdf", 29_491L, "files/project/uuid.pdf")),
-                LocalDateTime.now(), 700L);
+                LocalDateTime.now(), 700L, true);
     }
 
     private PageResponse<ProjectSummaryResponse> samplePage(int page, int size) {
@@ -302,13 +340,4 @@ public class ProjectController {
         return new PageResponse<>(List.of(summary), page, size, 1, 1, true, true);
     }
 
-    private ProjectPreReviewResponse samplePreReview() {
-        return new ProjectPreReviewResponse(false,
-                List.of(new ProjectPreReviewResponse.Item(0, JobRole.FRONTEND, 2, 5, true, null, List.of()),
-                        new ProjectPreReviewResponse.Item(1, JobRole.BACKEND, 1, 0, false,
-                                "현재 조건에 맞는 백엔드 개발자 후보가 모집 인원보다 부족합니다.",
-                                List.of("요구 스킬을 줄이면 더 많은 후보를 확인할 수 있습니다.",
-                                        "직무를 추가하거나 다른 직무로 변경해보세요."))),
-                "현재 프리랜서 풀 기준 예상 결과입니다. 실제 후보 수 및 매칭 성사 여부는 달라질 수 있습니다.");
-    }
 }

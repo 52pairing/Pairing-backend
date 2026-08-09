@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -93,6 +94,15 @@ public class AccountQueryService implements AccountQueryUseCase {
     @Override
     public Optional<FreelancerProfile> findFreelancerProfileByAccountId(Long accountId) {
         return freelancerProfileRepository.findByAccountId(accountId);
+    }
+
+    @Override
+    public List<Long> filterActiveAiMatchingAgreed(Collection<Long> accountIds) {
+        // 빈 목록을 그대로 내리면 IN () 이 되어 DB 마다 동작이 갈린다. 여기서 끊는다.
+        if (accountIds == null || accountIds.isEmpty()) {
+            return List.of();
+        }
+        return freelancerProfileRepository.filterActiveAiMatchingAgreed(accountIds);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.pairing.project.presentation.api.response;
 
 import com.pairing.meta.domain.model.JobRole;
+import com.pairing.project.application.result.PreReviewResult;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.List;
@@ -24,6 +25,18 @@ public record ProjectPreReviewResponse(
                 example = "현재 프리랜서 풀 기준 예상 결과입니다. 실제 후보 수 및 매칭 성사 여부는 달라질 수 있습니다.")
         String notice
 ) {
+
+    private static final String NOTICE =
+            "현재 프리랜서 풀 기준 예상 결과입니다. 실제 후보 수 및 매칭 성사 여부는 달라질 수 있습니다.";
+
+    public static ProjectPreReviewResponse from(PreReviewResult result) {
+        List<Item> items = result.items().stream()
+                .map(i -> new Item(i.positionIndex(), i.jobRole(), i.headcount(),
+                        i.expectedCandidateCount(), i.matchable(), i.message(), i.suggestions()))
+                .toList();
+
+        return new ProjectPreReviewResponse(result.allMatchable(), items, NOTICE);
+    }
 
     @Schema(name = "PreReviewItem", description = "포지션별 검수 결과")
     public record Item(

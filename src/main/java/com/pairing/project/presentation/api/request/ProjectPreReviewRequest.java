@@ -2,12 +2,14 @@ package com.pairing.project.presentation.api.request;
 
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.SkillCode;
+import com.pairing.project.application.command.PreReviewCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
@@ -22,9 +24,16 @@ public record ProjectPreReviewRequest(
 
         @Schema(description = "확인할 포지션 조건 목록")
         @NotEmpty(message = "포지션 조건은 최소 1건입니다.")
+        @Size(max = 100, message = "포지션은 최대 100건입니다.")
         @Valid
         List<PreReviewPosition> positions
 ) {
+
+    public PreReviewCommand toCommand() {
+        return new PreReviewCommand(positions.stream()
+                .map(p -> new PreReviewCommand.Position(p.jobRole(), p.headcount(), p.skills()))
+                .toList());
+    }
 
         /**
          * 검수용 포지션 조건.
@@ -46,6 +55,7 @@ public record ProjectPreReviewRequest(
 
                 @Schema(description = "요구 스킬. 1개 이상", example = "[\"JAVA\", \"SPRING_BOOT\"]")
                 @NotEmpty(message = "요구 스킬은 1개 이상입니다.")
+                @Size(max = 63, message = "요구 스킬은 최대 63개입니다.")
                 List<SkillCode> skills
         ) {
         }
