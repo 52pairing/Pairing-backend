@@ -88,6 +88,7 @@ public class SignUpService implements SignUpUseCase {
                 command.businessNo(),
                 command.businessField(),
                 command.employeeCount(),
+                command.address(),
                 PaymentPolicy.normalize(command.card()),
                 PaymentPolicy.normalize(command.bankAccount())
         ));
