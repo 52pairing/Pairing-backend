@@ -79,19 +79,28 @@
 - **매칭 요청 카드 라이브 조회 버그(R32) 수정** (HANDOFF 23번, `fix/matching-request-card-snapshot-read` 브랜치) — 3번이 프로젝트 수정 API 구현 중 발견해 질문, 코드 확인 후 답변, 3번 확인받아 구현까지 진행. `MatchingRequestResponseAssembler`가 `MatchingSnapshot`(PROJECT/POSITION)을 읽도록 교체, `companyProfile`만 신규 포트(`findCompanyProfile`)로 계속 라이브 조회. `MatchingIntegrationTest`에 스냅샷 시딩 추가(`seedMatchingSnapshots`). `./gradlew clean build` 통과, push 완료 — **PR #59로 develop에 merge됨**.
 - **모집 시작 후 프로젝트 수정 → 포지션 임베딩 재생성** (HANDOFF 24번, `feature/project-updated-embedding-refresh` 브랜치) — 3번의 `ProjectUpdatedEvent`(PR #57에서 신규 발행, 매칭이 안 받고 있던 걸 develop 재동기화 중 발견) 처리하는 `ProjectUpdatedEventListener` 신규. 위 R32 스냅샷 수정과는 반대 방향(요청 카드는 고정, 임베딩은 최신화)이라 안 겹침. `PositionEmbeddingTextBuilder` 공유 클래스로 추출. 테스트 3개, `./gradlew clean build` 통과, push 완료 — **PR #61로 develop에 merge됨**.
 - **매칭↔프로젝트 상태 연동 3건** (HANDOFF 25번, `feature/matching-project-stage-sync` 브랜치) — 3번이 PR #59 코드 리뷰 중 발견: 매칭이 `ProjectStatus`를 전혀 참조 안 해서 모집 종료·취소된 프로젝트에도 재추천/요청 발송이 되고 있었음. 3번이 이미 project 쪽에 만들어둔 `findStatus`/`startNegotiating`/`syncStage`를 매칭이 그냥 안 부르고 있었던 것(호출 0건 확인). 3가지 다 연결: ①요청 발송·재추천 전 `assertRecruiting()`(CANCELED/CLOSED만 차단) ②`accept()` 끝에 `startNegotiating` ③`markNegotiationFailed`/`reject`에 `syncStage`(카운트 기준 새 리포지토리 메서드 `existsByProjectIdAndStatusIn` 추가, 기존 `existsActiveByProjectId`는 기준이 달라 재사용 안 함). 회귀 테스트 추가하면서 `MatchingNegotiationOutcomeServiceTest`가 실존하지 않는 더미 projectId(1L)를 쓰고 있던 것도 발견해 실제 프로젝트 row 시딩으로 수정. `./gradlew clean build` 통과, push 완료. 상세는 `.ai/STATE.md` 2026-08-09 갱신 섹션.
+- **3일차 배치 — HANDOFF 9/12/22번 완료, 11번 보류 결정**:
+  - Pairing-python `_build_prompt` 실구현(HANDOFF 9번) — `feature/matching-prompt-real-implementation` 브랜치, develop 대상 PR 오픈.
+  - 임베딩 텍스트 `detailScope`/`extraNote` 추가(HANDOFF 22번) — `feature/matching-embedding-detail-fields` 브랜치, merge 완료.
+  - 프리랜서 등급 타이브레이커(HANDOFF 12번 하위) — `feature/matching-freelancer-grade-tiebreaker` 브랜치, merge 완료. `RecruitingStartedEventListenerTest`가 가짜 freelancerId(999_001L)를 쓰던 것도 발견해 실제 시딩으로 수정.
+  - budgetCap Stage F(HANDOFF 11번) 착수 보류 — findCondition 스텁 + 배분 알고리즘 규칙 미확정, 2번/3번에게 확인 요청.
+- **`FreelancerDirectoryAdapter` 완전 교체** — 2번이 "account 도메인 승인은 이미 끝났고 필요한 포트(`AccountQueryUseCase.findFreelancerProfileById/ByAccountId`, `FreelancerConditionUseCase.findMyCondition`)도 이미 있는데 매칭 어댑터만 안 바꿔놨다"고 확인해줘서 `resolveFreelancerId`/`findCondition` 실구현으로 교체. `MatchingErrorCode.FREELANCER_NOT_FOUND`(MT_015) 신규. `feature/matching-freelancer-directory-real-impl` 브랜치, push 완료. 이걸로 budgetCap Stage F 블로커 중 findCondition 쪽은 해소됨(배분 규칙은 여전히 미확정).
+- **budgetCap 배분 정책 결론** — 3번이 정책·요구사항 전수 확인한 결과 "포지션별 1순위 조합" 같은 확정 규칙은 원래 존재한 적이 없었음(HANDOFF 11번이 애초에 잘못된 전제였던 것 확인). 포지션별 예산/기간 입력란 자체가 없어(클라이언트는 총액만 입력) 재료도 없음. 현재 공식(순예산÷인원÷개월수, 경력 무관 동일 상한)을 그대로 유지하는 A안으로 확정 — **코드 변경 없음**. 경력별 차등(B안)이나 LLM 조합 배분(C안)은 제품 결정이 필요해 팀 회의 안건으로 남김.
+- **문서 동기화(HANDOFF 13번)**: `.ai/API.md` 에러 코드 표에 MT_001~MT_015 전부 추가(기존엔 매칭 에러코드가 하나도 없었음). `docs/api-dto.csv`의 `RerecommendRequest.type`/`quantity` 설명에 실제 검증 규칙(MT_012/MT_013) 명시. `docs/spec/requirements.md` 클라이언트 회원가입 명세에 회사주소 필드 반영(`feature/client-address-plus`로 이미 구현·merge된 게 명세엔 누락돼 있었음).
 
 ## 다음 세션에서 할 일
 
 1. ~~PR #51/#53/`feature/matching-negotiation-outcome` merge, 협상 인바운드 배선~~ — 전부 완료.
 1-1. ~~`fix/matching-request-card-snapshot-read` PR 생성~~ — PR #59 merge 완료.
 1-2. ~~`feature/project-updated-embedding-refresh` PR 머지~~ — PR #61 merge 완료.
-1-3. **`feature/matching-project-stage-sync` PR 리뷰/머지 대기** — 매칭↔프로젝트 상태 연동 3건.
+1-3. ~~`feature/matching-project-stage-sync` PR 리뷰/머지~~ — 매칭↔프로젝트 상태 연동 3건, merge 완료.
 2. ~~`MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 구현~~ — 매칭+negotiation 양쪽 다 완료.
 3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
 4. ~~budgetCap의 WEEK→개월 환산 규칙~~ — 4주=1개월로 확정, 반영 완료.
-5. 임베딩 텍스트에 `detailScope`/`extraNote`도 빠져있음(HANDOFF 22번) — 백로그, 아직 미착수.
-6. `resolveFreelancerId`/`findCondition`(freelancerId 기준) — 1번의 account_id↔freelancer_profile.id 조회 메서드 승인되면 `FreelancerDirectoryAdapter` 마저 완전 교체.
+5. ~~임베딩 텍스트에 `detailScope`/`extraNote`도 빠져있음(HANDOFF 22번)~~ — 완료.
+6. ~~`resolveFreelancerId`/`findCondition`(freelancerId 기준)~~ — 완료. 계정 승인은 이미 끝나 있었고 매칭 어댑터만 안 바꿔놓은 상태였음.
 7. `expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현 — 나중에 만들 때 `syncStage` 호출도 같이 넣을 것(HANDOFF 25번 참고).
-8. ~~`AI매칭_API_화면매핑_최신본.md`(MT_009/quantity 경고) 반영 확인~~ — 완료. 그 이후 코드가 또 바뀌어서(MT_012 실제 검증 추가, MT_013/MT_014 신규) 문서가 다시 뒤처짐 — 사용자가 직접 갱신할 항목.
-9. `.ai/HANDOFF.md`의 "3일차" 나머지 항목: Pairing-python `_build_prompt` 실구현 + 하드필터 + Stage F 실제 배분 알고리즘 + 등급 타이브레이커 + 통합테스트/문서 동기화.
-10. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.
+8. ~~`AI매칭_API_화면매핑_최신본.md`(MT_009/quantity 경고) 반영 확인~~ — 완료. 그 이후 코드가 또 바뀌어서(MT_012 실제 검증 추가, MT_013/MT_014/MT_015 신규) 문서가 다시 뒤처짐 — 사용자가 직접 갱신할 항목.
+9. Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번) — 아직 미착수. 3일차 나머지 항목 중 남은 유일한 것.
+10. budgetCap Stage F(HANDOFF 11번) — 배분 알고리즘 규칙 자체가 확정된 적 없음이 3번 확인으로 밝혀짐. 현재 공식(A안) 유지로 결정, 팀 회의에서 경력 차등(B안)/LLM 조합(C안) 여부만 다시 논의될 수 있음.
+11. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.

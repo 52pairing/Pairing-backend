@@ -2,11 +2,7 @@
 
 최종 갱신: 2026-08-09. 이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다.
 
-**3일차 배치(2026-08-09, PR #62 이후) — 아래 세 브랜치 push 완료, 리뷰/머지 대기**:
-- Pairing-python `feature/matching-prompt-real-implementation`(develop 대상) — 9번 `_build_prompt` 실구현.
-- `feature/matching-embedding-detail-fields` — 22번 임베딩 텍스트 detailScope/extraNote 추가.
-- `feature/matching-freelancer-grade-tiebreaker` — 12번 하위 항목, 등급 타이브레이커 반영.
-- **11번(budgetCap Stage F)은 보류 결정.** 아래 11번 항목에 이유 남김.
+**3일차 배치(2026-08-09).** `feature/matching-embedding-detail-fields`(22번)/`feature/matching-freelancer-grade-tiebreaker`(12번 하위)/`feature/matching-project-stage-sync`(25번)/`feature/matching-freelancer-directory-real-impl`(12번 하위) 전부 develop에 merge 완료. Pairing-python `feature/matching-prompt-real-implementation`(9번)은 push 완료, develop 대상 PR 오픈해서 리뷰/머지 대기 중. **11번(budgetCap Stage F)은 A안(현행 유지) 확정, 코드 변경 없음** — 아래 11번 항목 참고. 3일차 남은 건 10번(Pairing-python 하드필터)뿐.
 
 ## 진행 현황 요약
 
@@ -57,12 +53,12 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 10. `Pairing-python`의 `search_similar_freelancers`에 하드필터 추가(직군/직무/AI매칭 동의/일정/단가) — 지금은 조건 없이 순수 벡터 검색만 함. 이전에 노출된 프리랜서 제외도 지금은 Spring 쪽에서 결과 받은 뒤 후처리로 거르고 있음(`MatchingRoundCreationService.excludePreviouslySurfaced`) — Pairing-python이 검색 전에 미리 제외하도록 옮기면 풀 크기가 줄어드는 문제가 해결됨.
 11. **(2026-08-09 착수 보류 결정, 사용자 확인)** `budgetCap`을 1단계 단순 공식(구현 완료, `BudgetCapCalculator`)에서 Stage F 정확한 배분 알고리즘(포지션별 1순위 조합 → 초과시 비싼 포지션을 다음 순위로 교체)으로 교체하고, Stage F 가드(`MatchingRoundCreationService`의 `applyGuard(true, null)` placeholder)도 실제 검증으로 교체하는 항목. 착수 전 확인해보니 두 가지가 막혀 있었음:
     - ~~가드가 검증할 프리랜서 실제 스킬/단가 데이터는 `FreelancerDirectoryPort.findCondition()`으로 가져오는데, 이게 아직 고정값을 돌려주는 스텁이었다~~ — 2026-08-09 해소. 2번이 "account 도메인 승인은 이미 끝났고 필요한 포트(`AccountQueryUseCase.findFreelancerProfileById/ByAccountId`, `FreelancerConditionUseCase.findMyCondition`)도 이미 다 있는데 매칭이 어댑터만 안 바꿔놨다"고 확인해줌 — `FreelancerDirectoryAdapter`(12번 참고) 실구현으로 교체 완료.
-    - **아직 남음**: "포지션별 1순위 조합 → 교체" 배분 규칙의 정확한 알고리즘(교체 순서, 종료 조건 등)이 이 리포 안에 문서로 없고, PM 상태표에도 "2번(조건)/3번(예산·정산 정책) 확정 필요"로 남아있어 임의로 정하면 다시 뜯어고칠 위험이 큼. 3번에게 확인 요청 보냄, 답변 대기 중. 배분 규칙 확정되면 재착수.
+    - ~~"포지션별 1순위 조합 → 교체" 배분 규칙의 정확한 알고리즘(교체 순서, 종료 조건 등)이 이 리포 안에 문서로 없고, PM 상태표에도 "2번(조건)/3번(예산·정산 정책) 확정 필요"로 남아있어 임의로 정하면 다시 뜯어고칠 위험이 큼~~ — 2026-08-09 **결론**: 3번이 정책·요구사항 전수 확인한 결과 그런 확정 규칙은 원래 존재한 적이 없었음(이 항목의 전제 자체가 잘못된 것으로 확인됨). 포지션별 예산/기간 입력란도 없어(클라이언트는 총액만 입력) 배분 알고리즘을 만들 재료 자체가 없음. **현재 공식(순예산÷인원÷개월수, A안) 그대로 유지하기로 확정 — 코드 변경 없음.** 경력별 차등(B안)·LLM 조합 배분(C안)은 "AI가 예산까지 배분한다"가 제품 포인트로 필요할 때 팀 회의에서 다시 논의.
 12. ~~freelancer/project/negotiation 도메인이 실제로 만들어지면 스텁 어댑터 3개 교체~~ — 2026-08-08, `feature/matching-directory-adapters` 브랜치에서 완료(Project/Negotiation 완전 교체, Freelancer는 카드 요약만). ~~이슈·PR 생성~~ — 2026-08-09 **PR #51** 오픈 완료(develop 대상). 첫 push 때 CI가 재추천 테스트에서만 500 실패 → `/rerecommendations`의 레이트리밋이 Redis 없는 CI에서 실제 연결을 시도해서였음, 테스트에서 `RateLimitProvider` 목 처리로 해결·재push 완료. **다음 세션 최우선: CI 그린 확인하고 팀원 리뷰/머지 대기.**
     - ~~프리랜서 등급 타이브레이커(base_score 동점 시 마스터>시니어>주니어)는 아직 랭킹 로직에 미반영~~ — 2026-08-09 완료. `MatchingRoundCreationService.breakScoreTiesByGrade`가 점수 내림차순+동점 시 등급 내림차순 안정 정렬을 수행(LLM이 준 순서는 점수·등급이 모두 같을 때만 유지됨). `feature/matching-freelancer-grade-tiebreaker` 브랜치.
     - ~~`resolveFreelancerId`/`findCondition`(freelancerId 기준)은 account 도메인의 account_id↔freelancer_profile.id 조회 메서드가 나와야 완전 교체 가능~~ — 2026-08-09 완료. `AccountQueryUseCase.findFreelancerProfileByAccountId/ById` + `FreelancerConditionUseCase.findMyCondition`으로 실구현 교체. 둘 다 못 찾으면 `MatchingErrorCode.FREELANCER_NOT_FOUND`(MT_015, 신규). `MatchingIntegrationTest`에 실제 `freelancer_condition` 시드 추가(기존엔 findCondition 스텁이라 필요 없었음). `feature/matching-freelancer-directory-real-impl` 브랜치.
     - `src/test/java/com/pairing/matching/presentation/api/MatchingIntegrationTest.java`(H2 통합테스트, 후보조회/거절/요청발송/조회/수락/거절/재추천 9개 케이스)로 검증 완료 — Swagger 수동 클릭 대신 이 테스트를 돌려서 확인하면 됨. PR Verification 섹션에 이 테스트 통과를 근거로 적을 것.
-13. 통합 테스트, `.ai/API.md`/`docs/api-dto.csv` 최종 동기화, 에러코드(`AI_001~AI_030`) 매핑 점검.
+13. ~~통합 테스트, `.ai/API.md`/`docs/api-dto.csv` 최종 동기화, 에러코드 매핑 점검~~ — 2026-08-09 완료. `.ai/API.md` 에러 코드 표에 MT_001~MT_015 전부 추가(기존엔 매칭 에러코드가 하나도 없었음). `docs/api-dto.csv`의 `RerecommendRequest.type`/`quantity` 설명에 실제 검증 규칙(MT_012/MT_013) 명시. 겸사겸사 `docs/spec/requirements.md` 클라이언트 회원가입 명세에 회사주소 필드도 반영(`feature/client-address-plus`로 이미 구현·merge된 게 명세엔 빠져 있었음).
 14. ~~`MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보 인바운드 포트) 구현~~ — 2026-08-09 매칭 쪽 구현 완료(`feature/matching-negotiation-outcome` 브랜치, develop 대상 PR 생성 대기).
     - `markNegotiationAgreed(requestId)` → `MatchingRequest.agreeNegotiation()`(신규 도메인 메서드, NEGOTIATING일 때만 허용) → `CONTRACT_PENDING`.
     - `markNegotiationFailed(requestId)` → 기존 `MatchingRequest.failNegotiation()` 그대로 사용 → `NEGOTIATION_FAILED`.
