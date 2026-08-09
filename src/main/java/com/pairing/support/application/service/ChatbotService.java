@@ -14,6 +14,7 @@ import com.pairing.support.domain.repository.ChatbotQuotaRepository;
 import com.pairing.support.domain.repository.ChatbotSessionRepository;
 import com.pairing.support.exception.ChatbotErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,10 +42,26 @@ public class ChatbotService implements ChatbotUseCase {
         ChatbotMessage saved = messageRepository.save(
                 ChatbotMessage.create(session.getId(), command.question(), answer));
 
-        quotaRepository.save(quota); // AI 호출이 성공했을 때만 사용량을 반영한다.
+        // AI 호출이 성공했을 때만 사용량을 반영한다.
+        ChatbotQuota persistedQuota = saveQuotaSafely(command.accountId(), quota);
 
         return new ChatbotAnswerResult(session.getId(), saved.getQuestion(), saved.getAnswer(),
-                quota.remaining(), saved.getCreatedAt());
+                persistedQuota.remaining(), saved.getCreatedAt());
+    }
+
+    /**
+     * 오늘자 quota 행이 없어서 새로 만든 경우, 동시에 들어온 다른 요청이 먼저 그 행을 만들어버리면
+     * INSERT 가 유니크 제약(계정+날짜) 위반으로 실패한다. 이때는 그 요청이 만든 행을 다시 읽어 증가시킨다.
+     */
+    private ChatbotQuota saveQuotaSafely(Long accountId, ChatbotQuota quota) {
+        try {
+            return quotaRepository.save(quota);
+        } catch (DataIntegrityViolationException e) {
+            ChatbotQuota existing = quotaRepository.findByAccountIdAndQuotaDate(accountId, LocalDate.now())
+                    .orElseThrow(() -> e);
+            existing.increment();
+            return quotaRepository.save(existing);
+        }
     }
 
     @Override
