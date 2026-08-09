@@ -291,6 +291,7 @@ class MatchingIntegrationTest {
         body.put("businessNo", "1234567890");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
+        body.put("address", "서울 강남구 테헤란로 1");
         body.put("email", CLIENT_EMAIL);
         body.put("name", "김클라");
         body.put("phone", "010-1111-2222");
