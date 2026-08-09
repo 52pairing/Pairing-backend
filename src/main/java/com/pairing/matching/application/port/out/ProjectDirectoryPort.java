@@ -21,6 +21,12 @@ public interface ProjectDirectoryPort {
     /** 프로젝트를 등록한 클라이언트의 accountId. budgetCap 계산 시 등급 조회에 쓴다. */
     Long findClientAccountId(Long projectId);
 
+    /**
+     * 클라이언트 회사 프로필 요약(업종·직원수). account 도메인 값이라 매칭 시점에 고정할 필요가
+     * 없어(R32는 project 도메인의 수정 가능 필드에만 적용) 항상 라이브로 읽는다.
+     */
+    String findCompanyProfile(Long projectId);
+
     /** 포지션의 모집 인원. 노출 수·인원 초과 검증에 쓴다. */
     int findHeadcount(Long positionId);
 

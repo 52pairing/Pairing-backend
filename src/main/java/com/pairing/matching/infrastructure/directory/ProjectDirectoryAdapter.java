@@ -50,18 +50,21 @@ public class ProjectDirectoryAdapter implements ProjectDirectoryPort {
     }
 
     @Override
+    public String findCompanyProfile(Long projectId) {
+        Long clientProfileId = projectQueryUseCase.findClientProfileId(projectId);
+        return accountQueryUseCase.findClientProfileById(clientProfileId)
+                .map(profile -> profile.getBusinessField().getLabel() + " · " + profile.getEmployeeCount().getLabel())
+                .orElse(null);
+    }
+
+    @Override
     public ProjectPositionSummary findPositionSummary(Long projectId, Long positionId) {
         com.pairing.project.application.result.ProjectPositionSummary source =
                 projectQueryUseCase.findProjectPositionSummary(projectId, positionId);
-        String companyName = null;
-        String companyProfile = null;
         Long clientProfileId = projectQueryUseCase.findClientProfileId(projectId);
         ClientProfile clientProfile = accountQueryUseCase.findClientProfileById(clientProfileId).orElse(null);
-        if (clientProfile != null) {
-            companyName = clientProfile.getCompanyName();
-            companyProfile = clientProfile.getBusinessField().getLabel() + " · "
-                    + clientProfile.getEmployeeCount().getLabel();
-        }
+        String companyName = clientProfile != null ? clientProfile.getCompanyName() : null;
+        String companyProfile = findCompanyProfile(projectId);
 
         String workLabel = source.workStyle().getLabel() + " · " + source.workForm().getLabel();
         String periodLabel = source.periodValue() + source.periodUnit().getLabel();

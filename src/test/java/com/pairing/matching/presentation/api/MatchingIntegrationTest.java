@@ -24,12 +24,17 @@ import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.RankedFreelancer;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.model.RecommendationType;
+import com.pairing.matching.domain.model.SnapshotType;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
+import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingCandidateRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRequestRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRoundRepository;
+import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.SkillCode;
 import com.pairing.terms.domain.model.TermsCode;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsAgreementRepository;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsRepository;
@@ -113,6 +118,8 @@ class MatchingIntegrationTest {
     @Autowired
     private MatchingCandidateRepository matchingCandidateRepository;
     @Autowired
+    private MatchingSnapshotRepository matchingSnapshotRepository;
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
@@ -159,6 +166,7 @@ class MatchingIntegrationTest {
         matchingRequestJpaRepository.deleteAll();
         matchingCandidateJpaRepository.deleteAll();
         matchingRoundJpaRepository.deleteAll();
+        jdbcTemplate.update("DELETE FROM matching_snapshot WHERE project_id = ?", PROJECT_ID);
         jdbcTemplate.update("DELETE FROM position_skill WHERE position_id = ?", POSITION_ID);
         jdbcTemplate.update("DELETE FROM project_position WHERE id = ?", POSITION_ID);
         jdbcTemplate.update("DELETE FROM project WHERE id = ?", PROJECT_ID);
@@ -190,6 +198,7 @@ class MatchingIntegrationTest {
         Long clientProfileId = clientProfileRepository.findByAccountIdAndDeletedAtIsNull(clientAccountId)
                 .orElseThrow().getId();
         seedProjectWithPosition(clientProfileId);
+        seedMatchingSnapshots();
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {
@@ -247,6 +256,33 @@ class MatchingIntegrationTest {
         jdbcTemplate.update(
                 "INSERT INTO position_skill (position_id, skill_code) VALUES (?, ?)",
                 POSITION_ID, "SPRING_BOOT");
+    }
+
+    /**
+     * 매칭 요청 카드는 라이브 조회가 아니라 모집 시작 시점에 얼린 스냅샷을 읽는다(R32, 프로젝트
+     * 수정 API 대비). 이 테스트는 project 도메인의 결제완료 이벤트 흐름(RecruitingStartedEvent)을
+     * 안 타고 라운드를 직접 심기 때문에(seedRound), 실제 스냅샷 동결(RecruitingStartedPositionHandler.
+     * freezeSnapshot)과 같은 모양으로 직접 심어준다.
+     */
+    private void seedMatchingSnapshots() throws Exception {
+        Map<String, Object> projectPayload = new LinkedHashMap<>();
+        projectPayload.put("title", "AI 추천 시스템 구축");
+        projectPayload.put("companyName", "주식회사 페어링테크");
+        projectPayload.put("workLabel", "상주 · 풀타임");
+        projectPayload.put("periodLabel", "6개월");
+        projectPayload.put("startDesiredDate", LocalDate.now().plusDays(14));
+        projectPayload.put("budgetAmount", 60_000_000L);
+        matchingSnapshotRepository.save(MatchingSnapshot.create(PROJECT_ID, POSITION_ID, null,
+                SnapshotType.PROJECT, objectMapper.writeValueAsString(projectPayload)));
+
+        Map<String, Object> positionPayload = new LinkedHashMap<>();
+        positionPayload.put("jobRole", JobRole.BACKEND);
+        positionPayload.put("requiredSkills", List.of(SkillCode.SPRING_BOOT));
+        positionPayload.put("minCareerYears", 3);
+        positionPayload.put("headcount", 2);
+        positionPayload.put("totalHeadcount", 2);
+        matchingSnapshotRepository.save(MatchingSnapshot.create(PROJECT_ID, POSITION_ID, null,
+                SnapshotType.POSITION, objectMapper.writeValueAsString(positionPayload)));
     }
 
     private void signUpAndLoginClient() throws Exception {

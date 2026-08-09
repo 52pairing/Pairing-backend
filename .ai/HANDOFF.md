@@ -14,9 +14,14 @@
 신규 구현도 같이 들어가 merge됐다. 상세는 `.ai/STATE.md` 참고.
 이 컴퓨터에 `gh` CLI가 없어서 이슈/PR은 AI가 텍스트만 만들고 사용자가 GitHub 웹에서 직접 생성한다.
 
-**`fix/rerecommend-quantity-validation` 브랜치 신규 오픈 (develop 대상, PR 생성 대기).** 아래 20번
-항목(재추천 quantity 누락 시 500 나던 것) 수정 — `./gradlew build` 통과 확인, push 완료. PR 텍스트는
-이 세션에서 준비해 사용자에게 전달, 사용자가 GitHub 웹에서 생성 예정.
+**추가로 develop에 merge된 것들(2026-08-09, PR #51 이후)**:
+- **PR #53**(`fix/rerecommend-quantity-validation`) — 재추천 `quantity` 누락 NPE(MT_012) + `type=INITIAL` 우회(MT_013) 수정 2건. merge 완료.
+- (`feature/matching-negotiation-outcome`) — `MatchingNegotiationOutcomeUseCase` 구현 + budgetCap WEEK→개월 확정. merge 완료.
+- **5번(협상)이 반대쪽도 완료**: `NegotiationLoopService`가 타결/결렬 시 `MatchingNegotiationOutcomeUseCase.markNegotiationAgreed/markNegotiationFailed`를 호출하도록 배선 완료(commit "협상 타결/결렬 시 매칭 요청 상태 갱신 배선"). 14번 항목 양쪽 다 완료.
+
+**`fix/matching-request-card-snapshot-read` 브랜치 신규 오픈 (develop 대상, PR 생성 대기).** 아래 23번
+항목(매칭 요청 카드가 프로젝트 정보를 라이브로 읽던 R32 위반 버그) 수정 — `./gradlew clean build` 통과
+확인, push 완료.
 
 ## 지금 당장 할 일 (순서대로)
 
@@ -55,7 +60,7 @@
     - `markNegotiationFailed(requestId)` → 기존 `MatchingRequest.failNegotiation()` 그대로 사용 → `NEGOTIATION_FAILED`.
     - 존재하지 않는 requestId는 `MatchingErrorCode.REQUEST_NOT_FOUND`, NEGOTIATING이 아닌 상태에서 호출하면 `INVALID_MATCHING_STATE`.
     - 단위 테스트 `MatchingNegotiationOutcomeServiceTest`(4개: 타결/결렬/요청없음/상태불일치) 작성, `./gradlew build` 통과 확인.
-    - **아직 남은 것(negotiation/5번 쪽 작업)**: `NegotiationLoopService.agree()`(94번 줄)/`.fail()`(122, 149번 줄)이 각각 `Negotiation.agree()`/`.fail()` 호출 직후 `MatchingNegotiationOutcomeUseCase.markNegotiationAgreed(negotiation.getRequestId())`/`.markNegotiationFailed(...)`를 호출하도록 5번이 이어서 구현해야 한다 — 이건 negotiation 도메인 코드라 매칭(4번)이 대신 건드리지 않았다. 같은 트랜잭션 안에서 부르는 걸 전제로 설계함(매칭이 `accept()`에서 negotiation을 동기 호출하는 것과 대칭).
+    - ~~아직 남은 것(negotiation/5번 쪽 작업)~~ — 2026-08-09 5번이 `NegotiationLoopService`에 배선 완료, develop에 merge됨. 양쪽 다 완료.
 15. `currentSituation`/`mainTask`(프로젝트 현재 상황/담당 업무) 노출 여부 팀 답변 오면 `MatchingRequestResponse`에 필드 2개 추가 여부 결정.
 16. ~~budgetCap이 포지션 인원/총액 단위로 잘못 계산되던 버그 2건(3번 리포트)~~ — 2026-08-09 수정 완료. `position.headcount()`→`totalHeadcount()`, budgetAmount를 개월 수로도 나누도록 수정. ~~WEEK 기간 주→개월 환산 규칙~~ — 2026-08-09 **4주=1개월로 확정**(사용자 확인). `negotiation` 도메인의 `NegotiationConditionCalculator`도 이미 같은 값(4주=1개월)을 쓰고 있어서 두 도메인 계산 기준이 일치함을 재확인. `BudgetCapCalculator`의 `TEMP_WEEKS_PER_MONTH`(임시값 표기)를 `WEEKS_PER_MONTH`로 정리.
 17. **(참고, 재발 방지)** `@TransactionalEventListener` 안에서 `@Transactional(REQUIRES_NEW)` 메서드를 "같은 빈 안에서 `this.method()`로" 부르면 스프링 프록시를 안 거쳐 트랜잭션이 조용히 무시된다(자체 호출 self-invocation 문제). 실제로 이 버그로 라운드 저장이 안 되는 걸 테스트로 재현해서 발견 — 새 트랜잭션이 꼭 필요한 메서드는 반드시 별도 빈으로 분리해서 호출할 것(`RecruitingStartedEventListener`/`RecruitingStartedPositionHandler` 참고).
@@ -64,6 +69,7 @@
 20. ~~`RerecommendRequest.quantity`에 `type=PAID`일 때만 필수가 되는 조건부 검증이 없다~~ — 2026-08-09 수정 완료. `MatchingErrorCode.QUANTITY_REQUIRED`(MT_012) 추가, `MatchingRerecommendService.rerecommend()` 초입에 `type == PAID && quantity == null`이면 던지도록 처리. 회귀 테스트(`MatchingIntegrationTest.rerecommendPaidWithoutQuantityReturnsBadRequest`) 추가. `fix/rerecommend-quantity-validation` 브랜치, PR 생성 대기.
 21. ~~`RerecommendRequest.type`이 `INITIAL`도 그대로 받아버리는 문제~~ — 2026-08-09 수정 완료. 코드 리뷰로 발견: `type == FREE`가 아니면 전부 유료 취급하는 구조라 `type=INITIAL`을 보내면 (a) `quantity`가 없으면 20번 수정으로도 못 막던 NPE, (b) `quantity`가 있으면 재추천 API로 `INITIAL` 태그 라운드가 만들어지는 오동작이 가능했음(20번 수정만으론 해결 안 됨). `MatchingErrorCode.INVALID_RERECOMMEND_TYPE`(MT_013) 추가, `rerecommend()` 최초 진입부에 `type`이 FREE/PAID가 아니면 던지도록 처리. 회귀 테스트(`MatchingIntegrationTest.rerecommendWithInitialTypeReturnsBadRequest`) 추가. 20번과 같은 브랜치(`fix/rerecommend-quantity-validation`)에 포함.
 22. **(신규 발견, 우선순위 중)** 임베딩 텍스트(`RecruitingStartedPositionHandler.buildEmbeddingText`)에 `currentSituation`/`mainTask`(Task #4, 팀 답변 대기) 말고도 `detailScope`(업무범위)/`extraNote`(우대사항)도 빠져있다. 이 둘은 팀 결정 대기 항목이 아니라 애초에 매칭 쪽으로 안 이어져 있던 것 — project 도메인의 `Project`/`ProjectResponse`엔 이미 존재하는데, project가 매칭에 넘기는 `ProjectPositionSummary`(project.application.result)에도, 매칭 자신의 로컬 `ProjectPositionSummary`에도 없다. 원래 설계 결정(`.ai/STATE.md` "확정된 설계 결정 1": 임베딩 유사도 = 프로젝트설명+담당업무+업무범위+우대사항)엔 포함돼야 하는 필드라 Task #4와 별개로 백로그에 추가 필요.
+23. ~~매칭 요청 카드가 프로젝트 정보를 라이브로 읽던 문제(R32)~~ — 2026-08-09 수정 완료. 3번이 프로젝트 수정 API 구현 중 발견: `MatchingRequestResponseAssembler`가 `ProjectDirectoryPort.findPositionSummary`로 매번 라이브 조회를 해서, 결제 후 클라이언트가 프로젝트를 수정하면 이미 수락된 요청 카드 내용(제목/직무/스킬/경력/근무조건/기간/시작일)이 바뀌는 문제였다. 모집 시작 시점에 얼려두는 `MatchingSnapshot`(PROJECT/POSITION)을 읽도록 교체. `companyProfile`(account 도메인 값)만 `ProjectDirectoryPort.findCompanyProfile` 신규 추가해 계속 라이브로 읽는다. 3번 확인: 최초 모집 시작 시점 고정이 맞고(재추천마다 다시 얼리면 "수정 전" 기준이 계속 밀림), 결제 후 인원/포지션/예산은 이미 잠겨서 재추천 시 재계산해도 값이 안 바뀜. `fix/matching-request-card-snapshot-read` 브랜치, PR 생성 대기.
 
 ## 열려있는 결정/블로커 (건드리기 전에 확인)
 
