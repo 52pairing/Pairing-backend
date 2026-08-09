@@ -89,7 +89,7 @@
 - **문서 동기화(HANDOFF 13번)**: `.ai/API.md` 에러 코드 표에 MT_001~MT_015 전부 추가(기존엔 매칭 에러코드가 하나도 없었음). `docs/api-dto.csv`의 `RerecommendRequest.type`/`quantity` 설명에 실제 검증 규칙(MT_012/MT_013) 명시. `docs/spec/requirements.md` 클라이언트 회원가입 명세에 회사주소 필드 반영(`feature/client-address-plus`로 이미 구현·merge된 게 명세엔 누락돼 있었음).
 - **전체 파이프라인(Stage A~F) 재검증** — 사용자가 준 단계별 스펙과 코드를 하나씩 대조:
   - Stage C(임베딩 랭킹)/D(추림 컷)는 정상. Stage A/B(하드필터·조건필터)는 여전히 미구현(HANDOFF 10번). Stage F(가드)도 여전히 placeholder.
-  - **Stage E(LLM 최종선정) 불일치 발견**: 확정 설계는 "프로젝트당 1회 호출, 전체 포지션 한번에"인데 실제 코드는 포지션마다 따로 `matchingPort.recommend()`를 호출함(`RecruitingStartedEventListener`가 포지션 순회). Python API(`MatchingRequest`)도 `position_id` 하나만 받는 구조라 여러 포지션을 한 번에 처리할 수 없음. 재설계 필요 — 아직 손 안 댐, 범위가 커서 별도 논의 필요할 수 있음.
+  - ~~Stage E(LLM 최종선정) 불일치 발견~~: 확정 설계라고 적어뒀던 "프로젝트당 1회 호출, 전체 포지션 한번에"와 실제 코드(포지션마다 따로 `matchingPort.recommend()` 호출, `RecruitingStartedEventListener`가 포지션 순회)가 달라서 재설계가 필요한 걸로 봤었음. **2026-08-09 팀 확인 결과 종결**: 포지션별로 LLM을 따로 부르는 지금 코드가 맞다. "프로젝트당 1회" 쪽이 R02.1("인원별 1차 후보를 평가해 최종 후보를 선정한다") 근거 없이 우리가 끼워넣은 가정이었음 — Stage B 조건필터와 똑같은 패턴. 재설계 불필요, 코드 변경 없음.
   - **치명적 결함 발견·해결**: 프리랜서 임베딩(자기소개+경력사항)이 실환경에서 한 번도 생성된 적이 없었음(`MatchingPort`에 메서드 자체가 없었고 freelancer 도메인 어디서도 호출 안 함) — `freelancer_embedding` 테이블이 영원히 비어 있어 Stage C가 검색할 대상이 없는 상태였다. 상세는 아래 신규 배치 참고.
 - **프리랜서 임베딩 트리거 신규 연결** (`feature/matching-freelancer-embedding-trigger` 브랜치):
   - `MatchingPort.upsertFreelancerEmbedding(freelancerId, text)` 신규 + `PythonMatchingAdapter`에 구현(`PUT /embeddings/freelancers`, 서킷브레이커 포함, `upsertPositionEmbedding`과 대칭).
@@ -132,7 +132,7 @@
 10. budgetCap Stage F(HANDOFF 11번) — 배분 알고리즘 규칙 자체가 확정된 적 없음이 3번 확인으로 밝혀짐. 현재 공식(A안) 유지로 결정, 팀 회의에서 경력 차등(B안)/LLM 조합(C안) 여부만 다시 논의될 수 있음.
 11. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.
 12. ~~프리랜서 임베딩이 실환경에서 한 번도 생성되지 않던 결함~~ — 완료(위 참고). 이걸로 Stage C가 이제야 실제로 검색할 대상이 생김.
-13. **Stage E(LLM 최종선정) 재설계** — 확정 설계는 "프로젝트당 1회 호출, 전체 포지션 한번에"인데 지금은 포지션마다 따로 호출함. Python `MatchingRequest`가 `position_id` 단일값만 받는 구조라 API 계약 자체를 바꿔야 함(여러 포지션 id + 포지션별 후보 풀을 한 번에 받아서 LLM 프롬프트도 여러 포지션을 한꺼번에 판단하게). 범위가 커서 착수 전 사용자와 우선순위 논의 필요.
+13. ~~Stage E(LLM 최종선정) 재설계~~ — **2026-08-09 종결, 재설계 불필요.** 팀 확인 결과 포지션별로 LLM을 따로 호출하는 지금 코드가 맞는 설계다. "프로젝트당 1회, 전체 포지션 한번에" 쪽이 요구사항(R02.1)에 근거 없이 우리가 끼워넣은 가정이었음. `.ai/STATE.md` "확정된 설계 결정 1" 참고.
 14. Pairing-python `fix/directory-repository-column-names` PR — 리뷰/머지 대기(2번이 컬럼명 confirm 완료, 코드는 맞게 고쳐져 있음).
 
 ## 2026-08-09 (계속) — Stage F 가드 실제 구현
@@ -142,3 +142,9 @@
 - **테스트 빈틈 발견·보완**: `RecruitingStartedEventListenerTest`가 그동안 freelancerId(999_001L)에 `freelancer_condition`을 전혀 안 심고도 통과하고 있었음 — 가드가 placeholder라 `findCondition`을 실제로 안 불렀기 때문. 가드가 실제로 호출하게 되면서 예외가 나서 발견, 포지션 요구조건(BACKEND/SPRING_BOOT)과 일치하는 조건을 `freelancerConditionUseCase.upsert()`로 심도록 수정.
 - `MatchingIntegrationTest`에 가드 탈락 시나리오 신규 테스트 추가: 점수가 더 높지만(95점) 요구 스킬(SPRING_BOOT)이 없는 후보와 점수가 낮지만(80점) 스킬이 일치하는 후보를 같이 LLM 응답으로 주고, 가드 통과한 후자만 노출되는지 확인(가드가 없었다면 95점 후보가 노출됐을 것이므로 실질적인 검증이 됨).
 - `./gradlew build` 전체 통과. `feature/matching-stage-f-guard` 브랜치.
+
+## 2026-08-09 (계속) — Stage E "프로젝트당 1회" 재설계 불필요로 종결
+
+팀에 확인 요청한 결과: **포지션별로 LLM을 따로 호출하는 지금 코드가 맞는 설계**라는 답변을 받았다. WORKLOG 92번/135번에 "확정 설계는 프로젝트당 1회인데 코드가 다르다"고 적어뒀던 것 자체가 틀렸던 것 — R02.1("인원별 1차 후보를 평가해 최종 후보를 선정한다")을 다시 보면 오히려 "인원별"(포지션별)이 명시돼 있어서, "프로젝트당 1회로 묶어야 한다"는 쪽이 근거 없이 우리가 끼워넣은 가정이었다. Stage B 조건필터 폐기, Stage F 예산 조합 제외와 같은 패턴 — 문서에 "확정 설계"라고 적혀 있어도 실제 요구사항 원문과 다시 대조해봐야 한다는 교훈이 세 번째로 반복됨.
+
+**결론**: Stage E 재설계 작업 자체가 불필요. `RecruitingStartedEventListener`/Python `MatchingRequest` 둘 다 코드 변경 없음. `.ai/STATE.md`/`WORKLOG.md`의 관련 항목 전부 "종결"로 정리.
