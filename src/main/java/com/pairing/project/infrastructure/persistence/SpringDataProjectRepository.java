@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +40,19 @@ public interface SpringDataProjectRepository extends JpaRepository<ProjectJpaEnt
 
     Page<ProjectJpaEntity> findByClientIdAndStatusInAndDeletedAtIsNull(
             Long clientId, List<ProjectStatus> statuses, Pageable pageable);
+
+    /**
+     * 모집 마감이 지났는데 아직 모집 중인 프로젝트. (정책 P46 만료 처리)
+     *
+     * <p>연장 여부는 조건에 넣지 않는다. 연장하지 않아도 기본 2주가 지나면 만료 대상이다.
+     */
+    @Query("""
+            SELECT p FROM ProjectJpaEntity p
+             WHERE p.status = com.pairing.project.domain.model.ProjectStatus.RECRUITING
+               AND p.recruitDeadline < :now
+               AND p.deletedAt IS NULL
+            """)
+    List<ProjectJpaEntity> findExpiredRecruiting(@Param("now") LocalDateTime now);
 
     /** 탭 배지용. [status, count] 배열로 돌아온다. 건수가 0인 상태는 결과에 없다. */
     @Query("SELECT p.status, COUNT(p) FROM ProjectJpaEntity p "

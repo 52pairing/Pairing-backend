@@ -1,5 +1,6 @@
 package com.pairing.settlement.application.usecase;
 
+import com.pairing.client.domain.model.ClientGrade;
 import com.pairing.settlement.application.command.CreateDepositSettlementCommand;
 
 import java.util.Optional;
@@ -21,4 +22,12 @@ public interface DepositSettlementUseCase {
 
     /** 프로젝트에 걸린 결제 대기 정산 ID. 결제할 게 없으면 empty. */
     Optional<Long> findPayableSettlementId(Long projectId);
+
+    /**
+     * 예산이 바뀌었을 때 미결제 착수금 정산을 다시 계산한다.
+     *
+     * <p>이미 결제된 정산은 건드리지 않는다. 프로젝트 쪽에서 결제 후 예산 변경을 막고 있어
+     * 실제로는 PENDING 상태만 대상이 된다. 대상이 없으면 아무 일도 하지 않는다.
+     */
+    void recalculateClientDeposit(Long projectId, long budgetAmount, ClientGrade clientGrade);
 }

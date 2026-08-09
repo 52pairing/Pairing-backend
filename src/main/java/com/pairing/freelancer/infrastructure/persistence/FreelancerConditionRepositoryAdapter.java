@@ -3,9 +3,13 @@ package com.pairing.freelancer.infrastructure.persistence;
 import com.pairing.freelancer.domain.model.FreelancerCondition;
 import com.pairing.freelancer.domain.repository.FreelancerConditionRepository;
 import com.pairing.freelancer.infrastructure.mapper.FreelancerConditionMapper;
+import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.SkillCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -24,5 +28,11 @@ public class FreelancerConditionRepositoryAdapter implements FreelancerCondition
     @Override
     public Optional<FreelancerCondition> findByAccountId(Long accountId) {
         return springDataRepository.findByAccountId(accountId).map(conditionMapper::toDomain);
+    }
+
+    @Override
+    public List<Long> findMatchableAccountIds(JobRole jobRole, Collection<SkillCode> skills,
+                                              int minSkillMatchCount) {
+        return springDataRepository.findMatchableAccountIds(jobRole, skills, minSkillMatchCount);
     }
 }

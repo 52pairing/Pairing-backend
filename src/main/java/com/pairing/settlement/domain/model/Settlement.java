@@ -103,6 +103,33 @@ public class Settlement {
                 LocalDateTime.now());
     }
 
+    /**
+     * 클라이언트 성공보수. 프로젝트가 완료 대기로 넘어간 시점에 만들어진다. (P30)
+     *
+     * <p>계약 도메인이 붙기 전까지 기준 금액은 프로젝트 예산이다. contractId 도 아직 없다.
+     */
+    public static Settlement createClientSuccessFee(Long projectId, Long payerAccountId, long baseAmount,
+                                                    BigDecimal feeRate, BigDecimal gradeDiscount,
+                                                    long feeAmount) {
+        return new Settlement(
+                null,
+                TEMP_NO_PREFIX + UUID.randomUUID(),
+                projectId,
+                null,
+                payerAccountId,
+                PartyRole.CLIENT,
+                SettlementPhase.SUCCESS_FEE,
+                baseAmount,
+                feeRate,
+                gradeDiscount,
+                feeAmount,
+                SettlementStatus.PENDING,
+                null, null, null, null,
+                null,
+                null,
+                LocalDateTime.now());
+    }
+
     public static Settlement reconstitute(Long id, String settlementNo, Long projectId, Long contractId,
                                           Long payerAccountId, PartyRole payerRole, SettlementPhase phase,
                                           Long baseAmount, BigDecimal feeRate, BigDecimal gradeDiscount,
@@ -122,6 +149,22 @@ public class Settlement {
         this.settlementNo = "ST-%d-%06d".formatted(year, this.id);
     }
 
+    /**
+     * 기준 금액과 수수료를 다시 계산한 값으로 바꾼다.
+     *
+     * <p>프로젝트 예산이 바뀌면 요율 구간도 달라질 수 있어 셋을 함께 갱신한다.
+     * 이미 결제된 건에는 쓰지 않는다. 낸 금액과 어긋나기 때문이다.
+     */
+    public void reprice(long baseAmount, BigDecimal feeRate, BigDecimal gradeDiscount, long feeAmount) {
+        if (!isPayable()) {
+            throw new BusinessException(SettlementErrorCode.NOT_PAYABLE);
+        }
+        this.baseAmount = baseAmount;
+        this.feeRate = feeRate;
+        this.gradeDiscount = gradeDiscount;
+        this.feeAmount = feeAmount;
+    }
+
     /** 결제 버튼 활성화 기준. 실패한 건은 다시 시도할 수 있다. (P32) */
     public boolean isPayable() {
         return this.status == SettlementStatus.PENDING
@@ -133,9 +176,14 @@ public class Settlement {
         return this.payerAccountId.equals(accountId);
     }
 
-    /** 착수금 결제는 모집 시작으로 이어진다. 성공보수는 프로젝트 상태를 바꾸지 않는다. (P27) */
+    /** 클라이언트 착수금 결제가 곧 모집 시작이다. (P27) */
     public boolean startsRecruiting() {
         return this.phase == SettlementPhase.DEPOSIT && this.payerRole == PartyRole.CLIENT;
+    }
+
+    /** 클라이언트 성공보수 결제가 곧 프로젝트 종료다. 프리랜서 분은 상태를 바꾸지 않는다. (P30) */
+    public boolean closesProject() {
+        return this.phase == SettlementPhase.SUCCESS_FEE && this.payerRole == PartyRole.CLIENT;
     }
 
     /**

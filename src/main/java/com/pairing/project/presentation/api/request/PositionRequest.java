@@ -41,6 +41,7 @@ public record PositionRequest(
 
         @Schema(description = "요구 스킬. 1개 이상", example = "[\"JAVA\", \"SPRING_BOOT\"]")
         @NotEmpty(message = "요구 스킬은 1개 이상입니다.")
+        @Size(max = 63, message = "요구 스킬은 최대 63개입니다.")
         List<SkillCode> skills
 
 ) {

@@ -106,7 +106,11 @@ public record ProjectResponse(
 
         @Schema(description = "지금 결제해야 할 정산 ID. 결제할 게 없으면 null. "
                 + "등록 완료면 착수금, 완료 대기면 성공보수를 가리킨다.", example = "700")
-        Long payableSettlementId
+        Long payableSettlementId,
+
+        @Schema(description = "중도 종료 시 위약금 안내 대상 여부. 계약을 맺은 인원이 있으면 true. "
+                + "종료 확인 화면에 '위약금이 발생할 수 있습니다' 문구를 띄우는 데 쓴다.", example = "false")
+        boolean penaltyExpected
 ) {
 
     /**
@@ -139,7 +143,7 @@ public record ProjectResponse(
                 p.getRecruitDeadline(), p.getExtensionCount(),
                 p.getFreeRerecommendUsed(), p.getPaidRerecommendUsed(),
                 positions, List.of(), files,
-                p.getCreatedAt(), detail.payableSettlementId());
+                p.getCreatedAt(), detail.payableSettlementId(), p.hasConfirmedMember());
     }
 
     @Schema(description = "포지션")

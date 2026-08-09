@@ -1,8 +1,10 @@
 package com.pairing.settlement.application.service;
 
+import com.pairing.client.domain.model.ClientGrade;
 import com.pairing.settlement.application.command.CreateDepositSettlementCommand;
 import com.pairing.settlement.application.usecase.DepositSettlementUseCase;
 import com.pairing.settlement.domain.model.Settlement;
+import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.repository.SettlementRepository;
 import com.pairing.settlement.domain.service.DepositFeePolicy;
 import lombok.RequiredArgsConstructor;
@@ -45,5 +47,25 @@ public class DepositSettlementService implements DepositSettlementUseCase {
     @Transactional(readOnly = true)
     public Optional<Long> findPayableSettlementId(Long projectId) {
         return settlementRepository.findPayableByProjectId(projectId).map(Settlement::getId);
+    }
+
+    @Override
+    public void recalculateClientDeposit(Long projectId, long budgetAmount, ClientGrade clientGrade) {
+        Optional<Settlement> found = settlementRepository.findPayableByProjectId(projectId);
+        if (found.isEmpty()) {
+            return;
+        }
+
+        Settlement settlement = found.get();
+        if (settlement.getPhase() != SettlementPhase.DEPOSIT) {
+            return;
+        }
+
+        BigDecimal feeRate = DepositFeePolicy.feeRate(budgetAmount);
+        BigDecimal gradeDiscount = DepositFeePolicy.gradeDiscount(clientGrade);
+
+        settlement.reprice(budgetAmount, feeRate, gradeDiscount,
+                DepositFeePolicy.feeAmount(budgetAmount, feeRate, gradeDiscount));
+        settlementRepository.save(settlement);
     }
 }

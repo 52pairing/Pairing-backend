@@ -1,6 +1,7 @@
 package com.pairing.settlement.application.service;
 
 import com.pairing.global.exception.BusinessException;
+import com.pairing.settlement.application.port.ProjectCloserPort;
 import com.pairing.settlement.application.port.ProjectRecruitStarterPort;
 import com.pairing.settlement.application.result.SettlementResult;
 import com.pairing.settlement.application.usecase.SettlementPaymentUseCase;
@@ -24,6 +25,7 @@ public class SettlementPaymentService implements SettlementPaymentUseCase {
 
     private final SettlementRepository settlementRepository;
     private final ProjectRecruitStarterPort projectRecruitStarterPort;
+    private final ProjectCloserPort projectCloserPort;
 
     @Override
     public SettlementResult pay(Long settlementId, Long accountId, Long paymentMethodId) {
@@ -37,9 +39,12 @@ public class SettlementPaymentService implements SettlementPaymentUseCase {
         settlement.pay(paymentMethodId);
         Settlement saved = settlementRepository.save(settlement);
 
-        // 클라이언트 착수금 결제가 곧 모집 시작이다. (P27)
+        // 결제가 프로젝트 상태를 옮기는 경우는 둘뿐이다. 착수금은 모집 시작(P27),
+        // 성공보수는 종료(P30) 다. 프리랜서 분은 상태를 바꾸지 않는다.
         if (saved.startsRecruiting()) {
             projectRecruitStarterPort.startRecruiting(saved.getProjectId());
+        } else if (saved.closesProject()) {
+            projectCloserPort.close(saved.getProjectId());
         }
         return SettlementResult.from(saved);
     }
