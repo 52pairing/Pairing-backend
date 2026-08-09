@@ -66,7 +66,8 @@ public class AccountCommandService implements AccountCommandUseCase {
                 command.companyName(),
                 command.businessNo(),
                 command.businessField(),
-                command.employeeCount()
+                command.employeeCount(),
+                command.address()
         ));
 
         savePaymentMethods(account.getId(), command.card(), command.bankAccount());

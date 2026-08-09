@@ -44,6 +44,7 @@ import java.util.List;
  * 챗봇은 하루 10회로 제한되고, LLM 호출은 AI 서버(Pairing-python)가 담당한다.
  *
  * <p>추천 질문 목록만 아직 고정 문구다(README 기준 초기엔 고정 문구로 두어도 된다).
+ * <p>1:1 문의는 실제 로직으로 연결되어 있다. 챗봇(R44)은 AI 서버 연동 전까지 스켈레톤 고정 응답을 유지한다.
  */
 @RestController
 @RequestMapping("/api/v1/support")
