@@ -48,14 +48,27 @@ class NegotiationLoopServiceTest {
         @Bean
         @Primary
         NegotiationProposalPort stubProposalPort() {
-            return context -> context.conditions().stream()
-                    .map(c -> {
-                        NegotiationProposalStub.Proposal p =
-                                NegotiationProposalStub.propose(c.clientValue(), c.freelancerValue());
-                        return new NegotiationProposalPort.Proposal(
-                                c.conditionId(), p.value(), p.content(), p.reason());
-                    })
-                    .toList();
+            // 조건당 제안 1건 + agreed=false(사람이 승인/거절하는 경로를 테스트).
+            return context -> {
+                var messages = context.conditions().stream()
+                        .map(c -> {
+                            NegotiationProposalStub.Proposal p =
+                                    NegotiationProposalStub.propose(c.clientValue(), c.freelancerValue());
+                            return new NegotiationProposalPort.AgentMessage(
+                                    "FREELANCER_AGENT", c.conditionId(), "PROPOSAL",
+                                    p.value(), p.content(), p.reason());
+                        })
+                        .toList();
+                var outcomes = context.conditions().stream()
+                        .map(c -> {
+                            NegotiationProposalStub.Proposal p =
+                                    NegotiationProposalStub.propose(c.clientValue(), c.freelancerValue());
+                            return new NegotiationProposalPort.ConditionOutcome(
+                                    c.conditionId(), p.value(), false);
+                        })
+                        .toList();
+                return new NegotiationProposalPort.A2AResult(messages, outcomes);
+            };
         }
     }
 

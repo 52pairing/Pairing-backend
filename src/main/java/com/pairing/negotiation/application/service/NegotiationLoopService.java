@@ -178,23 +178,37 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                 .map(c -> new NegotiationProposalPort.ConditionInput(c.getId(), c.getConditionType(),
                         c.getClientValue(), c.getFreelancerValue(), c.getClientFloor(), c.getFreelancerFloor()))
                 .toList();
-        Map<Long, NegotiationProposalPort.Proposal> byId = proposalPort.propose(
-                        new NegotiationProposalPort.ProposalContext(negotiation.getId(),
-                                negotiation.getTotalRound(), negotiation.getBudgetCap(), inputs))
-                .stream()
-                .collect(Collectors.toMap(NegotiationProposalPort.Proposal::conditionId, Function.identity(),
-                        (a, b) -> a));
+        NegotiationProposalPort.A2AResult result = proposalPort.propose(
+                new NegotiationProposalPort.ProposalContext(negotiation.getId(),
+                        negotiation.getTotalRound(), negotiation.getBudgetCap(), inputs));
 
+        // 두 대리인의 대화를 로그로 기록한다(발신자 = CLIENT_AGENT/FREELANCER_AGENT).
+        int round = negotiation.getTotalRound();
         List<NegotiationMessage> messages = new ArrayList<>();
-        for (NegotiationCondition condition : pending) {
-            NegotiationProposalPort.Proposal p = byId.get(condition.getId());
-            if (p == null) {
-                continue;
+        for (NegotiationProposalPort.AgentMessage m : result.messages()) {
+            messages.add(NegotiationMessage.proposal(negotiation.getId(), m.conditionId(), round,
+                    senderOf(m.sender()), m.content(), m.reason(), m.proposedValue()));
+        }
+
+        // 대리인끼리 합의한 조건은 자동 락(사람은 승인 패널에서 [이미 합의🔒]로 본다).
+        Map<Long, NegotiationCondition> pendingById = pending.stream()
+                .collect(Collectors.toMap(NegotiationCondition::getId, Function.identity(), (a, b) -> a));
+        for (NegotiationProposalPort.ConditionOutcome o : result.outcomes()) {
+            NegotiationCondition condition = pendingById.get(o.conditionId());
+            if (condition != null && o.agreed() && !condition.isAgreed()) {
+                condition.lock(o.proposedValue());
             }
-            messages.add(NegotiationMessage.proposal(negotiation.getId(), condition.getId(),
-                    negotiation.getTotalRound(), SenderType.SYSTEM, p.content(), p.reason(), p.proposedValue()));
         }
         return messages;
+    }
+
+    /** 파이썬이 준 sender 문자열 → SenderType. 알 수 없으면 SYSTEM 으로 방어. */
+    private SenderType senderOf(String sender) {
+        try {
+            return SenderType.valueOf(sender);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            return SenderType.SYSTEM;
+        }
     }
 
     private long finalAmount(Negotiation negotiation) {

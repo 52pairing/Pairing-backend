@@ -5,13 +5,15 @@ import com.pairing.negotiation.domain.model.ConditionType;
 import java.util.List;
 
 /**
- * 협상 제안 생성 포트. 구현은 파이썬 AI 서버(/negotiations/propose) 호출이며, 실패 시 stub 로 폴백한다.
- * 백엔드(심판)가 라운드/락/타결을 확정하고, 여기서는 "제안값·근거"만 얻는다.
+ * 협상 제안 생성 포트(A2A). 구현은 파이썬 AI 서버(/negotiations/propose) 호출이며, 실패 시 stub 로 폴백한다.
+ *
+ * <p>두 대리인(클라이언트 대리 / 프리랜서 대리)이 제안·역제안·수락을 주고받는 대화를 생성한다.
+ * 백엔드(심판)는 그 대화를 로그로 기록하고, 대리인이 합의한 조건은 자동 락, 나머지는 사람 승인/재지시로 넘긴다.
  */
 public interface NegotiationProposalPort {
 
-    /** 미합의 조건들에 대한 제안을 한 번에 만든다. 반환은 conditionId 별 제안. */
-    List<Proposal> propose(ProposalContext context);
+    /** 미합의 조건들에 대해 A2A 대화와 쟁점별 결과를 만든다. */
+    A2AResult propose(ProposalContext context);
 
     record ProposalContext(Long negotiationId, int round, Long budgetCap, List<ConditionInput> conditions) {
     }
@@ -26,6 +28,22 @@ public interface NegotiationProposalPort {
     ) {
     }
 
-    record Proposal(Long conditionId, String proposedValue, String content, String reason) {
+    /** A2A 결과: 대화 로그(시간순) + 쟁점별 최종 결과. */
+    record A2AResult(List<AgentMessage> messages, List<ConditionOutcome> outcomes) {
+    }
+
+    /** 대화 한 줄. sender 는 CLIENT_AGENT / FREELANCER_AGENT. */
+    record AgentMessage(
+            String sender,
+            Long conditionId,
+            String kind,            // PROPOSAL / COUNTER / ACCEPT (표시용)
+            String proposedValue,
+            String content,
+            String reason
+    ) {
+    }
+
+    /** 쟁점별 결과. agreed=true 면 두 대리인이 합의(자동 락 후보). */
+    record ConditionOutcome(Long conditionId, String proposedValue, boolean agreed) {
     }
 }
