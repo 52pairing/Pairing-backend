@@ -46,15 +46,21 @@ public class ClientProfile {
         this.deletedAt = deletedAt;
     }
 
+    /**
+     * 신규 가입용. address 는 계약서 갑 표시에 쓰이므로 가입 시점부터 필수다.
+     * 기존 데이터에는 null 이 있을 수 있어 {@link #reconstitute} 는 검증하지 않는다.
+     */
     public static ClientProfile create(Long accountId, String companyName, String businessNo,
-                                       BusinessField businessField, EmployeeCount employeeCount) {
+                                       BusinessField businessField, EmployeeCount employeeCount,
+                                       String address) {
         if (accountId == null || companyName == null || companyName.isBlank()
                 || businessNo == null || businessNo.length() != BUSINESS_NO_LENGTH
-                || businessField == null || employeeCount == null) {
+                || businessField == null || employeeCount == null
+                || address == null || address.isBlank()) {
             throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
         }
         return new ClientProfile(null, accountId, companyName, businessNo, businessField, employeeCount,
-                null, null, INITIAL_GRADE, null, null);
+                address, null, INITIAL_GRADE, null, null);
     }
 
     public static ClientProfile reconstitute(Long id, Long accountId, String companyName, String businessNo,

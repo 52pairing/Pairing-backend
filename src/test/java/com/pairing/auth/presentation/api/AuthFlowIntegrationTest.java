@@ -152,6 +152,7 @@ class AuthFlowIntegrationTest {
         body.put("businessNo", "1234567890");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
+        body.put("address", "서울 강남구 테헤란로 1");
         body.put("email", EMAIL);
         body.put("name", "홍길동");
         body.put("phone", "010-1234-5678");
@@ -272,6 +273,20 @@ class AuthFlowIntegrationTest {
                 .andExpect(jsonPath("$.errorCode").value("AC_006"));
 
         assertThat(accountRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("기업 주소가 빠지면 400으로 막는다")
+    void signUpWithoutAddress() throws Exception {
+        Map<String, Object> body = new java.util.HashMap<>(clientSignUpBody());
+        body.remove("address");
+        body.put("agreements", clientAgreements());
+
+        mockMvc.perform(post("/api/v1/auth/signup/client")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
     }
 
     @Test

@@ -107,7 +107,7 @@ class NegotiationCommandServiceTest {
         // 프로비저닝(채팅방 개설)이 당사자 정보를 읽으므로 프로필을 실제로 심는다.
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 910_101L, "삼성전자", "1234567890",
-                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299)).getId();
+                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
         Long freelancerProfileId = freelancerProfileRepository.save(
                 FreelancerProfile.create(910_102L, LocalDate.of(1990, 1, 1))).getId();
         jdbcTemplate.update("INSERT INTO project "

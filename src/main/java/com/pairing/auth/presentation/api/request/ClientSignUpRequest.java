@@ -35,6 +35,12 @@ public record ClientSignUpRequest(
         @NotNull(message = "직원수는 필수입니다.")
         EmployeeCount employeeCount,
 
+        // 계약서 갑 표시에 쓰이는 값이라 가입 시점에 확정받는다. 이후 변경은 마이페이지(PATCH /clients/me).
+        @Schema(description = "기업 주소", example = "서울 강남구 테헤란로 1")
+        @NotBlank(message = "기업 주소는 필수입니다.")
+        @Size(max = 255, message = "주소는 255자 이하여야 합니다.")
+        String address,
+
         @Schema(description = "업무 이메일(로그인 아이디)", example = "owner@pairing.com")
         @NotBlank(message = "이메일은 필수입니다.")
         @Email(message = "이메일 형식이 올바르지 않습니다.")
@@ -84,6 +90,7 @@ public record ClientSignUpRequest(
                 businessNo,
                 businessField,
                 employeeCount,
+                address,
                 card.toCommand(),
                 bankAccount.toCommand(),
                 agreements.stream().map(TermsAgreementRequest::toCommand).toList(),
