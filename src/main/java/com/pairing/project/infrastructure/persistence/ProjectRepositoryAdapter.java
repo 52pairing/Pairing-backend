@@ -5,6 +5,7 @@ import com.pairing.project.domain.model.Position;
 import com.pairing.project.domain.model.Project;
 import com.pairing.project.domain.model.ProjectStatus;
 import com.pairing.project.domain.repository.ProjectRepository;
+import com.pairing.meta.domain.model.SkillCode;
 import com.pairing.project.exception.ProjectErrorCode;
 import com.pairing.project.infrastructure.mapper.ProjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -12,10 +13,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 프로젝트 리포지토리 어댑터.
@@ -26,6 +32,9 @@ import java.util.Optional;
 @Repository
 @RequiredArgsConstructor
 public class ProjectRepositoryAdapter implements ProjectRepository {
+
+    /** 번호를 맞바꿀 때 잠시 피해 둘 자리. 포지션은 최대 100건이라 여기와 겹치지 않는다. */
+    private static final int TEMP_POSITION_NO_BASE = 1_000;
 
     private final SpringDataProjectRepository springDataRepository;
     private final SpringDataProjectPositionRepository positionRepository;
@@ -48,9 +57,89 @@ public class ProjectRepositoryAdapter implements ProjectRepository {
     }
 
     @Override
+    public Project updateStateWithPositions(Project project) {
+        ProjectJpaEntity entity = springDataRepository.findByIdAndDeletedAtIsNull(project.getId())
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        projectMapper.applyState(entity, project);
+
+        Map<Long, ProjectPositionJpaEntity> byId = entity.getPositions().stream()
+                .collect(Collectors.toMap(ProjectPositionJpaEntity::getId, Function.identity()));
+
+        // 구성은 그대로 두고 마감 결과만 옮긴다. 번호도 스킬도 바뀌지 않아 유니크 제약과 무관하다.
+        for (Position position : project.getPositions()) {
+            ProjectPositionJpaEntity target = byId.get(position.getId());
+            if (target != null) {
+                target.applyStatus(position.getStatus(), position.getClosedAt());
+            }
+        }
+        return projectMapper.toDomain(entity);
+    }
+
+    @Override
+    public Project updateDetail(Project project) {
+        ProjectJpaEntity entity = springDataRepository.findByIdAndDeletedAtIsNull(project.getId())
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        projectMapper.applyEditable(entity, project);
+
+        Set<Long> keepIds = project.getPositions().stream()
+                .map(Position::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        entity.removePositionsNotIn(keepIds);
+
+        Map<Long, ProjectPositionJpaEntity> survivors = entity.getPositions().stream()
+                .filter(p -> p.getId() != null)
+                .collect(Collectors.toMap(ProjectPositionJpaEntity::getId, Function.identity()));
+
+        // 1단계. 지울 것과 비울 것을 먼저 내보낸다.
+        //   position_no 는 (project_id, position_no) UNIQUE 라 자리를 맞바꾸면 중간 상태가 충돌한다.
+        //   살아남은 포지션을 겹치지 않는 번호로 옮겨두고, 스킬도 비운 뒤 flush 해서 DELETE 를 먼저 태운다.
+        int tempNo = TEMP_POSITION_NO_BASE;
+        for (ProjectPositionJpaEntity survivor : survivors.values()) {
+            survivor.applyCondition(tempNo++, survivor.getJobCategory(), survivor.getJobRole(),
+                    survivor.getMinCareerYears(), survivor.getHeadcount());
+            survivor.clearSkills();
+        }
+        entity.clearFiles();
+        springDataRepository.flush();
+
+        // 2단계. 최종 값을 채운다. 여기서부터는 충돌할 상대가 없다.
+        for (Position position : project.getPositions()) {
+            if (position.getId() == null) {
+                entity.addPosition(projectMapper.toPositionJpaEntity(position));
+                continue;
+            }
+            ProjectPositionJpaEntity target = survivors.get(position.getId());
+            target.applyCondition(position.getPositionNo(), position.getJobCategory(),
+                    position.getJobRole(), position.getMinCareerYears(), position.getHeadcount());
+
+            for (SkillCode skill : position.getSkills()) {
+                target.addSkill(new PositionSkillJpaEntity(null, skill));
+            }
+        }
+
+        List<Long> fileIds = project.getFileIds();
+        for (int i = 0; i < fileIds.size(); i++) {
+            entity.addFile(new ProjectFileJpaEntity(null, fileIds.get(i), i));
+        }
+        springDataRepository.flush();
+
+        return projectMapper.toDomain(entity);
+    }
+
+    @Override
     public Optional<Project> findById(Long projectId) {
         return springDataRepository.findByIdAndDeletedAtIsNull(projectId)
                 .map(projectMapper::toDomain);
+    }
+
+    @Override
+    public List<Project> findExpiredRecruiting(LocalDateTime now) {
+        return springDataRepository.findExpiredRecruiting(now).stream()
+                .map(projectMapper::toDomain)
+                .toList();
     }
 
     @Override

@@ -6,6 +6,8 @@ import com.pairing.account.infrastructure.mapper.FreelancerProfileMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -31,5 +33,10 @@ public class FreelancerProfileRepositoryAdapter implements FreelancerProfileRepo
     @Override
     public Optional<FreelancerProfile> findById(Long id) {
         return springDataRepository.findByIdAndDeletedAtIsNull(id).map(freelancerProfileMapper::toDomain);
+    }
+
+    @Override
+    public List<Long> filterActiveAiMatchingAgreed(Collection<Long> accountIds) {
+        return springDataRepository.filterActiveAiMatchingAgreed(accountIds);
     }
 }

@@ -6,17 +6,23 @@ import com.pairing.project.application.port.ProjectFileReaderPort;
 import com.pairing.project.application.port.SettlementReaderPort;
 import com.pairing.project.application.result.ProjectDetail;
 import com.pairing.project.application.result.ProjectPositionSummary;
+import com.pairing.project.application.result.ProjectSummary;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.project.domain.model.Position;
 import com.pairing.project.domain.model.Project;
 import com.pairing.project.domain.model.ProjectStatus;
+import com.pairing.project.domain.model.ProjectTab;
 import com.pairing.project.domain.repository.ProjectRepository;
 import com.pairing.project.exception.ProjectErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 프로젝트 조회.
@@ -137,6 +143,30 @@ public class ProjectQueryService implements ProjectQueryUseCase {
     @Override
     public ProjectDetail getDetailForOwner(Long projectId, Long accountId) {
         return toDetail(getByIdForOwner(projectId, accountId));
+    }
+
+    @Override
+    public Page<ProjectSummary> findMine(Long accountId, ProjectTab tab, Pageable pageable) {
+        List<ProjectStatus> statuses = tab == null ? List.of() : tab.getStatuses();
+
+        return projectRepository.findByClientId(resolveClientProfileId(accountId), statuses, pageable)
+                .map(project -> new ProjectSummary(project,
+                        settlementReaderPort.findPayableSettlementId(project.getId()).orElse(null)));
+    }
+
+    @Override
+    public Map<ProjectTab, Long> countMyTabs(Long accountId) {
+        Map<ProjectStatus, Long> byStatus = projectRepository.countByStatus(resolveClientProfileId(accountId));
+
+        // 건수가 0인 탭도 키로 넣는다. 화면이 탭을 전부 그려야 한다.
+        Map<ProjectTab, Long> byTab = new EnumMap<>(ProjectTab.class);
+        for (ProjectTab tab : ProjectTab.values()) {
+            long count = tab.getStatuses().stream()
+                    .mapToLong(status -> byStatus.getOrDefault(status, 0L))
+                    .sum();
+            byTab.put(tab, count);
+        }
+        return byTab;
     }
 
     private ProjectDetail toDetail(Project project) {

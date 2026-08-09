@@ -81,6 +81,31 @@ public class Position {
         this.skills = List.copyOf(skills);
     }
 
+    /**
+     * 화면 표시 순서를 다시 매긴다.
+     *
+     * <p>{@code uk_project_position (project_id, position_no)} 때문에 프로젝트 안에서 번호가 겹치면
+     * 안 된다. 수정으로 순서가 바뀌면 전체를 다시 매겨야 충돌하지 않는다.
+     */
+    void renumber(int positionNo) {
+        this.positionNo = positionNo;
+    }
+
+    /**
+     * 계약 체결 1건. 양측 서명이 끝나면 계약 도메인이 호출한다.
+     *
+     * <p>모집 인원을 다 채우면 더 뽑을 이유가 없으므로 여기서 바로 닫는다.
+     */
+    void confirm() {
+        if (isFilled()) {
+            throw new BusinessException(ProjectErrorCode.POSITION_ALREADY_FILLED);
+        }
+        this.confirmedCount++;
+        if (isFilled()) {
+            close();
+        }
+    }
+
     /** 모집 종료. 닫힌 시각을 함께 남긴다. 이미 닫혀 있으면 시각을 덮어쓰지 않는다. */
     void close() {
         if (this.status == PositionStatus.CLOSED) {

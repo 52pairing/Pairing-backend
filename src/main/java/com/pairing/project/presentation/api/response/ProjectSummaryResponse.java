@@ -1,5 +1,8 @@
 package com.pairing.project.presentation.api.response;
 
+import com.pairing.meta.domain.model.SkillCode;
+import com.pairing.project.application.result.ProjectSummary;
+import com.pairing.project.domain.model.Project;
 import com.pairing.project.domain.model.ProjectPaymentStatus;
 import com.pairing.project.domain.model.ProjectStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -69,4 +72,50 @@ public record ProjectSummaryResponse(
         @Schema(description = "등록 시각")
         LocalDateTime createdAt
 ) {
+
+    /** 화면 표시용 번호. 프로젝트 ID 를 6자리로 채운다. */
+    private static final String PROJECT_NO_FORMAT = "PRJ-%06d";
+
+    /**
+     * 목록 카드 한 장.
+     *
+     * <p>라벨과 기간 표기는 여기서 만든다. 화면 문구라 도메인이 들고 있을 값이 아니다.
+     *
+     * <p>statusNote / matchedFreelancerName 은 매칭 도메인 값이라 아직 비운다.
+     * clientName 은 관리자 목록 전용이라 내 목록에서는 채우지 않는다.
+     */
+    public static ProjectSummaryResponse from(ProjectSummary summary) {
+        Project project = summary.project();
+
+        List<String> jobRoleLabels = project.getPositions().stream()
+                .map(position -> position.getJobRole().getLabel())
+                .distinct()
+                .toList();
+
+        List<String> skillLabels = project.getPositions().stream()
+                .flatMap(position -> position.getSkills().stream())
+                .distinct()
+                .map(SkillCode::getLabel)
+                .toList();
+
+        return new ProjectSummaryResponse(
+                project.getId(),
+                PROJECT_NO_FORMAT.formatted(project.getId()),
+                project.getTitle(),
+                project.getStatus(),
+                null,
+                project.getPaymentStatus(),
+                jobRoleLabels,
+                skillLabels,
+                project.getBudgetAmount(),
+                "%d%s".formatted(project.getPeriodValue(), project.getPeriodUnit().getLabel()),
+                project.getStartDesiredDate(),
+                project.getTotalHeadcount(),
+                project.getConfirmedHeadcount(),
+                project.getRecruitDeadline(),
+                null,
+                null,
+                summary.payableSettlementId(),
+                project.getCreatedAt());
+    }
 }

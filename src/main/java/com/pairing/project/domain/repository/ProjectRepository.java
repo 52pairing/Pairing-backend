@@ -6,6 +6,7 @@ import com.pairing.project.domain.model.ProjectStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,8 +30,34 @@ public interface ProjectRepository {
      */
     Project updateState(Project project);
 
+    /**
+     * 상태 전이 저장 + 포지션 상태. 포지션 구성과 첨부는 건드리지 않는다.
+     *
+     * <p>모집 종료·만료·중도 종료·완료처럼 프로젝트와 포지션을 함께 닫는 경로가 쓴다.
+     * {@link #updateState} 는 프로젝트 스칼라만 옮겨서 포지션이 열린 채로 남고,
+     * {@link #updateDetail} 은 수정용이라 상태를 아예 옮기지 않는다.
+     *
+     * <p>포지션을 추가·삭제하지 않으므로 유니크 제약을 피하는 2단계 동기화가 필요 없다.
+     */
+    Project updateStateWithPositions(Project project);
+
+    /**
+     * 등록 정보 수정 저장. 포지션·첨부까지 반영한다.
+     *
+     * <p>포지션은 id 를 유지한 채 필드만 갱신한다. 매칭·협상·계약이 {@code project_position.id} 를
+     * 참조하므로 삭제 후 재생성하면 그 연결이 끊긴다.
+     */
+    Project updateDetail(Project project);
+
     /** 상세 조회. 포지션과 요구 스킬을 함께 로드한다. */
     Optional<Project> findById(Long projectId);
+
+    /**
+     * 모집 마감이 지났는데 아직 모집 중인 프로젝트. (정책 P46 만료 처리)
+     *
+     * <p>연장 여부는 보지 않는다. 연장하지 않아도 기본 2주가 지나면 만료 대상이다.
+     */
+    List<Project> findExpiredRecruiting(LocalDateTime now);
 
     /**
      * 소유 확인과 등급 조회에 쓰는 경량 조회.

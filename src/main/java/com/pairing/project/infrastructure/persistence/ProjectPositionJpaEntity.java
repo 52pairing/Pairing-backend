@@ -94,6 +94,38 @@ public class ProjectPositionJpaEntity {
         this.project = project;
     }
 
+    /**
+     * 수정된 조건을 반영한다. id 와 confirmedCount 는 건드리지 않는다.
+     *
+     * <p>매칭·협상·계약이 이 행의 id 를 참조하므로 삭제 후 재생성하면 안 된다.
+     */
+    public void applyCondition(int positionNo, JobCategory jobCategory, JobRole jobRole,
+                               int minCareerYears, int headcount) {
+        this.positionNo = positionNo;
+        this.jobCategory = jobCategory;
+        this.jobRole = jobRole;
+        this.minCareerYears = minCareerYears;
+        this.headcount = headcount;
+    }
+
+    /** 모집 마감 결과만 반영한다. 조건과 확정 인원은 건드리지 않는다. */
+    public void applyStatus(PositionStatus status, LocalDateTime closedAt) {
+        this.status = status;
+        this.closedAt = closedAt;
+    }
+
+    /**
+     * 요구 스킬을 통째로 교체한다.
+     *
+     * <p>{@code uk_position_skill (position_id, skill_code)} 이 있어 기존 행이 남은 채로 넣으면
+     * 중복 키가 난다. 비운 뒤 다시 채우고, 삭제가 먼저 나가도록 호출부가 flush 를 맞춘다.
+     *
+     * <p>position_skill 은 참조하는 테이블이 없어 전량 교체해도 안전하다.
+     */
+    public void clearSkills() {
+        this.skills.clear();
+    }
+
     public void addSkill(PositionSkillJpaEntity skill) {
         skills.add(skill);
         skill.assignPosition(this);

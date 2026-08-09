@@ -3,6 +3,8 @@ package com.pairing.project.presentation.api.request;
 import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
+import com.pairing.project.application.command.UpdateProjectCommand;
+import com.pairing.project.domain.model.PositionUpdate;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -85,4 +87,17 @@ public record ProjectUpdateRequest(
         @Size(max = 10)
         List<Long> fileIds
 ) {
+
+    /** positionId 가 있으면 기존 포지션 수정, null 이면 추가다. 목록에 없는 기존 포지션은 삭제된다. */
+    public UpdateProjectCommand toCommand(Long projectId, Long accountId) {
+        List<PositionUpdate> positionUpdates = positions.stream()
+                .map(p -> new PositionUpdate(p.positionId(), p.jobCategory(), p.jobRole(),
+                        p.minCareerYears(), p.headcount(), p.skills()))
+                .toList();
+
+        return new UpdateProjectCommand(projectId, accountId, title, startDesiredDate, startNegotiable,
+                periodValue, periodUnit, budgetAmount, workStyle, workForm,
+                currentSituation, mainTask, detailScope, extraNote,
+                positionUpdates, fileIds == null ? List.of() : fileIds);
+    }
 }

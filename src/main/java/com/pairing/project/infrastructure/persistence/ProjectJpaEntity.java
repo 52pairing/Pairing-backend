@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * project 테이블 매핑.
@@ -219,6 +220,28 @@ public class ProjectJpaEntity {
         this.retentionUntil = retentionUntil;
     }
 
+    /** 수정으로 바뀌는 스칼라. 상태·확정 인원·재추천 횟수는 여기서 다루지 않는다. */
+    public void applyEditable(String title, LocalDate startDesiredDate, boolean startNegotiable,
+                              int periodValue, PeriodUnit periodUnit, Long budgetAmount,
+                              WorkStyle workStyle, WorkForm workForm, String workLocation,
+                              String currentSituation, String mainTask, String detailScope,
+                              String extraNote, int totalHeadcount) {
+        this.title = title;
+        this.startDesiredDate = startDesiredDate;
+        this.startNegotiable = startNegotiable;
+        this.periodValue = periodValue;
+        this.periodUnit = periodUnit;
+        this.budgetAmount = budgetAmount;
+        this.workStyle = workStyle;
+        this.workForm = workForm;
+        this.workLocation = workLocation;
+        this.currentSituation = currentSituation;
+        this.mainTask = mainTask;
+        this.detailScope = detailScope;
+        this.extraNote = extraNote;
+        this.totalHeadcount = totalHeadcount;
+    }
+
     public void addPosition(ProjectPositionJpaEntity position) {
         positions.add(position);
         position.assignProject(this);
@@ -227,5 +250,20 @@ public class ProjectJpaEntity {
     public void addFile(ProjectFileJpaEntity file) {
         files.add(file);
         file.assignProject(this);
+    }
+
+    /**
+     * 요청에 없는 포지션을 지운다. {@code orphanRemoval} 이 DELETE 를 만든다.
+     *
+     * <p>도메인이 REGISTERED 상태에서만 삭제를 허용하므로, 여기까지 온 포지션은
+     * 매칭·계약이 참조하지 않는 것들이다.
+     */
+    public void removePositionsNotIn(Set<Long> keepIds) {
+        positions.removeIf(position -> position.getId() != null && !keepIds.contains(position.getId()));
+    }
+
+    /** 첨부는 참조하는 테이블이 없어 전량 교체한다. */
+    public void clearFiles() {
+        this.files.clear();
     }
 }
