@@ -100,6 +100,12 @@
   - 트리거 시점은 **이력서(Resume) 저장**으로 잡음 — 임베딩 텍스트가 자기소개/경력사항(Resume 도메인 필드)이라, `.ai/STATE.md`에 적혀 있던 "조건(Condition) 저장 시마다"는 실제 텍스트 구성과 안 맞아서 이력서 저장 시점으로 정정.
   - `ResumeUpdatedEventListenerTest` 신규(이력서 저장 → 임베딩 upsert 호출 검증), `./gradlew clean build` 통과.
   - 이전에 held-back 상태였던 문서 동기화 커밋(HANDOFF 13번, 회사주소 명세 포함)도 이 브랜치에 같이 실어서 push — "문서만 고친 건 단독 브랜치로 안 올리고 기능 브랜치에 묻어간다"는 사용자 피드백 반영.
+- **Pairing-python `_build_prompt`(HANDOFF 9번)에서 발견한 실제 컬럼명 버그 2건 수정** — 하드필터(HANDOFF 10번) 착수 전에 실제 DB로 검증해보려다 발견:
+  - `freelancer_condition`/`resume`은 `freelancer_profile.id`가 아니라 `account_id`로 연결됨(당시 `db/init/*.sql` 문서 기준으로 짜서 `freelancer_id`라고 잘못 알고 있었음). `freelancer_embedding`이 쓰는 id는 `freelancer_profile.id`라 반드시 `freelancer_profile`을 거쳐 `account_id`로 다리를 놓아야 함.
+  - `project_position.preferred_note`는 존재하지 않는 컬럼(`ProjectPositionJpaEntity` 주석: "우대사항은 프로젝트 단위(`extra_note`)로 통일했다") — 중복 필드라 제거.
+  - **검증 과정에서 혼란이 있었음**: 로컬 도커 Postgres 컨테이너(`pairing-postgres`)에 직접 붙어 확인했더니 `freelancer_id` 컬럼이 그대로 있어서(FK도 걸려있어서) 처음 판단이 틀렸다고 오해했었음 — 이 컨테이너는 row가 0개인 빈 컨테이너로, 실제 Spring 앱이 `ddl-auto`로 한 번도 안 건드린 raw SQL 초기화 상태였던 것으로 보임(로컬 개발이 H2를 쓰기 때문에 이 도커 Postgres 자체를 Spring이 아예 안 쓰고 있음). **2번이 실제 컬럼명을 최종 확인**: `account_id`가 맞고 `freelancer_id`는 애초에 없는 컬럼. `fix/directory-repository-column-names` 브랜치(Pairing-python), PR 오픈.
+  - **교훈**: 이 레포의 `db/init/*.sql`은 `application.yaml` 주석상 "스키마 단일 소스"라고 되어 있지만 실제로 로컬에 떠 있는 도커 컨테이너와도 100% 일치하지 않을 수 있다 — Python처럼 raw SQL로 스프링 테이블을 직접 읽는 코드는 **Java JPA 엔티티(`@Column`)를 최종 근거로 삼고, 애매하면 실제 담당자에게 확인**하는 게 안전하다(이번에도 그렇게 해서 정답 확인함).
+- **Stage B "느슨한 조건 필터" 확인 요청 관련 — 3번 답변이 다른 걸 가리켰음**: 3번이 "사전 검수"(정책 P02, `ProjectPreReviewService`)를 언급했는데, 이건 **프로젝트 등록 시점**에 직무+요구스킬(AND)만으로 후보 수를 세는 별개 기능이라 확인 요청한 것(AI 추천 Stage B, 일정/근무조건/단가 느슨한 필터)과 무관함. 재질문 필요 — 아직 답변 대기.
 
 ## 다음 세션에서 할 일
 
@@ -114,8 +120,12 @@
 6. ~~`resolveFreelancerId`/`findCondition`(freelancerId 기준)~~ — 완료. 계정 승인은 이미 끝나 있었고 매칭 어댑터만 안 바꿔놓은 상태였음.
 7. `expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현 — 나중에 만들 때 `syncStage` 호출도 같이 넣을 것(HANDOFF 25번 참고).
 8. ~~`AI매칭_API_화면매핑_최신본.md`(MT_009/quantity 경고) 반영 확인~~ — 완료. 그 이후 코드가 또 바뀌어서(MT_012 실제 검증 추가, MT_013/MT_014/MT_015 신규) 문서가 다시 뒤처짐 — 사용자가 직접 갱신할 항목.
-9. Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번) — 아직 미착수.
+9. Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번) — 착수 직전.
+    - **AI매칭 동의 + 직군/직무 일치**: 기준 명확함, 바로 구현.
+    - **일정/근무조건/단가(느슨하게)**: 정확한 허용 범위(며칠까지/몇 %까지)가 문서에 없어 3번에게 확인 요청 보냄 → 3번이 "사전 검수"(정책 P02, 프로젝트 등록 시점에 직무+요구스킬만 보는 별개 기능)를 답변했는데 무관한 것으로 확인됨. **Stage B 느슨한 필터라고 다시 명확히 구분해서 재질문 필요 — 아직 답변 대기.**
+    - 이전에 노출된 프리랜서 제외(`excludePreviouslySurfaced`)도 Java가 결과 받은 뒤 후처리하는 대신 Python이 검색 전에 미리 빼도록 옮기는 것도 이 작업 범위(풀 크기 줄어드는 문제 해결). Python `/recommendations` 요청 스키마에 제외 id 목록 추가 필요.
 10. budgetCap Stage F(HANDOFF 11번) — 배분 알고리즘 규칙 자체가 확정된 적 없음이 3번 확인으로 밝혀짐. 현재 공식(A안) 유지로 결정, 팀 회의에서 경력 차등(B안)/LLM 조합(C안) 여부만 다시 논의될 수 있음.
 11. (선택) 이 컴퓨터에 `gh` CLI 설치하면 다음부터 이슈/PR을 AI가 직접 생성할 수 있음 — 지금은 매번 텍스트만 만들어주고 사용자가 직접 생성 중.
 12. ~~프리랜서 임베딩이 실환경에서 한 번도 생성되지 않던 결함~~ — 완료(위 참고). 이걸로 Stage C가 이제야 실제로 검색할 대상이 생김.
 13. **Stage E(LLM 최종선정) 재설계** — 확정 설계는 "프로젝트당 1회 호출, 전체 포지션 한번에"인데 지금은 포지션마다 따로 호출함. Python `MatchingRequest`가 `position_id` 단일값만 받는 구조라 API 계약 자체를 바꿔야 함(여러 포지션 id + 포지션별 후보 풀을 한 번에 받아서 LLM 프롬프트도 여러 포지션을 한꺼번에 판단하게). 범위가 커서 착수 전 사용자와 우선순위 논의 필요.
+14. Pairing-python `fix/directory-repository-column-names` PR — 리뷰/머지 대기(2번이 컬럼명 confirm 완료, 코드는 맞게 고쳐져 있음).

@@ -23,7 +23,8 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 - `PUT /api/v1/embeddings/freelancers`, `PUT /api/v1/embeddings/positions` — 임베딩 upsert (해시 비교로 재계산 스킵)
 - `GET /api/v1/embeddings/positions/{id}/candidates?limit=` — pgvector 코사인 검색
 - `POST /api/v1/matchings/recommendations` — 후보풀 조회 + Gemini 재랭킹(`{freelancer_id, score, reason}` 구조화 출력). `_build_prompt`는 실제 포지션 요구조건+프리랜서 이력서 원문을 채움(2026-08-09 완료).
-- **미구현**: 하드필터(직군/직무/AI매칭 동의/일정/단가)가 검색에 전혀 없음 — 순수 벡터 유사도만 봄(HANDOFF 10번).
+- **미구현**: 하드필터(직군/직무/AI매칭 동의/일정/단가)가 검색에 전혀 없음 — 순수 벡터 유사도만 봄(HANDOFF 10번). AI매칭 동의+직군/직무는 기준이 명확해 착수 직전, 일정/근무조건/단가 "느슨하게"는 정확한 허용 범위가 문서에 없어 3번에게 재질문 대기 중(사전검수 P02와는 무관, WORKLOG 참고).
+- **(2026-08-09 발견·수정) `directory_repository.py` 컬럼명 버그 2건**: `freelancer_condition`/`resume`을 `freelancer_id`로 조회하고 있었는데 실제 컬럼은 `account_id`(2번 확인 완료) — `freelancer_profile` 경유해서 다리 놓게 수정. `project_position.preferred_note`도 존재하지 않는 컬럼이라 제거(우대사항은 `project.extra_note`로 통일돼 있음). `fix/directory-repository-column-names` 브랜치, PR 리뷰 대기.
 - **(신규 발견·해결, 2026-08-09) 치명적 결함이었던 것**: 스프링 쪽에서 `PUT /embeddings/freelancers`를 부르는 코드가 어디에도 없었다. 프로젝트 포지션 임베딩(`upsertPositionEmbedding`)은 잘 연결돼 있었는데 프리랜서 쪽은 `MatchingPort`에 메서드 자체가 없었음 — `freelancer_embedding` 테이블이 실환경에서 영원히 비어 있었다는 뜻(Stage C가 검색할 대상이 없음). 테스트가 통과했던 건 `MatchingPort.recommend()`를 목 처리해서 실제 벡터 검색을 건너뛰었기 때문. `MatchingPort.upsertFreelancerEmbedding` 신규 추가 + 이력서 저장(`ResumeService.upsert`) 시 `ResumeUpdatedEvent` 발행 + 매칭의 `ResumeUpdatedEventListener`가 받아서 자기소개+경력사항으로 임베딩 재생성하도록 연결. `feature/matching-freelancer-embedding-trigger` 브랜치.
 
 ## Pairing-backend `matching` 도메인 현황 (2026-08-08 갱신)
