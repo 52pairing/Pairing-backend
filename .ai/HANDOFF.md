@@ -7,12 +7,16 @@
 **1일차·2일차 항목(아래 1~8번) 전부 완료.** 매칭 도메인 9개 엔드포인트가 실제 로직으로 동작한다
 (스켈레톤 고정 응답 없음). PR #34로 develop에 merge 완료.
 
-**스텁 어댑터 3개 중 2개 완전 교체, 1개 부분 교체 완료** (`feature/matching-directory-adapters` 브랜치,
-**PR #51 오픈 중, develop 대상**). `ProjectDirectoryPort`/`NegotiationPort`는 실제 구현으로 완전히
-바뀌었고, `FreelancerDirectoryPort`는 카드 요약만 실구현이고 `resolveFreelancerId`/`findCondition`은
-account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 같은 브랜치에 budgetCap 버그 수정(2건)과
-결제 완료 → 매칭 초기 추천 이벤트 리스너 신규 구현도 같이 들어가 있다. 상세는 `.ai/STATE.md` 참고.
+**스텁 어댑터 3개 중 2개 완전 교체, 1개 부분 교체 — PR #51 develop에 merge 완료(2026-08-09).**
+`ProjectDirectoryPort`/`NegotiationPort`는 실제 구현으로 완전히 바뀌었고, `FreelancerDirectoryPort`는
+카드 요약만 실구현이고 `resolveFreelancerId`/`findCondition`은 account 도메인 쪽 메서드 대기 중이라
+스텁으로 남아있다. 같은 브랜치에 budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤트 리스너
+신규 구현도 같이 들어가 merge됐다. 상세는 `.ai/STATE.md` 참고.
 이 컴퓨터에 `gh` CLI가 없어서 이슈/PR은 AI가 텍스트만 만들고 사용자가 GitHub 웹에서 직접 생성한다.
+
+**`fix/rerecommend-quantity-validation` 브랜치 신규 오픈 (develop 대상, PR 생성 대기).** 아래 20번
+항목(재추천 quantity 누락 시 500 나던 것) 수정 — `./gradlew build` 통과 확인, push 완료. PR 텍스트는
+이 세션에서 준비해 사용자에게 전달, 사용자가 GitHub 웹에서 생성 예정.
 
 ## 지금 당장 할 일 (순서대로)
 
@@ -57,7 +61,9 @@ account 도메인 쪽 메서드 대기 중이라 스텁으로 남아있다. 같�
 17. **(참고, 재발 방지)** `@TransactionalEventListener` 안에서 `@Transactional(REQUIRES_NEW)` 메서드를 "같은 빈 안에서 `this.method()`로" 부르면 스프링 프록시를 안 거쳐 트랜잭션이 조용히 무시된다(자체 호출 self-invocation 문제). 실제로 이 버그로 라운드 저장이 안 되는 걸 테스트로 재현해서 발견 — 새 트랜잭션이 꼭 필요한 메서드는 반드시 별도 빈으로 분리해서 호출할 것(`RecruitingStartedEventListener`/`RecruitingStartedPositionHandler` 참고).
 18. **(참고, 재발 방지)** 재추천 엔드포인트의 레이트리밋(`RateLimitProvider`)은 Redis가 실제로 있어야 동작한다. 이 엔드포인트를 호출하는 테스트를 새로 짤 땐 `RateLimitProvider`를 `@MockitoBean`으로 목 처리해야 Redis 없는 CI에서도 통과한다(`MatchingIntegrationTest` 참고). 로컬은 Redis 컨테이너가 떠 있어서 이 문제가 안 드러나니 착각하지 말 것.
 19. ~~`AI매칭_API_화면매핑_최신본.md`(레포 밖, 프론트 공유용 문서) 검토~~ — 2026-08-09 완료. MT_009(dead code, 실제론 201+빈 배열) 제거, `RerecommendRequest.quantity` PAID 필수·검증 없음 경고를 사용자가 문서에 반영, 재검토까지 끝남.
-20. **(작은 코드 개선, 우선순위 낮음)** `RerecommendRequest.quantity`에 `type=PAID`일 때만 필수가 되는 조건부 검증이 없다. 지금은 프론트가 빠뜨리면 400이 아니라 500(NPE, `recruitCount = quantity`에서 언박싱)이 난다. `MatchingRerecommendService.rerecommend()` 초입에 `type == PAID && quantity == null`이면 `MatchingErrorCode.INVALID_MATCHING_STATE`(또는 전용 코드) 던지는 명시적 검증 추가 권장.
+20. ~~`RerecommendRequest.quantity`에 `type=PAID`일 때만 필수가 되는 조건부 검증이 없다~~ — 2026-08-09 수정 완료. `MatchingErrorCode.QUANTITY_REQUIRED`(MT_012) 추가, `MatchingRerecommendService.rerecommend()` 초입에 `type == PAID && quantity == null`이면 던지도록 처리. 회귀 테스트(`MatchingIntegrationTest.rerecommendPaidWithoutQuantityReturnsBadRequest`) 추가. `fix/rerecommend-quantity-validation` 브랜치, PR 생성 대기.
+21. ~~`RerecommendRequest.type`이 `INITIAL`도 그대로 받아버리는 문제~~ — 2026-08-09 수정 완료. 코드 리뷰로 발견: `type == FREE`가 아니면 전부 유료 취급하는 구조라 `type=INITIAL`을 보내면 (a) `quantity`가 없으면 20번 수정으로도 못 막던 NPE, (b) `quantity`가 있으면 재추천 API로 `INITIAL` 태그 라운드가 만들어지는 오동작이 가능했음(20번 수정만으론 해결 안 됨). `MatchingErrorCode.INVALID_RERECOMMEND_TYPE`(MT_013) 추가, `rerecommend()` 최초 진입부에 `type`이 FREE/PAID가 아니면 던지도록 처리. 회귀 테스트(`MatchingIntegrationTest.rerecommendWithInitialTypeReturnsBadRequest`) 추가. 20번과 같은 브랜치(`fix/rerecommend-quantity-validation`)에 포함.
+22. **(신규 발견, 우선순위 중)** 임베딩 텍스트(`RecruitingStartedPositionHandler.buildEmbeddingText`)에 `currentSituation`/`mainTask`(Task #4, 팀 답변 대기) 말고도 `detailScope`(업무범위)/`extraNote`(우대사항)도 빠져있다. 이 둘은 팀 결정 대기 항목이 아니라 애초에 매칭 쪽으로 안 이어져 있던 것 — project 도메인의 `Project`/`ProjectResponse`엔 이미 존재하는데, project가 매칭에 넘기는 `ProjectPositionSummary`(project.application.result)에도, 매칭 자신의 로컬 `ProjectPositionSummary`에도 없다. 원래 설계 결정(`.ai/STATE.md` "확정된 설계 결정 1": 임베딩 유사도 = 프로젝트설명+담당업무+업무범위+우대사항)엔 포함돼야 하는 필드라 Task #4와 별개로 백로그에 추가 필요.
 
 ## 열려있는 결정/블로커 (건드리기 전에 확인)
 
