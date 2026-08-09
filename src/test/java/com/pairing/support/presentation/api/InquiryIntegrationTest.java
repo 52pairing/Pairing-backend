@@ -192,6 +192,7 @@ class InquiryIntegrationTest {
         body.put("businessNo", "1234567890");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
+        body.put("address", "서울 강남구 테헤란로 1");
         body.put("email", email);
         body.put("name", name);
         body.put("phone", "010-7777-8888");
