@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.usecase;
 
+import com.pairing.negotiation.application.result.AgreedNegotiationView;
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
@@ -30,4 +31,14 @@ public interface NegotiationQueryUseCase {
 
     /** 협상 로그 해시 체인 무결성 검증(위변조 탐지). 당사자만(아니면 NG_002), 없으면 NG_001. */
     NegotiationLogVerifier.Result verifyLog(Long negotiationId, Long accountId);
+
+    /**
+     * 타결 협상의 계약 생성용 스냅샷(서버간 호출). AGREED 조건만 담고 마지노선은 담지 않는다.
+     *
+     * <p>{@link #getDetail}은 뷰어 계정이 필요하고 floor 를 뷰어 기준으로 걸러 내므로 계약 생성에는 맞지 않아 따로 둔다.
+     * 계약 도메인이 협상 리포지토리를 직접 읽지 않게 하는 것이 목적이다.
+     *
+     * @throws com.pairing.global.exception.BusinessException 없으면 NG_001, 타결 상태가 아니면 NG_009
+     */
+    AgreedNegotiationView getAgreedForContract(Long negotiationId);
 }
