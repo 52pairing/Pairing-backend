@@ -32,6 +32,11 @@ spring:
 # GlobalSecurityConfig에 /h2-console/** 허용과 frameOptions 비활성화를 추가해야 한다.
 
 app:
+  dev:
+    # 프론트 연동용 협상 더미 생성 API(POST /api/v1/dev/negotiations/seed) 활성화.
+    # 로컬에서만 기본 on. 배포에서 쓰려면 APP_DEV_SEED_ENABLED=true 를 명시적으로 주입한다.
+    seed-enabled: true
+
   crypto:
     # 개발 전용 더미 키(32바이트 Base64). 운영에서는 DATA_ENCRYPTION_KEY로 주입한다.
     data-key: dGVzdC1kYXRhLWVuY3J5cHRpb24ta2V5LTMyYnl0ZXM=
