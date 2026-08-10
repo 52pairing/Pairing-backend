@@ -37,12 +37,18 @@ public record NegotiationView(
     public record ConditionProposal(String proposedValue, String reason) {
     }
 
-    /** 상세용: chatRoomId + 조건별 제안. 목록 전용 값은 기본값. */
+    /**
+     * 상세용: chatRoomId + 조건별 제안 + {@code waitingForMe}.
+     *
+     * <p>{@code waitingForMe} 는 목록과 같은 기준이며, 화면에서 <b>승인/재지시 패널을 띄울지</b>
+     * 판정하는 값이다(내 응답 차례인가). 조건 status 만으로는 "상대 응답 대기 중"과 구분되지 않는다.
+     */
     public static NegotiationView forDetail(Negotiation negotiation, PartyRole role, String title,
                                             String clientName, String freelancerName, Long chatRoomId,
+                                            boolean waitingForMe,
                                             Map<Long, ConditionProposal> conditionProposals) {
         return new NegotiationView(negotiation, role, title, clientName, freelancerName, chatRoomId,
-                false, null, null, conditionProposals == null ? Map.of() : conditionProposals);
+                waitingForMe, null, null, conditionProposals == null ? Map.of() : conditionProposals);
     }
 
     /** 목록용: waitingForMe + 마지막 제안. 상세 전용 값은 기본값. */

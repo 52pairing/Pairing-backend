@@ -153,7 +153,8 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
                             new NegotiationView.ConditionProposal(m.getProposedValue(), m.getReason())));
         }
         return NegotiationView.forDetail(negotiation, role, title,
-                clientName(clientProfileId), freelancerName(negotiation), chatRoomId, proposals);
+                clientName(clientProfileId), freelancerName(negotiation), chatRoomId,
+                isWaitingFor(negotiation, role), proposals);
     }
 
     /** 목록 뷰: 마지막 제안(주체·시각) + '내 응답 필요' 여부를 채운다. */

@@ -2,6 +2,7 @@ package com.pairing.negotiation.presentation.api.response;
 
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
+import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -26,6 +27,13 @@ public record NegotiationResponse(
 
         @Schema(description = "상대 이름", example = "홍길동")
         String counterpartName,
+
+        @Schema(description = "내 역할. 말풍선 좌/우 배치와 '내 대리인' 표기에 쓴다", example = "FREELANCER")
+        PartyRole viewerRole,
+
+        @Schema(description = "내 응답 차례 여부. true 면 승인/재지시 패널을 띄운다. "
+                + "조건 status 만으로는 '상대 응답 대기'와 구분되지 않는다", example = "true")
+        boolean waitingForMe,
 
         @Schema(description = "상태")
         NegotiationStatus status,

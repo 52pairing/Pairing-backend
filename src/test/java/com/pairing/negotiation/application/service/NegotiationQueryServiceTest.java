@@ -174,6 +174,24 @@ class NegotiationQueryServiceTest {
     }
 
     @Test
+    @DisplayName("상세: viewerRole 과 waitingForMe 가 내려간다(승인 패널 노출 판정용)")
+    void detailExposesViewerRoleAndWaitingForMe() {
+        NegotiationResponse before = NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, freelancerAccountId));
+        assertThat(before.viewerRole()).isEqualTo(PartyRole.FREELANCER);
+        assertThat(before.waitingForMe()).isFalse();   // 아직 제안 없음
+
+        proposeRound1();
+
+        NegotiationResponse after = NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, freelancerAccountId));
+        assertThat(after.waitingForMe()).isTrue();     // 내 응답 차례 → 승인 패널
+        assertThat(NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, CLIENT_ACCOUNT_ID)).viewerRole())
+                .isEqualTo(PartyRole.CLIENT);
+    }
+
+    @Test
     @DisplayName("응답대기 건수: 제안이 오고 내 응답이 없으면 1건으로 센다")
     void waitingCountAfterProposal() {
         assertThat(queryUseCase.countWaitingForMe(freelancerAccountId)).isZero();   // 제안 전

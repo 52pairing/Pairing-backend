@@ -38,6 +38,8 @@ public final class NegotiationResponseFactory {
                 view.projectTitle(),
                 n.getPositionId(),
                 counterpartName(view),
+                role,
+                view.waitingForMe(),
                 n.getStatus(),
                 n.getTotalRound(),
                 Negotiation.MAX_ROUND,
