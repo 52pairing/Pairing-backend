@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.contract.application.usecase.ContractCreationUseCase;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCase;
 import com.pairing.negotiation.application.event.NegotiationEvent;
@@ -42,6 +43,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final NegotiationProposalPort proposalPort;
     // 협상 결과(타결/결렬)를 매칭 요청 건에 반영하는 인바운드 포트(방향: negotiation → matching).
     private final MatchingNegotiationOutcomeUseCase matchingOutcomeUseCase;
+    // 타결 시 표준계약서를 생성하는 인바운드 포트(방향: negotiation → contract).
+    private final ContractCreationUseCase contractCreationUseCase;
 
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
@@ -103,6 +106,13 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         }
 
         persist(negotiation, messages);
+
+        // 타결 → 표준계약서 자동 생성(요구사항 44행). persist 뒤여야 한다 — 계약 쪽이
+        // getAgreedForContract 로 협상을 다시 읽으므로 저장 전에 부르면 못 찾는다.
+        // 같은 트랜잭션이라 계약 생성이 실패하면 타결도 함께 롤백된다(멱등이라 재시도 안전).
+        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
+            contractCreationUseCase.createFromNegotiation(negotiation.getId());
+        }
 
         // 사람 채팅방은 타결이 아니라 계약 체결 시 열린다(계약 도메인이 ChatActivationUseCase 로 호출).
         publish(negotiation, switch (negotiation.getStatus()) {

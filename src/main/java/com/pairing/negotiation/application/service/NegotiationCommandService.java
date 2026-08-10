@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.contract.application.usecase.ContractCreationUseCase;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.negotiation.application.command.CreateNegotiationCommand;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
@@ -26,6 +27,8 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
     private final NegotiationRepository negotiationRepository;
     private final NegotiationMessageRepository messageRepository;
     private final ProjectReaderPort projectReaderPort;
+    // 무협상 즉시 타결도 계약서를 만들어야 한다(방향: negotiation → contract).
+    private final ContractCreationUseCase contractCreationUseCase;
 
     @Override
     public Long create(CreateNegotiationCommand command) {
@@ -65,6 +68,9 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
 
         if (settledImmediately) {
             sealAgreementSnapshot(negotiationId, negotiation);   // 최종 조건 봉인(증거 일관성)
+            // 타결 경로가 둘이라 여기도 계약서를 만든다. 저장 뒤여야 한다 — 계약 쪽이
+            // getAgreedForContract 로 협상을 다시 읽으므로 save 전에 부르면 못 찾는다.
+            contractCreationUseCase.createFromNegotiation(negotiationId);
         }
         return negotiationId;
     }
