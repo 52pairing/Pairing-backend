@@ -33,6 +33,7 @@ public record ProjectPositionSummary(
         Long budgetAmount,
         int headcount,
         int totalHeadcount,
+        String mainTask,
         String detailScope,
         String extraNote
 ) {

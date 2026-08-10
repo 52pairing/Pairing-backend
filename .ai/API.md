@@ -245,7 +245,7 @@
 | POST | `/api/v1/matchings/requests` | CLIENT | body `{positionId, candidateIds[]}` 매칭 요청 |
 | GET | `/api/v1/matchings/requests?projectId=&positionId=&status=&page=&size=` | CLIENT | 보낸 요청 |
 | GET | `/api/v1/matchings/requests/received?tab=&page=&size=` | FREELANCER | 받은 요청 (프로젝트 제안) |
-| GET | `/api/v1/matchings/requests/{requestId}` | O | 요청 상세 |
+| GET | `/api/v1/matchings/requests/{requestId}` | O | 요청 상세. `mainTask`(프로젝트 주요 담당 업무)는 이 엔드포인트에서만 값이 채워짐(3번 요청, 2026-08-09) — 목록/발송/수락/거절 응답은 항상 null |
 | POST | `/api/v1/matchings/requests/{requestId}/acceptance` | FREELANCER | 수락 → 협상 시작 |
 | POST | `/api/v1/matchings/requests/{requestId}/rejection` | FREELANCER | body `{reason}` 거절 |
 

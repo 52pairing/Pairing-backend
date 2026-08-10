@@ -297,6 +297,7 @@ class MatchingIntegrationTest {
         projectPayload.put("periodLabel", "6개월");
         projectPayload.put("startDesiredDate", LocalDate.now().plusDays(14));
         projectPayload.put("budgetAmount", 60_000_000L);
+        projectPayload.put("mainTask", "주문 시스템 API 개발");
         matchingSnapshotRepository.save(MatchingSnapshot.create(PROJECT_ID, POSITION_ID, null,
                 SnapshotType.PROJECT, objectMapper.writeValueAsString(projectPayload)));
 
@@ -454,6 +455,30 @@ class MatchingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content.length()").value(1))
                 .andExpect(jsonPath("$.data.content[0].counterpartName").value("주식회사 페어링테크"));
+    }
+
+    @Test
+    @DisplayName("주요 담당 업무는 요청 상세에서만 보이고 목록/받은요청에서는 안 보인다")
+    void mainTaskIsExposedOnlyInRequestDetailNotInLists() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        mockMvc.perform(get("/api/v1/matchings/requests/" + requestId)
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mainTask").value("주문 시스템 API 개발"));
+
+        mockMvc.perform(get("/api/v1/matchings/requests")
+                        .param("projectId", String.valueOf(PROJECT_ID))
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].mainTask").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/matchings/requests/received")
+                        .cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].mainTask").doesNotExist());
     }
 
     private Long sendRequestAndGetId(Long candidateId) throws Exception {

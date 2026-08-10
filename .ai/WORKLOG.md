@@ -142,3 +142,14 @@
 - **테스트 빈틈 발견·보완**: `RecruitingStartedEventListenerTest`가 그동안 freelancerId(999_001L)에 `freelancer_condition`을 전혀 안 심고도 통과하고 있었음 — 가드가 placeholder라 `findCondition`을 실제로 안 불렀기 때문. 가드가 실제로 호출하게 되면서 예외가 나서 발견, 포지션 요구조건(BACKEND/SPRING_BOOT)과 일치하는 조건을 `freelancerConditionUseCase.upsert()`로 심도록 수정.
 - `MatchingIntegrationTest`에 가드 탈락 시나리오 신규 테스트 추가: 점수가 더 높지만(95점) 요구 스킬(SPRING_BOOT)이 없는 후보와 점수가 낮지만(80점) 스킬이 일치하는 후보를 같이 LLM 응답으로 주고, 가드 통과한 후자만 노출되는지 확인(가드가 없었다면 95점 후보가 노출됐을 것이므로 실질적인 검증이 됨).
 - `./gradlew build` 전체 통과. `feature/matching-stage-f-guard` 브랜치.
+
+## 2026-08-10 — 매칭 요청 상세에 `mainTask` 노출 (task #4 해소)
+
+3번에게 물었던 `currentSituation`/`mainTask` 노출 여부 답변 옴: **`mainTask`만, 카드가 아니라 요청 상세(`GET /requests/{requestId}`)에서만** 노출하기로 결정. 프리랜서가 수락 여부 판단할 때 mainTask가 제일 직접적인 정보고, currentSituation은 배경 설명이라 상세에서도 길어지기만 한다는 이유. 3번 쪽 작업 없음(`ProjectPositionSummary.mainTask`는 이미 `findPositionSummary` 응답에 있었음, 매칭 쪽만 안 옮기고 있었음).
+
+- `ProjectPositionSummary`(매칭 로컬)에 `mainTask` 추가, `ProjectDirectoryAdapter`가 매핑.
+- `RecruitingStartedPositionHandler.freezeSnapshot`이 PROJECT 스냅샷에 `mainTask`도 얼림(R32 대상, 프로젝트 수정 가능 필드라 라이브 아니라 스냅샷). 이미 모집 시작한 프로젝트는 스냅샷에 이 필드가 없어 null로 나옴 — 3번이 미리 경고해준 부분, 실제로 로컬 테스트 데이터(snapshot payload)에 필드 추가해서 확인함.
+- `MatchingRequestResponseAssembler`에 `buildDetail()` 신규(기존 `build()`는 그대로 두고 mainTask는 항상 null) — `findRequest()`만 `buildDetail()` 사용.
+- **진짜 버그 발견·수정**: `GET /requests/{requestId}`에 처음으로 실제 테스트(클라이언트 시점)를 붙이자마자 404가 남. 원인은 `findRequest()`가 클라이언트 소유 여부 확인보다 `resolveFreelancerId(accountId)`를 먼저 무조건 호출하고 있었던 것 — 클라이언트 accountId는 freelancer_profile이 없으니 매번 `FREELANCER_NOT_FOUND`(404)가 났다. **이 엔드포인트를 실제로 호출하는 테스트가 지금까지 하나도 없어서 안 드러난 버그.** 클라이언트 소유 확인을 먼저 하고, 아닐 때만 `resolveFreelancerId`를 부르도록 순서를 바꿔서 해결.
+- `docs/api-dto.csv`/`.ai/API.md` 동기화. `MatchingIntegrationTest`에 "상세에서만 보이고 목록/받은요청엔 안 보인다" 테스트 추가. `./gradlew build` 전체 통과.
+- `feature/matching-request-detail-main-task` 브랜치.

@@ -91,6 +91,7 @@ public class ProjectDirectoryAdapter implements ProjectDirectoryPort {
                 source.budgetAmount(),
                 source.headcount(),
                 source.totalHeadcount(),
+                source.mainTask(),
                 source.detailScope(),
                 source.extraNote()
         );
