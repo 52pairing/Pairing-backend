@@ -15,12 +15,16 @@ import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
+import com.pairing.notification.application.command.CreateNotificationCommand;
+import com.pairing.notification.application.usecase.NotificationCreateUseCase;
+import com.pairing.notification.domain.model.NotificationType;
 import com.pairing.project.application.usecase.ProjectCommandUseCase;
 import com.pairing.settlement.application.usecase.DepositSettlementUseCase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -35,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /** 서명 처리. 서명 그림은 선택이고, 넣었다면 실재해야 한다. */
@@ -60,6 +65,8 @@ class ContractSignatureTest {
     @Mock
     private FreelancerGradeReaderPort freelancerGradeReaderPort;
     @Mock
+    private NotificationCreateUseCase notificationCreateUseCase;
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private ContractCommandService service;
@@ -69,7 +76,7 @@ class ContractSignatureTest {
     void setUp() {
         service = new ContractCommandService(contractRepository, contractFileReaderPort,
                 projectCommandUseCase, chatActivationUseCase, depositSettlementUseCase,
-                freelancerGradeReaderPort, eventPublisher);
+                freelancerGradeReaderPort, notificationCreateUseCase, eventPublisher);
 
         contract = Contract.create(300L, 1L, 10L, 100L, 200L,
                 CLIENT_ACCOUNT_ID, FREELANCER_ACCOUNT_ID, 5_000_000L, 4,
@@ -123,6 +130,41 @@ class ContractSignatureTest {
                 .hasFieldOrPropertyWithValue("errorCode", ContractErrorCode.SIGNATURE_NOT_FOUND);
 
         assertThat(signatureOf(PartyRole.CLIENT).getStatus()).isEqualTo(SignatureStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("한쪽만 서명하면 상대에게만 알린다")
+    void notifiesCounterpartOnly() {
+        // 남은 사람이 서명해야 계약이 성립한다. 부르는 게 목적이라 서명한 본인에게는 안 보낸다.
+        service.sign(command(CLIENT_ACCOUNT_ID, null));
+
+        ArgumentCaptor<CreateNotificationCommand> captor =
+                ArgumentCaptor.forClass(CreateNotificationCommand.class);
+        verify(notificationCreateUseCase).create(captor.capture());
+
+        assertThat(captor.getValue().ownerAccountId()).isEqualTo(FREELANCER_ACCOUNT_ID);
+        assertThat(captor.getValue().type()).isEqualTo(NotificationType.CONTRACT_SIGNED);
+    }
+
+    @Test
+    @DisplayName("체결되면 양쪽에 알린다")
+    void notifiesBothOnConclusion() {
+        service.sign(command(CLIENT_ACCOUNT_ID, null));
+        service.sign(command(FREELANCER_ACCOUNT_ID, null));
+
+        // 1건(상대 호출) + 2건(체결 통보) = 3건
+        verify(notificationCreateUseCase, times(3)).create(any());
+    }
+
+    @Test
+    @DisplayName("알림이 실패해도 서명은 처리된다")
+    void notificationFailureDoesNotBlockSigning() {
+        // 알림 때문에 롤백되면 사용자는 버튼을 눌러도 아무 일이 없는 것처럼 보인다.
+        given(notificationCreateUseCase.create(any())).willThrow(new RuntimeException("알림 저장 실패"));
+
+        service.sign(command(CLIENT_ACCOUNT_ID, null));
+
+        assertThat(signatureOf(PartyRole.CLIENT).getStatus()).isEqualTo(SignatureStatus.SIGNED);
     }
 
     @Test
