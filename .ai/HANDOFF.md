@@ -1,6 +1,12 @@
 # 인수인계 — AI매칭(4번 파트) 3일 스프린트
 
-최종 갱신: 2026-08-09. 이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다.
+최종 갱신: 2026-08-10. 이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다.
+
+**2026-08-10 배치.** `feature/freelancer-matching-settings`(freelancer `/me/matching-settings` 실구현 +
+matchingPaused 하드필터 반영, 원래 2번 담당이지만 4번이 직접 진행), `feature/matching-request-auto-expire`
+(응답기한 3일 자동 만료 스케줄러 + `rejectReason` 필드 노출) 작업 완료, push 대기/완료 상태는
+`.ai/WORKLOG.md` 최신 항목 참고. `MatchingRequestResponse.rejectReason`(DIRECT_REJECT/EXPIRED/
+NEGOTIATION_FAILED) 신규 — 직접 거절과 자동 만료를 프론트가 구분할 수 있게 함.
 
 **3일차 배치(2026-08-09).** `feature/matching-embedding-detail-fields`(22번)/`feature/matching-freelancer-grade-tiebreaker`(12번 하위)/`feature/matching-project-stage-sync`(25번)/`feature/matching-freelancer-directory-real-impl`(12번 하위) 전부 develop에 merge 완료. Pairing-python `feature/matching-prompt-real-implementation`(9번)은 push 완료, develop 대상 PR 오픈해서 리뷰/머지 대기 중. **11번(budgetCap Stage F)은 A안(현행 유지) 확정, 코드 변경 없음** — 아래 11번 항목 참고. **10번(Pairing-python 하드필터)도 2026-08-09 완료** — 남은 건 10-2번(Stage E 감점 반영, 미착수)뿐.
 
