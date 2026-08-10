@@ -3,6 +3,7 @@ package com.pairing.negotiation.infrastructure.ai;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
+import com.pairing.negotiation.domain.service.NegotiationAgreedValueNormalizer;
 import com.pairing.negotiation.domain.service.NegotiationProposalStub;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
@@ -73,11 +74,12 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
         for (ConditionInput condition : context.conditions()) {
             OutcomeItem item = outcomeById.get(condition.conditionId());
             if (item != null) {
-                // 이 조건의 파이썬 대화 + 결과 사용.
+                // 이 조건의 파이썬 대화 + 결과 사용. 값은 계약 표기로 정규화해 싣는다.
                 pythonMessages.stream()
                         .filter(m -> condition.conditionId().equals(m.conditionId()))
+                        .map(m -> normalizeMessage(m, condition))
                         .forEach(messages::add);
-                outcomes.add(new ConditionOutcome(condition.conditionId(), item.proposedValue(), item.agreed()));
+                outcomes.add(normalizeOutcome(item, condition));
             } else {
                 // 파이썬이 이 조건 결과를 못 줌 → stub A2A 폴백.
                 StubExchange stub = stubExchange(condition);
@@ -112,6 +114,40 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
         }
     }
 
+    /**
+     * 합의 결과를 계약 표기로 정규화한다. 해석할 수 없는 값(없는 enum·형식 이탈)이면 <b>합의로 인정하지 않는다</b>
+     * — 그대로 락하면 계약 단계에서 못 읽는 값이 굳어지므로, 사람 승인 패널로 넘긴다.
+     */
+    private ConditionOutcome normalizeOutcome(OutcomeItem item, ConditionInput condition) {
+        Optional<String> normalized = NegotiationAgreedValueNormalizer.normalize(
+                condition.type(), item.proposedValue(), reference(condition));
+        if (normalized.isEmpty()) {
+            if (item.agreed()) {
+                log.warn("A2A 합의값을 해석할 수 없어 합의 취소(사람 승인으로 이관): conditionId={}, type={}, value={}",
+                        condition.conditionId(), condition.type(), item.proposedValue());
+            }
+            return new ConditionOutcome(condition.conditionId(), item.proposedValue(), false);
+        }
+        return new ConditionOutcome(condition.conditionId(), normalized.get(), item.agreed());
+    }
+
+    /**
+     * 대화 값도 정규화한다. 사람이 제안을 수락하면 최신 제안값이 그대로 락되기 때문
+     * ({@code NegotiationLoopService} 의 수락 경로). 해석 불가면 대화 맥락 보존을 위해 원문을 남긴다.
+     */
+    private AgentMessage normalizeMessage(AgentMessage message, ConditionInput condition) {
+        String value = NegotiationAgreedValueNormalizer
+                .normalize(condition.type(), message.proposedValue(), reference(condition))
+                .orElse(message.proposedValue());
+        return new AgentMessage(message.sender(), message.conditionId(), message.kind(),
+                value, message.content(), message.reason());
+    }
+
+    /** PERIOD 처럼 단위가 빠졌을 때 복원 기준이 되는 기존 값. */
+    private String reference(ConditionInput condition) {
+        return condition.clientValue() != null ? condition.clientValue() : condition.freelancerValue();
+    }
+
     /** 파이썬 없이도 대화 로그가 나오도록, 조건당 [클라 제안 → 프리 수락] 2턴 + 합의 결과를 만든다. */
     private StubExchange stubExchange(ConditionInput condition) {
         NegotiationProposalStub.Proposal p =
@@ -136,12 +172,19 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
     }
 
     private ProposeApiRequest toRequest(ProposalContext context) {
+        // 선택형 허용값·값형식을 함께 준다. 안 주면 LLM 이 없는 값(HYBRID 등)이나 단위 빠진 값을 만든다.
         List<ConditionPayload> conditions = context.conditions().stream()
                 .map(c -> new ConditionPayload(c.conditionId(),
                         c.type() == null ? null : c.type().name(),
-                        c.clientValue(), c.freelancerValue(), c.clientFloor(), c.freelancerFloor()))
+                        c.clientValue(), c.freelancerValue(), c.clientFloor(), c.freelancerFloor(),
+                        emptyToNull(NegotiationAgreedValueNormalizer.allowedValues(c.type())),
+                        NegotiationAgreedValueNormalizer.valueFormat(c.type())))
                 .toList();
         return new ProposeApiRequest(context.negotiationId(), context.round(), context.budgetCap(), conditions);
+    }
+
+    private List<String> emptyToNull(List<String> values) {
+        return values == null || values.isEmpty() ? null : values;
     }
 
     // ----- 파이썬 계약 DTO (snake_case) -----
@@ -153,7 +196,8 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     private record ConditionPayload(Long conditionId, String type, String clientValue, String freelancerValue,
-                                    String clientFloor, String freelancerFloor) {
+                                    String clientFloor, String freelancerFloor,
+                                    List<String> allowedValues, String valueFormat) {
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
