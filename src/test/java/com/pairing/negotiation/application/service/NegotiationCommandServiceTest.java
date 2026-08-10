@@ -141,6 +141,44 @@ class NegotiationCommandServiceTest {
     }
 
     @Test
+    @DisplayName("즉시 타결 금액은 예산 상한이 아니라 프리랜서가 제시한 월 단가다")
+    void immediateSettlementUsesFreelancerMonthlyPay() {
+        insertProject(5_000_000L, WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), true);
+
+        // 프리 월 300만 <= 상한 500만 → 다툴 게 없어 조건 0개로 즉시 타결.
+        Long id = commandUseCase.create(command(5_000_000L,
+                new FreelancerConditionSnapshot(PayUnit.MONTHLY, 3_000_000L,
+                        WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), false,
+                        null, null, null)));
+
+        Negotiation saved = negotiationRepository.findById(id).orElseThrow();
+        assertThat(saved.getConditions()).isEmpty();
+        assertThat(saved.getStatus()).isEqualTo(NegotiationStatus.AGREED);
+        // 상한(500만)이 아니라 프리 제시액(300만). 상한을 쓰면 아무도 제시한 적 없는 금액이 계약서에 찍힌다.
+        assertThat(saved.getAgreedAmount()).isEqualTo(3_000_000L);
+        assertThat(saved.getFreelancerMonthlyPay()).isEqualTo(3_000_000L);
+    }
+
+    @Test
+    @DisplayName("AMOUNT 조건은 양측 값을 모두 월 단가로 담는다(클라 쪽에 총예산이 섞이지 않는다)")
+    void amountConditionUsesMonthlyUnitOnBothSides() {
+        // 프로젝트 총예산 5천만, 협상 상한(월 단가)은 480만.
+        insertProject(50_000_000L, WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), true);
+
+        Long id = commandUseCase.create(command(4_800_000L,
+                new FreelancerConditionSnapshot(PayUnit.MONTHLY, 6_000_000L,
+                        WorkStyle.REMOTE, WorkForm.FULL_TIME, LocalDate.of(2026, 1, 1), false,
+                        null, null, null)));
+
+        NegotiationCondition amount = negotiationRepository.findById(id).orElseThrow()
+                .getConditions().stream()
+                .filter(c -> c.getConditionType() == ConditionType.AMOUNT)
+                .findFirst().orElseThrow();
+        assertThat(amount.getClientValue()).isEqualTo("4800000");        // 월 단가 상한(총예산 5천만 아님)
+        assertThat(amount.getFreelancerValue()).isEqualTo("6000000");    // 프리 월 단가
+    }
+
+    @Test
     @DisplayName("프로젝트가 없으면 생성 실패(NG_004) → 매칭 수락까지 롤백되게 예외를 던진다")
     void createFailsWhenProjectMissing() {
         assertThatThrownBy(() -> commandUseCase.create(command(5_000_000L,

@@ -83,7 +83,7 @@ class NegotiationAdminQueryServiceTest {
 
         // 타결된 협상 1건 + 라운드1 제안·응답 로그.
         Negotiation saved = negotiationRepository.save(Negotiation.create(800L, PROJECT_ID, 10L,
-                freelancerProfileId, 5_000_000L,
+                freelancerProfileId, 5_000_000L, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0))));
         negotiationId = saved.getId();
         amountConditionId = saved.getConditions().get(0).getId();

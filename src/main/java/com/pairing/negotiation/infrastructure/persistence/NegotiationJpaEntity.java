@@ -45,6 +45,9 @@ public class NegotiationJpaEntity {
     @Column(name = "budget_cap", nullable = false)
     private Long budgetCap;
 
+    @Column(name = "freelancer_monthly_pay")
+    private Long freelancerMonthlyPay;
+
     @Column(name = "floor_amount", nullable = false)
     private Long floorAmount;
 
@@ -73,7 +76,8 @@ public class NegotiationJpaEntity {
 
     public NegotiationJpaEntity(Long id, Long requestId, Long projectId, Long positionId, Long freelancerId,
                                 NegotiationStatus status, int totalRound, Long agreedAmount, Long budgetCap,
-                                Long floorAmount, LocalDateTime aiOutAt, LocalDateTime startedAt,
+                                Long freelancerMonthlyPay, Long floorAmount,
+                                LocalDateTime aiOutAt, LocalDateTime startedAt,
                                 LocalDateTime endedAt, String endReason, LocalDateTime clientLastReadAt,
                                 LocalDateTime freelancerLastReadAt,
                                 List<NegotiationConditionJpaEntity> conditions) {
@@ -86,6 +90,7 @@ public class NegotiationJpaEntity {
         this.totalRound = totalRound;
         this.agreedAmount = agreedAmount;
         this.budgetCap = budgetCap;
+        this.freelancerMonthlyPay = freelancerMonthlyPay;
         this.floorAmount = floorAmount;
         this.aiOutAt = aiOutAt;
         this.startedAt = startedAt;

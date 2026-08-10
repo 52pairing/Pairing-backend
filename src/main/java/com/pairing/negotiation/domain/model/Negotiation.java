@@ -33,8 +33,9 @@ public class Negotiation {
     private Long freelancerId;
     private NegotiationStatus status;
     private int totalRound;
-    private Long agreedAmount;   // 원 단위. 타결 전 null
-    private Long budgetCap;      // 순예산 상한(원). 매칭이 배정
+    private Long agreedAmount;   // 합의된 월 단가(원). 타결 전 null. 계약 총액은 계약 도메인이 개월 수로 곱해 계산한다
+    private Long budgetCap;      // 순예산 월 단가 상한(원). 매칭이 배정(총예산 ÷ 인원 ÷ 개월)
+    private Long freelancerMonthlyPay;   // 수락 시점 프리랜서 희망 월 단가(원). AMOUNT 협상이 없을 때의 합의값 기준
     private Long floorAmount;    // [레거시] AMOUNT 조건 floor. 조건별 floor 로 대체됨
     private LocalDateTime aiOutAt;
     private LocalDateTime startedAt;
@@ -45,13 +46,14 @@ public class Negotiation {
     private List<NegotiationCondition> conditions;
 
     private Negotiation(Long requestId, Long projectId, Long positionId, Long freelancerId,
-                        Long budgetCap, List<NegotiationCondition> conditions) {
+                        Long budgetCap, Long freelancerMonthlyPay, List<NegotiationCondition> conditions) {
         validateCreation(requestId, projectId, positionId, freelancerId, budgetCap);
         this.requestId = requestId;
         this.projectId = projectId;
         this.positionId = positionId;
         this.freelancerId = freelancerId;
         this.budgetCap = budgetCap;
+        this.freelancerMonthlyPay = freelancerMonthlyPay;
         this.floorAmount = 0L;
         this.status = NegotiationStatus.IN_PROGRESS;
         this.totalRound = 0;
@@ -61,9 +63,10 @@ public class Negotiation {
 
     private Negotiation(Long id, Long requestId, Long projectId, Long positionId, Long freelancerId,
                         NegotiationStatus status, int totalRound, Long agreedAmount, Long budgetCap,
-                        Long floorAmount, LocalDateTime aiOutAt, LocalDateTime startedAt,
-                        LocalDateTime endedAt, String endReason, LocalDateTime clientLastReadAt,
-                        LocalDateTime freelancerLastReadAt, List<NegotiationCondition> conditions) {
+                        Long freelancerMonthlyPay, Long floorAmount, LocalDateTime aiOutAt,
+                        LocalDateTime startedAt, LocalDateTime endedAt, String endReason,
+                        LocalDateTime clientLastReadAt, LocalDateTime freelancerLastReadAt,
+                        List<NegotiationCondition> conditions) {
         this.id = id;
         this.requestId = requestId;
         this.projectId = projectId;
@@ -73,6 +76,7 @@ public class Negotiation {
         this.totalRound = totalRound;
         this.agreedAmount = agreedAmount;
         this.budgetCap = budgetCap;
+        this.freelancerMonthlyPay = freelancerMonthlyPay;
         this.floorAmount = floorAmount;
         this.aiOutAt = aiOutAt;
         this.startedAt = startedAt;
@@ -83,22 +87,29 @@ public class Negotiation {
         this.conditions = conditions == null ? List.of() : conditions;
     }
 
-    /** 매칭 수락 시 협상 생성. conditions = 계산된 불일치 조건들. */
+    /**
+     * 매칭 수락 시 협상 생성. conditions = 계산된 불일치 조건들.
+     *
+     * @param freelancerMonthlyPay 수락 시점 프리 희망 월 단가. AMOUNT 가 협상 대상이 아닐 때(=상한 이내라
+     *                             불일치가 없을 때) 이 값이 곧 합의 금액이므로 함께 보존한다
+     */
     public static Negotiation create(Long requestId, Long projectId, Long positionId, Long freelancerId,
-                                     Long budgetCap, List<NegotiationCondition> conditions) {
-        return new Negotiation(requestId, projectId, positionId, freelancerId, budgetCap, conditions);
+                                     Long budgetCap, Long freelancerMonthlyPay,
+                                     List<NegotiationCondition> conditions) {
+        return new Negotiation(requestId, projectId, positionId, freelancerId, budgetCap,
+                freelancerMonthlyPay, conditions);
     }
 
     public static Negotiation reconstitute(Long id, Long requestId, Long projectId, Long positionId,
                                            Long freelancerId, NegotiationStatus status, int totalRound,
-                                           Long agreedAmount, Long budgetCap, Long floorAmount,
-                                           LocalDateTime aiOutAt, LocalDateTime startedAt, LocalDateTime endedAt,
-                                           String endReason, LocalDateTime clientLastReadAt,
-                                           LocalDateTime freelancerLastReadAt,
+                                           Long agreedAmount, Long budgetCap, Long freelancerMonthlyPay,
+                                           Long floorAmount, LocalDateTime aiOutAt, LocalDateTime startedAt,
+                                           LocalDateTime endedAt, String endReason,
+                                           LocalDateTime clientLastReadAt, LocalDateTime freelancerLastReadAt,
                                            List<NegotiationCondition> conditions) {
         return new Negotiation(id, requestId, projectId, positionId, freelancerId, status, totalRound,
-                agreedAmount, budgetCap, floorAmount, aiOutAt, startedAt, endedAt, endReason,
-                clientLastReadAt, freelancerLastReadAt, conditions);
+                agreedAmount, budgetCap, freelancerMonthlyPay, floorAmount, aiOutAt, startedAt, endedAt,
+                endReason, clientLastReadAt, freelancerLastReadAt, conditions);
     }
 
     /** 대리인 왕복 1라운드 소비. 상한 도달 시 소비 불가(결렬 처리로 넘긴다). */

@@ -96,7 +96,7 @@ class NegotiationQueryServiceTest {
                         LocalDate.of(2026, 1, 1), true, 6, PeriodUnit.MONTH)));
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
-                50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));
+                50_000_000L, 50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));
         NegotiationCondition amount = negotiation.getConditions().get(0);
         amount.submitFloor(PartyRole.CLIENT, "3500000");
         amount.submitFloor(PartyRole.FREELANCER, "3800000");
