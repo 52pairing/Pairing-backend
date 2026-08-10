@@ -527,7 +527,8 @@ class MatchingIntegrationTest {
                         .content("""
                                 {"reason":"일정이 맞지 않습니다."}"""))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+                .andExpect(jsonPath("$.data.status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.rejectReason").value("DIRECT_REJECT"));
     }
 
     @Test
@@ -552,14 +553,11 @@ class MatchingIntegrationTest {
         int expiredCount = matchingRequestCommandUseCase.expireOverdueRequests();
         assertThat(expiredCount).isEqualTo(1);
 
+        // 직접 거절과 구분되게 사유가 EXPIRED로 응답에 내려와야 한다.
         mockMvc.perform(get("/api/v1/matchings/requests/" + requestId).cookie(clientAccessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.status").value("REJECTED"));
-
-        // 직접 거절과 구분되게 사유가 EXPIRED로 남아야 한다.
-        String rejectReason = jdbcTemplate.queryForObject(
-                "SELECT reject_reason FROM matching_request WHERE id = ?", String.class, requestId);
-        assertThat(rejectReason).isEqualTo("EXPIRED");
+                .andExpect(jsonPath("$.data.status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.rejectReason").value("EXPIRED"));
 
         given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));

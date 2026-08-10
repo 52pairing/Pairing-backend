@@ -96,6 +96,7 @@ class MatchingRequestResponseAssembler {
                 request.getRequestedAt(),
                 request.getExpiresAt(),
                 request.getRespondedAt(),
+                request.getRejectReason(),
                 negotiation != null ? negotiation.currentRound() : null,
                 negotiation != null ? negotiation.maxRound() : null,
                 negotiation != null ? negotiation.newProposalCount() : null,
