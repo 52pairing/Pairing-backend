@@ -44,4 +44,9 @@ public class SettlementQueryService implements SettlementQueryUseCase {
         return settlementRepository.findByPayer(accountId, phase, status, pageable)
                 .map(SettlementResult::from);
     }
+
+    @Override
+    public boolean hasUnpaidSettlement(Long accountId) {
+        return settlementRepository.existsUnpaidByPayer(accountId);
+    }
 }

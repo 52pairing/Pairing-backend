@@ -47,4 +47,9 @@ public class SettlementRepositoryAdapter implements SettlementRepository {
         return springDataRepository.findFirstPayable(projectId, PAYABLE_STATUSES)
                 .map(settlementMapper::toDomain);
     }
+
+    @Override
+    public boolean existsUnpaidByPayer(Long payerAccountId) {
+        return springDataRepository.existsByPayerAccountIdAndStatusIn(payerAccountId, PAYABLE_STATUSES);
+    }
 }
