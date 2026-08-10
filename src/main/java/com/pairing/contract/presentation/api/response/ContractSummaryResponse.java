@@ -1,5 +1,7 @@
 package com.pairing.contract.presentation.api.response;
 
+import com.pairing.contract.application.result.ContractSummary;
+import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.meta.domain.model.PayUnit;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -22,4 +24,26 @@ public record ContractSummaryResponse(
         @Schema(description = "급여 단위") PayUnit payUnit,
         @Schema(description = "단위당 급여(원)", example = "6200000") Long payAmount
 ) {
+
+    /**
+     * 목록 카드 한 장.
+     *
+     * <p>급여 단위는 월로 고정한다. 협상이 합의해 넘겨주는 값이 월 단가 하나뿐이다.
+     */
+    public static ContractSummaryResponse from(ContractSummary summary) {
+        Contract contract = summary.contract();
+
+        return new ContractSummaryResponse(
+                contract.getId(),
+                contract.getContractNo(),
+                summary.projectTitle(),
+                summary.counterpartName(),
+                contract.getStatus(),
+                contract.getTotalAmount(),
+                contract.getStartDate(),
+                contract.getEndDate(),
+                summary.signatureRequired(),
+                PayUnit.MONTHLY,
+                contract.getSalaryAmount());
+    }
 }
