@@ -5,6 +5,7 @@ import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
+import com.pairing.matching.application.usecase.EmbeddingReindexUseCase;
 import com.pairing.matching.application.usecase.MatchingCandidateCommandUseCase;
 import com.pairing.matching.application.usecase.MatchingCandidateQueryUseCase;
 import com.pairing.matching.application.usecase.MatchingRequestCommandUseCase;
@@ -16,6 +17,7 @@ import com.pairing.matching.presentation.api.request.MatchingRejectRequest;
 import com.pairing.matching.presentation.api.request.MatchingRequestCreateRequest;
 import com.pairing.matching.presentation.api.request.RerecommendRequest;
 import com.pairing.matching.presentation.api.response.CandidateListResponse;
+import com.pairing.matching.presentation.api.response.EmbeddingReindexResponse;
 import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -51,6 +53,7 @@ public class MatchingController {
     private final MatchingRequestCommandUseCase matchingRequestCommandUseCase;
     private final MatchingRequestQueryUseCase matchingRequestQueryUseCase;
     private final MatchingRerecommendUseCase matchingRerecommendUseCase;
+    private final EmbeddingReindexUseCase embeddingReindexUseCase;
 
     @GetMapping("/positions/{positionId}/candidates")
     @PreAuthorize("hasRole('CLIENT')")
@@ -171,5 +174,14 @@ public class MatchingController {
                 request.quantity(), accountId);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.created("RERECOMMENDED", "재추천을 완료했습니다.", response));
+    }
+
+    @PostMapping("/admin/embeddings/reindex")
+    @Operation(summary = "[관리자] 임베딩 일괄 재색인",
+            description = "이력서 있는 프리랜서 전체 + 모집 시작한 포지션 전체의 임베딩을 다시 생성합니다. "
+                    + "임베딩 모델을 교체해 벡터 공간이 달라졌을 때 씁니다. 건수가 많으면 시간이 걸릴 수 있습니다.")
+    public ResponseEntity<ApiResponse<EmbeddingReindexResponse>> reindexEmbeddings() {
+        EmbeddingReindexResponse response = EmbeddingReindexResponse.from(embeddingReindexUseCase.reindexAll());
+        return ResponseEntity.ok(ApiResponse.success("EMBEDDINGS_REINDEXED", "임베딩 재색인을 완료했습니다.", response));
     }
 }

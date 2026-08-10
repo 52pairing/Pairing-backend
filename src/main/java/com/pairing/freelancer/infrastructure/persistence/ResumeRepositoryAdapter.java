@@ -6,6 +6,7 @@ import com.pairing.freelancer.infrastructure.mapper.ResumeMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -24,5 +25,10 @@ public class ResumeRepositoryAdapter implements ResumeRepository {
     @Override
     public Optional<Resume> findByAccountId(Long accountId) {
         return springDataRepository.findByAccountId(accountId).map(resumeMapper::toDomain);
+    }
+
+    @Override
+    public List<Long> findAllAccountIds() {
+        return springDataRepository.findAllAccountIds();
     }
 }

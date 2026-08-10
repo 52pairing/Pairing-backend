@@ -66,4 +66,13 @@ public class FreelancerDirectoryAdapter implements FreelancerDirectoryPort {
                 .toList();
         return new FreelancerResumeSummary(resume.selfIntroduction(), careers);
     }
+
+    @Override
+    public List<Long> findAllFreelancerIdsWithResume() {
+        return resumeUseCase.findAllAccountIdsWithResume().stream()
+                .flatMap(accountId -> accountQueryUseCase.findFreelancerProfileByAccountId(accountId)
+                        .map(FreelancerProfile::getId)
+                        .stream())
+                .toList();
+    }
 }
