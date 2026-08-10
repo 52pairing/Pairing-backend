@@ -166,6 +166,14 @@ public class AccountCommandService implements AccountCommandUseCase {
         clientProfileRepository.save(profile);
     }
 
+    @Override
+    public void updateFreelancerMatchingSettings(Long accountId, boolean aiMatchingAgreed, boolean matchingPaused) {
+        FreelancerProfile profile = freelancerProfileRepository.findByAccountId(accountId)
+                .orElseThrow(() -> new BusinessException(AccountErrorCode.PROFILE_NOT_FOUND));
+        profile.updateMatchingSettings(aiMatchingAgreed, matchingPaused);
+        freelancerProfileRepository.save(profile);
+    }
+
     private Account loadAccount(Long accountId) {
         return accountRepository.findById(accountId)
                 .orElseThrow(() -> new BusinessException(AccountErrorCode.ACCOUNT_NOT_FOUND));

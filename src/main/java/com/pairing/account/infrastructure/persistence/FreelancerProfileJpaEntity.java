@@ -39,6 +39,9 @@ public class FreelancerProfileJpaEntity {
     @Column(name = "ai_matching_agreed", nullable = false)
     private boolean aiMatchingAgreed;
 
+    @Column(name = "matching_paused", nullable = false)
+    private boolean matchingPaused;
+
     @Column(name = "grade", nullable = false, length = 20)
     private String grade;
 
@@ -49,14 +52,15 @@ public class FreelancerProfileJpaEntity {
     private LocalDateTime deletedAt;
 
     public FreelancerProfileJpaEntity(Long id, Long accountId, LocalDate birthDate, String address,
-                                      Long profileFileId, boolean aiMatchingAgreed, String grade,
-                                      LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
+                                      Long profileFileId, boolean aiMatchingAgreed, boolean matchingPaused,
+                                      String grade, LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
         this.id = id;
         this.accountId = accountId;
         this.birthDate = birthDate;
         this.address = address;
         this.profileFileId = profileFileId;
         this.aiMatchingAgreed = aiMatchingAgreed;
+        this.matchingPaused = matchingPaused;
         this.grade = grade;
         this.gradeCheckedAt = gradeCheckedAt;
         this.deletedAt = deletedAt;

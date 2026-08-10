@@ -165,3 +165,13 @@
 - `ai_matching_agreed`는 이미 필드로 있지만 컨트롤러가 저장 안 하고 있었음 — 저장 로직 연결 필요.
 - `matchable` 계산 기준(추정, 확정 아님): `aiMatchingAgreed && !matchingPaused && 이력서 ResumeStatus.COMPLETED`. `ResumeStatus`는 `DRAFT`/`COMPLETED` 2종, "완료된 이력서만 매칭에 쓰인다"는 주석이 이미 있음.
 - 다음 단계: `FreelancerProfile`/`FreelancerProfileJpaEntity`/매퍼에 `matchingPaused` 추가 → 저장용 유스케이스(예: `FreelancerConditionUseCase` 유사 패턴 또는 새 메서드) → `FreelancerController` 두 엔드포인트 실구현 교체 → `matchable`/`unmatchableReason` 계산 로직(이력서 상태 조회 필요) → 테스트.
+
+## 2026-08-10 (계속) — freelancer `/me/matching-settings` 실구현 완료
+
+- `FreelancerProfile`(account 도메인 모델)/`FreelancerProfileJpaEntity`/`FreelancerProfileMapper`에 `matchingPaused` 필드 추가(컬럼은 이미 있어서 매핑만). `updateMatchingSettings(aiMatchingAgreed, matchingPaused)` 도메인 메서드 추가.
+- `AccountCommandUseCase`에 `updateFreelancerMatchingSettings(accountId, aiMatchingAgreed, matchingPaused)` 신규 — `updateClientProfile`과 같은 패턴(계정 도메인이 자기 애그리거트 저장을 책임짐). freelancer 도메인은 이미 `AccountQueryUseCase`를 직접 의존하는 기존 패턴(`ResumeService` 등)이 있어서 `FreelancerController`가 `AccountQueryUseCase`/`AccountCommandUseCase`를 직접 주입받는 것도 같은 결.
+- `matchable` 판정 확정: `aiMatchingAgreed && !matchingPaused && (이력서 존재 = COMPLETED)`. 이력서 존재 여부는 `resumeUseCase.findMyResume(accountId).isPresent()`로 확인(이 도메인은 이력서가 있으면 항상 COMPLETED — `Resume.create`가 검증을 통과해야만 생성되기 때문에 DRAFT 상태로 저장되는 경로가 없음. `FreelancerResumePageResponse`도 "없으면 DRAFT" 로 다루는 걸 확인하고 같은 전제를 씀).
+- `unmatchableReason` 우선순위: AI매칭 미동의 > 매칭 일시중지 > 이력서 미완성. 이력서 미완성 문구는 기존 `MatchingSettingsResponse` 스키마 예시 문구("이력서를 완성해야...")를 그대로 씀 — 나머지 두 사유는 이번에 새로 정한 문구.
+- `FreelancerController` 두 엔드포인트 실구현으로 교체. TODO 주석 제거.
+- 테스트: `FreelancerMyPageIntegrationTest`에 4개 추가(H2, 실제 HTTP 요청) — 이력서 없을 때 미완성 사유, 이력서 완료 후 matchable, PUT 저장이 실제로 DB에 반영되는지(리포지토리 직접 조회로 재확인), AI매칭 동의 해제가 이력서 완료보다 우선하는지. `./gradlew build` 전체 통과.
+- `feature/freelancer-matching-settings` 브랜치. 문서만 올리지 않도록 이번엔 코드와 같은 커밋/브랜치로 묶어서 push.

@@ -21,6 +21,7 @@ public interface FreelancerProfileMapper {
                 entity.getAddress(),
                 entity.getProfileFileId(),
                 entity.isAiMatchingAgreed(),
+                entity.isMatchingPaused(),
                 entity.getGrade(),
                 entity.getGradeCheckedAt(),
                 entity.getDeletedAt()

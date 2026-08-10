@@ -104,8 +104,9 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 
 마이페이지 AI매칭 토글이 `FreelancerController`에서 저장 없이 에코만 하는 스텁이었음을 발견. 원래 freelancer 도메인(2번) 파일이라 4번이 건드릴 일이 아니었는데, 사용자가 직접 만들기로 결정 — **freelancer 폴더를 건드리는 걸 알고 진행하는 것**(도메인 경계 예외).
 
-착수 전 조사 완료, 상세는 `.ai/WORKLOG.md` "freelancer `/me/matching-settings` 스텁 교체 착수" 참고. 요약:
-- `db/init/02-create-schema.sql`에 `matching_paused` 컬럼 이미 있음 — 스키마 변경 불필요.
-- `FreelancerProfile`/`FreelancerProfileJpaEntity`에 `matchingPaused` 필드 매핑만 추가하면 됨.
-- `matchable` = `aiMatchingAgreed && !matchingPaused && ResumeStatus.COMPLETED`(추정, 구현하며 확정).
-- `FreelancerController`의 두 엔드포인트(`GET`/`PUT /me/matching-settings`) 실구현으로 교체.
+**구현 완료.** 상세는 `.ai/WORKLOG.md` "freelancer `/me/matching-settings` 실구현 완료" 참고. 요약:
+- `db/init/02-create-schema.sql`의 `matching_paused` 컬럼에 JPA/도메인 매핑 연결 완료.
+- `FreelancerProfile`/`FreelancerProfileJpaEntity`/`FreelancerProfileMapper`에 `matchingPaused` 추가, `AccountCommandUseCase.updateFreelancerMatchingSettings` 신규.
+- `matchable` = `aiMatchingAgreed && !matchingPaused && 이력서 존재`, 사유 우선순위는 동의 미비 > 일시중지 > 이력서 미완성으로 확정.
+- `FreelancerController`의 두 엔드포인트(`GET`/`PUT /me/matching-settings`) 스텁 제거, 실구현으로 교체. `FreelancerMyPageIntegrationTest`에 H2 통합테스트 4개 추가.
+- `feature/freelancer-matching-settings` 브랜치, 코드+테스트+문서 같은 커밋으로 push.
