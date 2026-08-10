@@ -4,12 +4,14 @@ import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.account.domain.model.FreelancerProfile;
+import com.pairing.account.domain.model.PaymentMethod;
 import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SocialAccount;
 import com.pairing.account.domain.model.SocialProvider;
 import com.pairing.account.domain.repository.AccountRepository;
 import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
+import com.pairing.account.domain.repository.PaymentMethodRepository;
 import com.pairing.account.domain.repository.SocialAccountRepository;
 import com.pairing.account.exception.AccountErrorCode;
 import com.pairing.global.exception.BusinessException;
@@ -31,6 +33,7 @@ public class AccountQueryService implements AccountQueryUseCase {
     private final ClientProfileRepository clientProfileRepository;
     private final FreelancerProfileRepository freelancerProfileRepository;
     private final SocialAccountRepository socialAccountRepository;
+    private final PaymentMethodRepository paymentMethodRepository;
 
     @Override
     public Account getById(Long accountId) {
@@ -108,5 +111,10 @@ public class AccountQueryService implements AccountQueryUseCase {
     @Override
     public Optional<ClientProfile> findClientProfileById(Long clientProfileId) {
         return clientProfileRepository.findById(clientProfileId);
+    }
+
+    @Override
+    public List<PaymentMethod> findMyPaymentMethods(Long accountId) {
+        return paymentMethodRepository.findAllByAccountId(accountId);
     }
 }

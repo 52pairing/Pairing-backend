@@ -6,10 +6,8 @@ import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.file.exception.FileErrorCode;
-import com.pairing.matching.domain.model.MatchingStatus;
 import com.pairing.meta.domain.model.JobCategory;
 import com.pairing.meta.domain.model.JobRole;
-import com.pairing.meta.domain.model.PayUnit;
 import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.SkillCode;
 import com.pairing.meta.domain.model.WorkForm;
@@ -200,24 +198,22 @@ public class ProjectController {
                 ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
-    @PostMapping("/{projectId}/termination")
+    @PostMapping("/{projectId}/registration-cancellation")
     @PreAuthorize("hasRole('CLIENT')")
-    @Operation(summary = "프로젝트 중도 종료",
-            description = "진행하던 프로젝트를 중간에 닫습니다. "
-                    + "진행중 이전이면 취소됨, 진행중 이후면 종료 상태가 됩니다. "
-                    + "계약을 맺은 인원이 있으면 위약금이 발생할 수 있다는 안내가 함께 내려갑니다.")
+    @Operation(summary = "프로젝트 등록 취소",
+            description = "잘못 등록한 프로젝트를 내립니다. 착수금 결제 전(등록 완료)에만 호출할 수 있습니다. "
+                    + "프로젝트는 취소됨 상태가 되고 결제 대기 중이던 착수금 정산도 함께 취소됩니다. "
+                    + "결제 후에는 모집 종료를 사용하세요.")
     @ApiErrorCodeExample(domain = ProjectErrorCode.class,
-            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "INVALID_STATUS"})
-    public ResponseEntity<ApiResponse<ProjectResponse>> terminate(
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "REGISTRATION_CANCEL_NOT_ALLOWED"})
+    public ResponseEntity<ApiResponse<ProjectResponse>> cancelRegistration(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
     ) {
-        boolean penaltyExpected = projectCommandUseCase.terminate(projectId, accountId);
+        projectCommandUseCase.cancelRegistration(projectId, accountId);
 
-        return ResponseEntity.ok(ApiResponse.success("PROJECT_TERMINATED",
-                penaltyExpected
-                        ? "프로젝트를 중도 종료했습니다. 체결된 계약에 대해 위약금이 발생할 수 있습니다."
-                        : "프로젝트를 중도 종료했습니다.",
+        return ResponseEntity.ok(ApiResponse.success("PROJECT_REGISTRATION_CANCELED",
+                "프로젝트 등록을 취소했습니다.",
                 ProjectResponse.from(projectQueryUseCase.getDetail(projectId))));
     }
 
@@ -226,9 +222,10 @@ public class ProjectController {
     @Operation(summary = "모집 종료",
             description = "남은 모집 기간과 무관하게 모집을 닫습니다. "
                     + "더 이상 모집·협상·계약을 진행하지 않는다는 뜻이므로 프로젝트는 취소됨 상태가 됩니다. "
-                    + "채워지지 않은 모집 직군은 함께 마감됩니다.")
+                    + "채워지지 않은 모집 직군은 함께 마감됩니다. "
+                    + "모집중일 때만 호출할 수 있습니다.")
     @ApiErrorCodeExample(domain = ProjectErrorCode.class,
-            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "INVALID_STATUS"})
+            value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER", "RECRUIT_CLOSE_NOT_ALLOWED"})
     public ResponseEntity<ApiResponse<ProjectResponse>> closeRecruit(
             @PathVariable Long projectId,
             @CurrentAccountId Long accountId
@@ -308,10 +305,8 @@ public class ProjectController {
                 "리뉴얼 목적과 배경", "웹 프론트·백엔드 개발", "페이지 20개", "장기 협업 우대",
                 2, 1, LocalDateTime.now().plusWeeks(2), 0, 0, 0,
                 List.of(position),
-                List.of(new ProjectResponse.ParticipantFreelancer(7L, "김개발", JobRole.FRONTEND,
-                        MatchingStatus.NEGOTIATING, PayUnit.MONTHLY, 6_200_000L, "협상중", 500L, null)),
                 List.of(new ProjectResponse.AttachedFile(1L, "기획서.pdf", 29_491L, "files/project/uuid.pdf")),
-                LocalDateTime.now(), 700L, true);
+                LocalDateTime.now(), 700L);
     }
 
     private PageResponse<ProjectSummaryResponse> samplePage(int page, int size) {

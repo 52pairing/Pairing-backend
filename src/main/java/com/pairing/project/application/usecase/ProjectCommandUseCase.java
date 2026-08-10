@@ -28,21 +28,19 @@ public interface ProjectCommandUseCase {
     void complete(Long projectId, Long accountId);
 
     /**
-     * 중도 종료. 진행하던 프로젝트를 중간에 닫는다. (요구사항 R30)
+     * 등록 취소. 잘못 등록한 프로젝트를 내린다.
      *
-     * <p>소유자가 아니면 PJ_003. 이미 취소·종료됐으면 PJ_006.
-     * 진행중 이전이면 CANCELED, 진행중 이후면 CLOSED 가 된다.
-     *
-     * @return 위약금 안내 대상 여부. 계약을 맺은 인원이 있으면 true
+     * <p>소유자가 아니면 PJ_003. 등록 완료(착수금 결제 전)가 아니면 PJ_015.
+     * 프로젝트는 CANCELED 가 되고 미결제 착수금 정산도 함께 취소된다.
      */
-    boolean terminate(Long projectId, Long accountId);
+    void cancelRegistration(Long projectId, Long accountId);
 
     /**
      * 모집 종료. 남은 기간과 무관하게 닫고 프로젝트를 취소됨으로 넘긴다.
      *
      * <p>요구사항의 상태 정의에서 [취소됨] 예시가 "클라이언트가 모집을 종료했습니다" 다.
      *
-     * <p>모집 중이 아니면 PJ_006. 미충원 포지션은 CLOSED 가 된다.
+     * <p>모집 중이 아니면 PJ_014. 미충원 포지션은 CLOSED 가 된다.
      */
     void closeRecruit(Long projectId, Long accountId);
 

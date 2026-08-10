@@ -1,5 +1,6 @@
 package com.pairing.account.presentation.api;
 
+import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.AccountStatus;
 import com.pairing.account.domain.model.PaymentMethodType;
 import com.pairing.account.domain.model.Role;
@@ -50,20 +51,25 @@ import java.util.List;
 @Tag(name = "06. Account", description = "계정 공통 API")
 public class AccountController {
 
+    private final AccountQueryUseCase accountQueryUseCase;
+
     // ==========================================
     // 결제수단 (마이페이지 > 결제수단)
     // ==========================================
 
     @GetMapping("/me/payment-methods")
     @Operation(summary = "결제수단 목록",
-            description = "수수료 결제 카드 1건 + 용역비 수령 계좌 1건을 반환합니다. 둘 다 가입 시 만들어진다.")
+            description = "수수료 결제 카드 1건 + 용역비 수령 계좌 1건을 반환합니다. 둘 다 가입 시 만들어집니다. "
+                    + "수수료 결제 화면은 methodType 이 CARD 인 건만 사용하세요.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED"})
     public ResponseEntity<ApiResponse<List<PaymentMethodResponse>>> findMyPaymentMethods(
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 카드 + 계좌 조회
-        return ResponseEntity.ok(ApiResponse.success("PAYMENT_METHODS_FOUND", "조회에 성공했습니다.",
-                List.of(sampleCard(), sampleBankAccount())));
+        List<PaymentMethodResponse> data = accountQueryUseCase.findMyPaymentMethods(accountId).stream()
+                .map(PaymentMethodResponse::from)
+                .toList();
+
+        return ResponseEntity.ok(ApiResponse.success("PAYMENT_METHODS_FOUND", "조회에 성공했습니다.", data));
     }
 
     @PutMapping("/me/payment-methods/card")

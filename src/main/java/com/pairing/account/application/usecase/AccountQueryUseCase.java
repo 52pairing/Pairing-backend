@@ -3,6 +3,7 @@ package com.pairing.account.application.usecase;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.account.domain.model.FreelancerProfile;
+import com.pairing.account.domain.model.PaymentMethod;
 import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SocialAccount;
 import com.pairing.account.domain.model.SocialProvider;
@@ -62,5 +63,12 @@ public interface AccountQueryUseCase {
      * 목록을 한 번에 받는다. 입력에 없던 id 는 결과에도 없다. 개수만 필요하면 {@code size()} 를 쓴다.
      */
     List<Long> filterActiveAiMatchingAgreed(Collection<Long> accountIds);
+
+    /**
+     * 내 결제수단. 가입 시 만들어진 카드 1건과 계좌 1건이 함께 나온다.
+     *
+     * <p>삭제된 건은 제외한다. 수수료 결제 화면은 {@code methodType == CARD} 만 골라 쓴다.
+     */
+    List<PaymentMethod> findMyPaymentMethods(Long accountId);
 
 }
