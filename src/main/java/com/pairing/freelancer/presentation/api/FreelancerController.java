@@ -4,6 +4,7 @@ import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.exception.AccountErrorCode;
+import com.pairing.auth.exception.AuthErrorCode;
 import com.pairing.freelancer.application.usecase.FreelancerCommandUseCase;
 import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.freelancer.application.usecase.FreelancerQueryUseCase;
@@ -74,9 +75,11 @@ public class FreelancerController {
     @PatchMapping("/me")
     @PreAuthorize("hasRole('FREELANCER')")
     @Operation(summary = "마이페이지 수정",
-            description = "이름·생년월일·이메일은 수정할 수 없습니다. 비밀번호 변경은 PATCH /api/v1/auth/password 를 사용합니다.")
+            description = "이름·생년월일·이메일은 수정할 수 없습니다. 비밀번호 변경은 PATCH /api/v1/auth/password 를 사용합니다. "
+                    + "수정 전에 POST /api/v1/auth/email-verifications(purpose=PROFILE_UPDATE)로 이메일 인증을 먼저 마쳐야 합니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED", "INVALID_REQUEST"})
-    @ApiErrorCodeExample(domain = AccountErrorCode.class, value = {"PROFILE_NOT_FOUND", "CURRENT_PASSWORD_MISMATCH"})
+    @ApiErrorCodeExample(domain = AccountErrorCode.class, value = {"PROFILE_NOT_FOUND"})
+    @ApiErrorCodeExample(domain = AuthErrorCode.class, value = {"EMAIL_NOT_VERIFIED"})
     public ResponseEntity<ApiResponse<FreelancerMyPageResponse>> updateMe(
             @Valid @RequestBody FreelancerProfileUpdateRequest request,
             @CurrentAccountId Long accountId

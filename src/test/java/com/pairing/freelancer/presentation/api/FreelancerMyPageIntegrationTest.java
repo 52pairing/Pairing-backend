@@ -16,6 +16,7 @@ import com.pairing.auth.application.port.SessionRegistryPort;
 import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
+import com.pairing.auth.domain.model.VerificationPurpose;
 import com.pairing.file.domain.model.FilePurpose;
 import com.pairing.file.infrastructure.persistence.FileJpaEntity;
 import com.pairing.file.infrastructure.persistence.SpringDataFileRepository;
