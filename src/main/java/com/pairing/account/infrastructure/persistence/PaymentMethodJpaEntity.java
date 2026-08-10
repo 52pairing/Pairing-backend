@@ -45,11 +45,18 @@ public class PaymentMethodJpaEntity {
     @Column(name = "card_last4", length = 4)
     private String cardLast4;
 
+    @Column(name = "card_holder", length = 50)
+    private String cardHolder;
+
     @Column(name = "bank_code", length = 10)
     private String bankCode;
 
     @Column(name = "account_no_enc")
     private byte[] accountNoEnc;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "account_last4", length = 4)
+    private String accountLast4;
 
     @Column(name = "account_holder", length = 50)
     private String accountHolder;
@@ -58,16 +65,19 @@ public class PaymentMethodJpaEntity {
     private LocalDateTime deletedAt;
 
     public PaymentMethodJpaEntity(Long id, Long accountId, PaymentMethodType methodType, byte[] cardNumberEnc,
-                                  String cardBrand, String cardLast4, String bankCode, byte[] accountNoEnc,
-                                  String accountHolder, LocalDateTime deletedAt) {
+                                  String cardBrand, String cardLast4, String cardHolder, String bankCode,
+                                  byte[] accountNoEnc, String accountLast4, String accountHolder,
+                                  LocalDateTime deletedAt) {
         this.id = id;
         this.accountId = accountId;
         this.methodType = methodType;
         this.cardNumberEnc = cardNumberEnc;
         this.cardBrand = cardBrand;
         this.cardLast4 = cardLast4;
+        this.cardHolder = cardHolder;
         this.bankCode = bankCode;
         this.accountNoEnc = accountNoEnc;
+        this.accountLast4 = accountLast4;
         this.accountHolder = accountHolder;
         this.deletedAt = deletedAt;
     }

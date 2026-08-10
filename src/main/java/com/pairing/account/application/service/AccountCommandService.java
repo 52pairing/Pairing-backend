@@ -12,6 +12,7 @@ import com.pairing.account.domain.model.BankCode;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.model.PaymentMethod;
+import com.pairing.account.domain.model.PaymentMethodType;
 import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SocialAccount;
 import com.pairing.account.domain.repository.AccountRepository;
@@ -192,6 +193,37 @@ public class AccountCommandService implements AccountCommandUseCase {
         freelancerProfileRepository.save(profile);
     }
 
+    @Override
+    public PaymentMethod updateCard(Long accountId, CardCommand command) {
+        PaymentMethod card = loadPaymentMethod(accountId, PaymentMethodType.CARD);
+        String cardNumber = normalizeNumber(command.cardNumber());
+
+        card.updateCard(dataEncryptionPort.encrypt(cardNumber), command.cardBrand(), lastFourOf(cardNumber),
+                command.cardHolder());
+        return paymentMethodRepository.save(card);
+    }
+
+    @Override
+    public PaymentMethod updateBankAccount(Long accountId, BankAccountCommand command) {
+        PaymentMethod bankAccount = loadPaymentMethod(accountId, PaymentMethodType.BANK_ACCOUNT);
+
+        // 알 수 없는 은행 코드가 들어오면 나중에 이체 단계에서야 터진다. 저장 전에 막는다.
+        BankCode bank = BankCode.find(command.bankCode())
+                .orElseThrow(() -> new BusinessException(AccountErrorCode.UNKNOWN_BANK_CODE));
+        String accountNo = normalizeNumber(command.accountNo());
+
+        bankAccount.updateBankAccount(bank.getCode(), dataEncryptionPort.encrypt(accountNo),
+                lastFourOf(accountNo), command.accountHolder());
+        return paymentMethodRepository.save(bankAccount);
+    }
+
+    private PaymentMethod loadPaymentMethod(Long accountId, PaymentMethodType methodType) {
+        return paymentMethodRepository.findAllByAccountId(accountId).stream()
+                .filter(paymentMethod -> paymentMethod.getMethodType() == methodType)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(AccountErrorCode.PAYMENT_METHOD_NOT_FOUND));
+    }
+
     private Account loadAccount(Long accountId) {
         return accountRepository.findById(accountId)
                 .orElseThrow(() -> new BusinessException(AccountErrorCode.ACCOUNT_NOT_FOUND));
@@ -208,10 +240,8 @@ public class AccountCommandService implements AccountCommandUseCase {
             throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
         }
 
-        String cardNumber = card.cardNumber();
-        if (cardNumber == null || cardNumber.length() < CARD_LAST4_LENGTH) {
-            throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
-        }
+        String cardNumber = normalizeNumber(card.cardNumber());
+        String accountNo = normalizeNumber(bankAccount.accountNo());
 
         // 알 수 없는 은행 코드가 들어오면 나중에 이체 단계에서야 터진다. 저장 전에 막는다.
         BankCode bank = BankCode.find(bankAccount.bankCode())
@@ -222,12 +252,35 @@ public class AccountCommandService implements AccountCommandUseCase {
                         accountId,
                         dataEncryptionPort.encrypt(cardNumber),
                         card.cardBrand(),
-                        cardNumber.substring(cardNumber.length() - CARD_LAST4_LENGTH)),
+                        lastFourOf(cardNumber)),
                 PaymentMethod.createBankAccount(
                         accountId,
                         bank.getCode(),
-                        dataEncryptionPort.encrypt(bankAccount.accountNo()),
+                        dataEncryptionPort.encrypt(accountNo),
+                        lastFourOf(accountNo),
                         bankAccount.accountHolder())
         ));
+    }
+
+    /**
+     * 카드번호·계좌번호에서 숫자만 남긴다.
+     *
+     * <p>화면은 하이픈을 넣어 보내고 사용자는 넣는 위치가 매번 다르다. 정규화하지 않으면 같은 카드가
+     * 가입 때와 수정 때 서로 다른 암호문으로 저장된다.
+     */
+    private String normalizeNumber(String number) {
+        if (number == null) {
+            throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
+        }
+        String digits = number.replaceAll("[^0-9]", "");
+        if (digits.length() < CARD_LAST4_LENGTH) {
+            throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
+        }
+        return digits;
+    }
+
+    /** 화면 표시용 끝 4자리. 암호문은 복호화하지 않고도 이 값으로 카드를 구분할 수 있다. */
+    private String lastFourOf(String digits) {
+        return digits.substring(digits.length() - CARD_LAST4_LENGTH);
     }
 }

@@ -21,7 +21,8 @@ public record CardRequest(
         String cardBrand
 ) {
 
+    /** 가입 화면은 카드 소지자명을 받지 않는다. 마이페이지에서 카드를 수정할 때 채워진다. */
     public CardCommand toCommand() {
-        return new CardCommand(cardNumber, cardBrand);
+        return new CardCommand(cardNumber, cardBrand, null);
     }
 }

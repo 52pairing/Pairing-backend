@@ -80,7 +80,7 @@ class SignUpServiceTest {
     }
 
     private CardCommand card() {
-        return new CardCommand("1234-5678-1234-5678", "신한카드");
+        return new CardCommand("1234-5678-1234-5678", "신한카드", null);
     }
 
     private BankAccountCommand bankAccount() {

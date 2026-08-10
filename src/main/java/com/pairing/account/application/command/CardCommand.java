@@ -7,6 +7,8 @@ package com.pairing.account.application.command;
  */
 public record CardCommand(
         String cardNumber,
-        String cardBrand
+        String cardBrand,
+        /** 가입 요청에는 없는 값이라 null 로 올 수 있다. 마이페이지 수정에서만 채워진다. */
+        String cardHolder
 ) {
 }

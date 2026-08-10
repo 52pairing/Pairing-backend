@@ -214,6 +214,9 @@ CREATE TABLE "payment_method" (
     "easy_pay_provider" VARCHAR(20),
     "bank_code" VARCHAR(10),
     "account_no_enc" BYTEA,
+    -- 계좌번호는 암호문만 저장하므로, 화면에 "**** 6789" 를 그리려면 끝 4자리를 따로 남겨야 한다.
+    -- (카드의 card_last4 와 같은 이유)
+    "account_last4" CHAR(4),
     "account_holder" VARCHAR(50),
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,

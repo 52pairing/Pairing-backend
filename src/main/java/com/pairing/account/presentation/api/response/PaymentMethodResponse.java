@@ -42,37 +42,24 @@ public record PaymentMethodResponse(
         String accountHolder
 ) {
 
-    private static final String MASK = " **** ";
-
     /**
-     * 도메인 -> 응답.
+     * 도메인 -&gt; 응답. 종류에 맞지 않는 필드는 null 로 비운다(카드 응답에 계좌 필드가 섞이면 화면이 헷갈린다).
      *
-     * <p>{@code cardHolder} 와 {@code bankName} 은 null 로 둔다. card_holder 는 가입 시 저장하지
-     * 않고, 은행은 코드("088")만 저장해 이름으로 바꿀 매핑이 없다.
-     *
-     * <p>{@code accountLast4} 도 null 이다. 계좌번호는 암호문으로만 들고 있어 복호화 없이는
-     * 끝자리를 뽑을 수 없다. 수수료 결제 화면은 카드만 쓰므로 지금은 이대로 둔다.
+     * <p>{@code cardHolder} 는 가입 요청에 없는 값이라, 마이페이지에서 카드를 한 번 수정하기 전까지는
+     * 기존 계정에서 null 로 내려간다.
      */
     public static PaymentMethodResponse from(PaymentMethod paymentMethod) {
-        boolean card = paymentMethod.getMethodType() == PaymentMethodType.CARD;
+        boolean card = paymentMethod.isCard();
 
         return new PaymentMethodResponse(
                 paymentMethod.getId(),
                 paymentMethod.getMethodType(),
-                buildDisplayName(paymentMethod, card),
+                paymentMethod.getDisplayName(),
                 card ? paymentMethod.getCardBrand() : null,
                 card ? paymentMethod.getCardLast4() : null,
-                null,
-                null,
-                null,
+                card ? paymentMethod.getCardHolder() : null,
+                card ? null : paymentMethod.getBankName(),
+                card ? null : paymentMethod.getAccountLast4(),
                 card ? null : paymentMethod.getAccountHolder());
-    }
-
-    /** 카드는 "신한카드 **** 1234". 계좌는 끝자리가 없어 은행 코드와 예금주로 대신한다. */
-    private static String buildDisplayName(PaymentMethod paymentMethod, boolean card) {
-        if (card) {
-            return paymentMethod.getCardBrand() + MASK + paymentMethod.getCardLast4();
-        }
-        return paymentMethod.getBankCode() + MASK + paymentMethod.getAccountHolder();
     }
 }

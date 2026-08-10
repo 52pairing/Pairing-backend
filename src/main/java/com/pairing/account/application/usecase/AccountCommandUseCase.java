@@ -1,10 +1,13 @@
 package com.pairing.account.application.usecase;
 
+import com.pairing.account.application.command.BankAccountCommand;
+import com.pairing.account.application.command.CardCommand;
 import com.pairing.account.application.command.CreateClientAccountCommand;
 import com.pairing.account.application.command.CreateFreelancerAccountCommand;
 import com.pairing.account.application.command.CreateSocialFreelancerAccountCommand;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.EmployeeCount;
+import com.pairing.account.domain.model.PaymentMethod;
 
 /**
  * 계정 상태를 바꾸는 인바운드 포트.
@@ -42,4 +45,14 @@ public interface AccountCommandUseCase {
     /** 프리랜서 마이페이지 기본 정보 수정. 전화번호(계정) + 주소·프로필사진·AI매칭동의(프로필)를 함께 반영한다. */
     void updateFreelancerProfile(Long accountId, String phone, String address, Long profileFileId,
                                  boolean aiMatchingAgreed);
+
+    /**
+     * 마이페이지 &gt; 결제수단 카드 교체. 가입 시 만들어진 카드 1건을 수정한다(신규 등록·삭제 없음).
+     *
+     * <p>카드번호는 저장 직전에 암호화되고 끝 4자리만 따로 남는다. 없으면 {@code AC_007}.
+     */
+    PaymentMethod updateCard(Long accountId, CardCommand command);
+
+    /** 마이페이지 &gt; 결제수단 정산 계좌 교체. 은행 코드가 유효하지 않으면 {@code AC_006}, 없으면 {@code AC_007}. */
+    PaymentMethod updateBankAccount(Long accountId, BankAccountCommand command);
 }

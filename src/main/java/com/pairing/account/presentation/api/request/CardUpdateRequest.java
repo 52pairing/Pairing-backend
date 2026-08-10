@@ -1,5 +1,6 @@
 package com.pairing.account.presentation.api.request;
 
+import com.pairing.account.application.command.CardCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -29,4 +30,8 @@ public record CardUpdateRequest(
         @Size(max = 50, message = "카드 소지자 이름은 50자를 넘을 수 없습니다.")
         String cardHolder
 ) {
+
+    public CardCommand toCommand() {
+        return new CardCommand(cardNumber, cardBrand, cardHolder);
+    }
 }
