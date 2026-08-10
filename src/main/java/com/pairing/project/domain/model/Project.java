@@ -407,7 +407,10 @@ public class Project {
      * 할 수 있어 여기서는 막지 못한다. 호출부가 먼저 확인해야 한다.
      */
     public void closeRecruit(LocalDate retentionUntil) {
-        requireStatus(ProjectStatus.RECRUITING);
+        // 범용 PJ_006 대신 전용 코드를 쓴다. 화면에서 왜 안 되는지 그대로 보여줄 수 있어야 한다.
+        if (status != ProjectStatus.RECRUITING) {
+            throw new BusinessException(ProjectErrorCode.RECRUIT_CLOSE_NOT_ALLOWED);
+        }
         positions.stream().filter(p -> !p.isFilled()).forEach(Position::close);
         this.recruitDeadline = LocalDateTime.now();
         this.status = ProjectStatus.CANCELED;
@@ -441,34 +444,23 @@ public class Project {
     }
 
     /**
-     * 중도 종료. (요구사항 R30)
+     * 등록 취소. 잘못 등록한 프로젝트를 내린다.
      *
-     * <p>도착 상태는 계약자 유무가 아니라 <b>현재 상태</b>가 정한다. 진행중 이전에 닫으면 일이
-     * 시작되지 않은 것이라 취소됨이고, 진행중 이후에 닫아야 종료다.
+     * <p>착수금 결제 전에만 가능하다. 결제하면 모집이 시작되고 매칭이 돌기 시작해서,
+     * 그 뒤로는 모집 종료로만 닫을 수 있다.
      *
-     * <p>계약자 유무는 위약금 안내에만 쓴다. 위약금 산정은 계약 단위이며 이 도메인이 하지 않는다.
+     * <p>행은 지우지 않는다. 취소됨으로 남겨 목록의 [취소됨] 탭에서 볼 수 있게 한다.
      *
-     * <p>진행 중인 계약을 파기하는 것은 계약 도메인 몫이다. 계약만 살아남으면 안 되므로
-     * 이벤트가 아니라 같은 트랜잭션에서 직접 호출해야 한다.
-     *
-     * @return 위약금 안내 대상 여부
+     * <p>미결제 착수금 정산을 함께 취소하는 것은 호출부가 한다. 정산은 다른 도메인이다.
      */
-    public boolean terminate(LocalDate retentionUntil) {
-        if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
-            throw new BusinessException(ProjectErrorCode.INVALID_STATUS);
+    public void cancelRegistration(LocalDate retentionUntil) {
+        if (status != ProjectStatus.REGISTERED) {
+            throw new BusinessException(ProjectErrorCode.REGISTRATION_CANCEL_NOT_ALLOWED);
         }
         positions.forEach(Position::close);
-
-        if (status.isStarted()) {
-            this.status = ProjectStatus.CLOSED;
-            this.closedAt = LocalDateTime.now();
-        } else {
-            this.status = ProjectStatus.CANCELED;
-            this.canceledAt = LocalDateTime.now();
-        }
+        this.status = ProjectStatus.CANCELED;
+        this.canceledAt = LocalDateTime.now();
         this.retentionUntil = retentionUntil;
-
-        return hasConfirmedMember();
     }
 
     /**
@@ -506,11 +498,6 @@ public class Project {
 
     public boolean isHeadcountChangeable() {
         return status == ProjectStatus.REGISTERED;
-    }
-
-    /** 계약을 맺은 인원이 한 명이라도 있는가. 중도 종료 시 위약금 안내 여부를 가른다. */
-    public boolean hasConfirmedMember() {
-        return positions.stream().anyMatch(p -> p.getConfirmedCount() > 0);
     }
 
     public boolean isOwnedBy(Long clientProfileId) {

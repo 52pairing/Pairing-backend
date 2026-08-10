@@ -1,10 +1,8 @@
 package com.pairing.project.presentation.api.response;
 
 import com.pairing.global.infrastructure.s3.CdnMappable;
-import com.pairing.matching.domain.model.MatchingStatus;
 import com.pairing.meta.domain.model.JobCategory;
 import com.pairing.meta.domain.model.JobRole;
-import com.pairing.meta.domain.model.PayUnit;
 import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.SkillCode;
 import com.pairing.meta.domain.model.WorkForm;
@@ -18,7 +16,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** 프로젝트 상세. */
+/**
+ * 프로젝트 상세.
+ *
+ * <p>프리랜서 현황(누가 어떤 상태로 붙어 있는지)은 여기 담지 않는다. 매칭 도메인 값이라
+ * 프로젝트 서비스가 읽으면 matching -&gt; project 방향과 맞물려 생성자 순환이 된다.
+ * 화면은 {@code GET /api/v1/matchings/requests?projectId=} 를 따로 호출한다.
+ */
 @Schema(description = "프로젝트 상세 응답")
 public record ProjectResponse(
 
@@ -95,9 +99,6 @@ public record ProjectResponse(
         @Schema(description = "포지션 목록")
         List<Position> positions,
 
-        @Schema(description = "프리랜서 현황. 상세 화면 하단 목록")
-        List<ParticipantFreelancer> freelancers,
-
         @Schema(description = "첨부 자료")
         List<AttachedFile> files,
 
@@ -106,17 +107,13 @@ public record ProjectResponse(
 
         @Schema(description = "지금 결제해야 할 정산 ID. 결제할 게 없으면 null. "
                 + "등록 완료면 착수금, 완료 대기면 성공보수를 가리킨다.", example = "700")
-        Long payableSettlementId,
-
-        @Schema(description = "중도 종료 시 위약금 안내 대상 여부. 계약을 맺은 인원이 있으면 true. "
-                + "종료 확인 화면에 '위약금이 발생할 수 있습니다' 문구를 띄우는 데 쓴다.", example = "false")
-        boolean penaltyExpected
+        Long payableSettlementId
 ) {
 
     /**
      * 도메인 + 첨부 메타 -> 응답.
      *
-     * <p>statusNote / freelancers / payableSettlementId 는 매칭·정산 도메인 값이라 아직 비운다.
+     * <p>statusNote 는 인원별 현황 문구라 매칭 값이 필요하다. 아직 비운다.
      */
     public static ProjectResponse from(com.pairing.project.application.result.ProjectDetail detail) {
         com.pairing.project.domain.model.Project p = detail.project();
@@ -142,8 +139,8 @@ public record ProjectResponse(
                 p.getTotalHeadcount(), p.getConfirmedHeadcount(),
                 p.getRecruitDeadline(), p.getExtensionCount(),
                 p.getFreeRerecommendUsed(), p.getPaidRerecommendUsed(),
-                positions, List.of(), files,
-                p.getCreatedAt(), detail.payableSettlementId(), p.hasConfirmedMember());
+                positions, files,
+                p.getCreatedAt(), detail.payableSettlementId());
     }
 
     @Schema(description = "포지션")
@@ -157,21 +154,6 @@ public record ProjectResponse(
             @Schema(description = "확정 인원", example = "1") int confirmedCount,
             @Schema(description = "포지션 상태") PositionStatus status,
             @Schema(description = "요구 스킬") List<SkillCode> skills
-    ) {
-    }
-
-    /** 상세 화면의 프리랜서 현황 한 줄. 상태에 따라 화면이 보여줄 버튼이 달라진다. */
-    @Schema(description = "참여 프리랜서")
-    public record ParticipantFreelancer(
-            @Schema(description = "프리랜서 계정 ID", example = "7") Long freelancerId,
-            @Schema(description = "이름", example = "김개발") String name,
-            @Schema(description = "직무") JobRole jobRole,
-            @Schema(description = "매칭 상태") MatchingStatus status,
-            @Schema(description = "급여 단위") PayUnit payUnit,
-            @Schema(description = "확정 급여(원)", example = "6200000") Long payAmount,
-            @Schema(description = "상태 라벨", example = "협상중") String statusLabel,
-            @Schema(description = "협상 ID. 협상 이전이면 null", example = "500") Long negotiationId,
-            @Schema(description = "계약 ID. 계약 이전이면 null", example = "600") Long contractId
     ) {
     }
 

@@ -1,5 +1,6 @@
 package com.pairing.support.presentation.api.response;
 
+import com.pairing.support.application.result.ChatbotQuotaResult;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDate;
@@ -13,4 +14,9 @@ public record ChatbotQuotaResponse(
         @Schema(description = "사용 횟수", example = "1") int usedCount,
         @Schema(description = "남은 횟수", example = "9") int remainingCount
 ) {
+
+    public static ChatbotQuotaResponse from(ChatbotQuotaResult result) {
+        return new ChatbotQuotaResponse(result.quotaDate(), result.dailyLimit(), result.usedCount(),
+                result.remainingCount());
+    }
 }

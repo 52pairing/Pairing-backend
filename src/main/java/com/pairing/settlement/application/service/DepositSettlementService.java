@@ -68,4 +68,12 @@ public class DepositSettlementService implements DepositSettlementUseCase {
                 DepositFeePolicy.feeAmount(budgetAmount, feeRate, gradeDiscount));
         settlementRepository.save(settlement);
     }
+
+    @Override
+    public void cancelPayable(Long projectId) {
+        settlementRepository.findPayableByProjectId(projectId).ifPresent(settlement -> {
+            settlement.cancel();
+            settlementRepository.save(settlement);
+        });
+    }
 }
