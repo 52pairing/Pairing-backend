@@ -23,7 +23,8 @@ public enum MatchingErrorCode implements BaseErrorCode {
     QUANTITY_REQUIRED(HttpStatus.BAD_REQUEST, "MT_012", "유료 재추천은 인원 수(quantity)를 입력해야 합니다."),
     INVALID_RERECOMMEND_TYPE(HttpStatus.BAD_REQUEST, "MT_013", "재추천 종류는 FREE 또는 PAID만 가능합니다."),
     PROJECT_RECRUITING_CLOSED(HttpStatus.BAD_REQUEST, "MT_014", "모집이 종료되었거나 취소된 프로젝트입니다."),
-    FREELANCER_NOT_FOUND(HttpStatus.NOT_FOUND, "MT_015", "프리랜서를 찾을 수 없습니다.");
+    FREELANCER_NOT_FOUND(HttpStatus.NOT_FOUND, "MT_015", "프리랜서를 찾을 수 없습니다."),
+    REQUEST_EXPIRED(HttpStatus.BAD_REQUEST, "MT_016", "응답 기한이 지나 요청이 자동 만료되었습니다.");
 
     private final HttpStatus status;
     private final String code;

@@ -15,4 +15,11 @@ public interface MatchingRequestCommandUseCase {
 
     /** 프리랜서가 요청을 거절한다. 사유는 알림 문구에만 쓰고 영속화하지 않는다. */
     MatchingRequestResponse reject(Long requestId, String reason, Long accountId);
+
+    /**
+     * 응답 기한(3일)이 지난 요청을 자동으로 거절(만료) 처리한다(정책 P45). 스케줄러 전용.
+     *
+     * @return 처리한 건수
+     */
+    int expireOverdueRequests();
 }

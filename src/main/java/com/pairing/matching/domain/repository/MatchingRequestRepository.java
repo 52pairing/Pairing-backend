@@ -5,6 +5,7 @@ import com.pairing.matching.domain.model.MatchingStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,4 +46,7 @@ public interface MatchingRequestRepository {
 
     /** 프로젝트의 매칭 요청 중 주어진 상태들 중 하나라도 있는지. 프로젝트 대표 단계 재계산(syncStage)에 쓴다. */
     boolean existsByProjectIdAndStatusIn(Long projectId, List<MatchingStatus> statuses);
+
+    /** 응답 기한(3일)이 지났는데 아직 응답 대기(REQUEST_PENDING)인 요청. 자동 만료 스케줄러가 쓴다(정책 P45). */
+    List<MatchingRequest> findExpiredPending(LocalDateTime now);
 }

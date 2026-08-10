@@ -1,6 +1,7 @@
 package com.pairing.matching.presentation.api.response;
 
 import com.pairing.matching.domain.model.MatchingStatus;
+import com.pairing.matching.domain.model.RejectReason;
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.SkillCode;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -67,6 +68,10 @@ public record MatchingRequestResponse(
 
         @Schema(description = "응답 시각")
         LocalDateTime respondedAt,
+
+        @Schema(description = "거절/만료 사유. status가 REJECTED일 때만 값이 있다. "
+                + "직접 거절과 응답 기한 만료를 구분하는 용도 — 둘 다 REJECTED라 status만으로는 구분이 안 된다.")
+        RejectReason rejectReason,
 
         // 협상 중 카드에 "라운드 4/15" 로 찍는다. 협상 시작 전에는 null.
         @Schema(description = "현재 협상 라운드", example = "4") Integer currentRound,
