@@ -13,12 +13,9 @@ import java.util.Optional;
 /**
  * 협상 후 사람 채팅방. 협상 1건당 방 하나가 생긴다(negotiation_id UNIQUE).
  *
- * <p>입력창이 열리는 순서는 이렇다.
- * <ol>
- *   <li>협상 중: 방이 없다. A2A 응답(숫자·선택지)만 가능하다.</li>
- *   <li>협상 타결(AI Out): 방이 생기지만 <b>입력창은 잠겨 있다</b>. 합의안만 보인다.</li>
- *   <li>계약 체결: {@link #enableInput()} 으로 입력창이 열리고 프로젝트 진행 대화를 시작한다.</li>
- * </ol>
+ * <p>방이 생기는 시점은 <b>계약 체결</b>이다. 협상 중에는 A2A 응답(숫자·선택지)만 가능하고, 협상이
+ * 타결돼도 계약이 체결되기 전까지는 방이 없다. 프로젝트 진행 대화는 계약이 성립한 뒤에 시작하기 때문이며,
+ * 계약이 무산되면 빈 방이 남지 않는다.
  *
  * <p>나가기는 대금 지급 완료 등으로 방이 종료(CLOSED)된 뒤에만 허용한다.
  */
@@ -48,16 +45,10 @@ public class ChatRoom {
         this.closedAt = closedAt;
     }
 
-    /**
-     * 협상 타결 시 방을 연다. <b>입력창은 잠긴 채로 열린다</b> — 계약이 체결돼야 대화를 시작할 수 있다.
-     * 방을 미리 만들어 두는 이유는 타결 시점의 합의안을 방 상단에 보여 주고, 계약 체결 즉시 바로
-     * 대화로 넘어가게 하기 위해서다.
-     *
-     * @see #enableInput()
-     */
+    /** 계약 체결 시 방을 연다. 이 시점부터 대화가 가능하므로 입력창은 바로 활성화된다. */
     public static ChatRoom open(Long negotiationId, List<ChatRoomMember> members) {
         LocalDateTime now = LocalDateTime.now();
-        return new ChatRoom(null, negotiationId, false, ChatRoomStatus.ACTIVE, members, now, now, null);
+        return new ChatRoom(null, negotiationId, true, ChatRoomStatus.ACTIVE, members, now, now, null);
     }
 
     public static ChatRoom reconstitute(Long id, Long negotiationId, boolean inputEnabled,
@@ -65,21 +56,6 @@ public class ChatRoom {
                                         LocalDateTime createdAt, LocalDateTime updatedAt,
                                         LocalDateTime closedAt) {
         return new ChatRoom(id, negotiationId, inputEnabled, status, members, createdAt, updatedAt, closedAt);
-    }
-
-    /**
-     * 계약 체결로 입력창을 연다(계약 도메인이 {@code ChatActivationUseCase} 로 호출).
-     * 이미 열려 있으면 아무 일도 하지 않는다(재호출·재시도 대비).
-     *
-     * @return 이번 호출로 실제 열렸으면 true. 안내 메시지를 한 번만 남기는 데 쓴다
-     */
-    public boolean enableInput() {
-        if (inputEnabled) {
-            return false;
-        }
-        this.inputEnabled = true;
-        this.updatedAt = LocalDateTime.now();
-        return true;
     }
 
     /** 방 종료(대금 지급 완료 등). 종료 후에만 나가기가 허용된다. */
