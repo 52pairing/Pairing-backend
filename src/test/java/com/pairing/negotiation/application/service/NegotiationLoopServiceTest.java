@@ -6,6 +6,7 @@ import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
+import com.pairing.global.exception.BusinessException;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.AnswerInput;
@@ -36,6 +37,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** 협상 루프(stub) 검증: 시작→초기 제안, 수락→락·타결, 거절→다음 라운드 재제안, 포기→결렬. */
 @SpringBootTest
@@ -128,11 +130,48 @@ class NegotiationLoopServiceTest {
         amountConditionId = saved.getConditions().get(0).getId();
     }
 
+    /**
+     * 양측 마지노선을 모두 제출한다. 대리인 협상은 <b>두 번째 제출</b>에서 시작되므로,
+     * 라운드 1 이후를 검증하는 테스트는 전부 이걸 거쳐야 한다.
+     */
+    private void startBothSides() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+        loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4500000")));
+    }
+
+    @Test
+    @DisplayName("start: 한쪽만 제출하면 대기 — 라운드도 안 오르고 제안도 안 생긴다")
+    void startWaitsForCounterpartFloor() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getTotalRound()).isZero();
+        assertThat(reloaded.getConditions().get(0).getFreelancerFloor()).isEqualTo("5500000");
+        assertThat(reloaded.getConditions().get(0).getClientFloor()).isNull();
+
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .noneMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL);
+    }
+
+    @Test
+    @DisplayName("start: 같은 당사자가 두 번 제출하면 NG_003")
+    void startRejectsDuplicateSubmission() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+
+        assertThatThrownBy(() -> loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5000000"))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("마지노선을 이미 제출했습니다");
+    }
+
     @Test
     @DisplayName("start: 마지노선 저장 + 라운드1 초기 제안(중간값) 생성")
     void startGeneratesInitialProposal() {
-        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
-                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+        startBothSides();
 
         Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
         assertThat(reloaded.getTotalRound()).isEqualTo(1);
@@ -146,8 +185,7 @@ class NegotiationLoopServiceTest {
     @Test
     @DisplayName("answer 수락: 제안값으로 락되고 전 조건 합의 시 타결(AGREED)")
     void acceptLocksAndAgrees() {
-        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
-                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+        startBothSides();
 
         loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
                 List.of(new AnswerInput(amountConditionId, true, null)));
@@ -167,8 +205,7 @@ class NegotiationLoopServiceTest {
     @Test
     @DisplayName("answer 거절: 재지시 후 다음 라운드 재제안 생성(라운드 2)")
     void rejectReproposesNextRound() {
-        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
-                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+        startBothSides();
 
         loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
                 List.of(new AnswerInput(amountConditionId, false, "5800000")));
@@ -185,8 +222,7 @@ class NegotiationLoopServiceTest {
     @Test
     @DisplayName("실제 협상 로그는 해시 체인이 유효하다(증거 무결성)")
     void logChainIsValid() {
-        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
-                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+        startBothSides();
         loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
                 List.of(new AnswerInput(amountConditionId, false, "5800000")));
 
