@@ -88,4 +88,12 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // CI(Linux)는 JVM 기본 타임존이 UTC다. PairingApplication의 @PostConstruct는
+    // 컨텍스트 초기화 시점에 실행되는데, 그보다 먼저 만들어지는 DataSource/Hibernate가
+    // 이미 UTC 기준으로 날짜를 다루기 시작해서 @PostConstruct로는 못 막는다.
+    // JVM 시작 자체를 KST로 고정해야 로컬(KST)과 CI(UTC)의 날짜 계산이 어긋나지 않는다.
+    systemProperty 'user.timezone', 'Asia/Seoul'
+    testLogging {
+        exceptionFormat = 'full'
+    }
 }
