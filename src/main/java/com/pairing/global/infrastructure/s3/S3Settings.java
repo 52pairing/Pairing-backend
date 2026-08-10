@@ -29,10 +29,17 @@ public class S3Settings {
     /** 응답 URL 조합용 루트. key 앞에 붙는다. (trailing slash 제거) */
     private final String cdnBase;
 
+    /**
+     * 환경 구분용 object key prefix. 같은 버킷을 로컬·배포가 함께 쓸 때 폴더를 나눈다.
+     * (예: {@code local} -> {@code local/profile/{uuid}.png}) 비우면 prefix 없이 저장한다.
+     */
+    private final String keyPrefix;
+
     public S3Settings(
             @Value("${cloud.aws.s3.bucket:}") String bucket,
             @Value("${cloud.aws.region.static:ap-northeast-2}") String region,
-            @Value("${cloud.aws.s3.cdn-url:}") String cdnOverride
+            @Value("${cloud.aws.s3.cdn-url:}") String cdnOverride,
+            @Value("${cloud.aws.s3.key-prefix:}") String keyPrefix
     ) {
         // 환경변수에 실수로 붙은 앞뒤 공백/개행이 버킷명·리전에 섞이면
         // AWS가 잘못된 버킷/호스트로 인식해 업로드가 500으로 실패하므로 방어적으로 trim 한다.
@@ -64,8 +71,20 @@ public class S3Settings {
         }
 
         this.cdnBase = resolveCdnBase(cdnOverride);
+        // 앞뒤 슬래시는 떼어 둔다. key 를 만들 때 하나만 붙이므로 "//" 가 생기면 S3 에서 빈 폴더가 된다.
+        this.keyPrefix = keyPrefix == null ? "" : keyPrefix.trim().replaceAll("^/+|/+$", "");
 
-        log.info("[S3Settings] bucket={}, region={}, cdnBase={}", this.bucket, this.region, this.cdnBase);
+        log.info("[S3Settings] bucket={}, region={}, cdnBase={}, keyPrefix={}",
+                this.bucket, this.region, this.cdnBase, this.keyPrefix.isBlank() ? "(없음)" : this.keyPrefix);
+    }
+
+    /**
+     * prefix 를 붙인 최종 object key 를 만든다. prefix 가 비어 있으면 원래 key 를 그대로 돌려준다.
+     *
+     * <p>이 값이 그대로 DB 에 저장되므로, 삭제와 URL 조합은 저장된 key 를 쓰면 되고 별도 처리가 필요 없다.
+     */
+    public String withPrefix(String key) {
+        return keyPrefix.isBlank() ? key : keyPrefix + "/" + key;
     }
 
     private String resolveCdnBase(String cdnOverride) {

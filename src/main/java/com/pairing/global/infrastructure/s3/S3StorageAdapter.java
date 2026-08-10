@@ -33,7 +33,8 @@ public class S3StorageAdapter implements FileStoragePort {
 
         // 원본 파일명은 경로 조작(../) 위험이 있어 저장 경로에 쓰지 않는다.
         // 중복 방지를 위해 UUID로 새 이름을 만들고, 이 key가 그대로 DB에 저장된다.
-        String key = directory + "/" + UUID.randomUUID() + extension;
+        // 앞에 붙는 prefix(S3_KEY_PREFIX)는 같은 버킷을 쓰는 로컬/배포 파일을 폴더로 갈라 준다.
+        String key = s3Settings.withPrefix(directory + "/" + UUID.randomUUID() + extension);
 
         try {
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
