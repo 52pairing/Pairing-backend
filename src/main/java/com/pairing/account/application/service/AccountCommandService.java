@@ -20,6 +20,7 @@ import com.pairing.account.domain.repository.FreelancerProfileRepository;
 import com.pairing.account.domain.repository.PaymentMethodRepository;
 import com.pairing.account.domain.repository.SocialAccountRepository;
 import com.pairing.account.exception.AccountErrorCode;
+import com.pairing.auth.application.policy.ContactPolicy;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.global.port.out.DataEncryptionPort;
 import lombok.RequiredArgsConstructor;
@@ -158,8 +159,12 @@ public class AccountCommandService implements AccountCommandUseCase {
     }
 
     @Override
-    public void updateClientProfile(Long accountId, String companyName, EmployeeCount employeeCount,
+    public void updateClientProfile(Long accountId, String companyName, EmployeeCount employeeCount, String phone,
                                     String address) {
+        Account account = loadAccount(accountId);
+        account.updatePhone(ContactPolicy.normalizePhone(phone));
+        accountRepository.save(account);
+
         ClientProfile profile = clientProfileRepository.findByAccountId(accountId)
                 .orElseThrow(() -> new BusinessException(AccountErrorCode.PROFILE_NOT_FOUND));
         profile.updateCompanyInfo(companyName, employeeCount, address);
@@ -171,6 +176,19 @@ public class AccountCommandService implements AccountCommandUseCase {
         FreelancerProfile profile = freelancerProfileRepository.findByAccountId(accountId)
                 .orElseThrow(() -> new BusinessException(AccountErrorCode.PROFILE_NOT_FOUND));
         profile.updateMatchingSettings(aiMatchingAgreed, matchingPaused);
+        freelancerProfileRepository.save(profile);
+    }
+
+    @Override
+    public void updateFreelancerProfile(Long accountId, String phone, String address, Long profileFileId,
+                                        boolean aiMatchingAgreed) {
+        Account account = loadAccount(accountId);
+        account.updatePhone(ContactPolicy.normalizePhone(phone));
+        accountRepository.save(account);
+
+        FreelancerProfile profile = freelancerProfileRepository.findByAccountId(accountId)
+                .orElseThrow(() -> new BusinessException(AccountErrorCode.PROFILE_NOT_FOUND));
+        profile.updateProfile(address, profileFileId, aiMatchingAgreed);
         freelancerProfileRepository.save(profile);
     }
 

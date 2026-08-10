@@ -34,6 +34,7 @@ public class ClientQueryService implements ClientQueryUseCase {
                 profile.getEmployeeCount(),
                 account.getEmail(),
                 account.getName(),
+                account.getPhone(),
                 profile.getAddress(),
                 ClientGrade.valueOf(profile.getGrade()),
                 reviewSummary.averageScore(),

@@ -20,7 +20,8 @@ public class ClientCommandService implements ClientCommandUseCase {
     @Override
     public ClientMyPageResult updateMyPage(ClientProfileUpdateCommand command) {
         accountCommandUseCase.updateClientProfile(
-                command.accountId(), command.companyName(), command.employeeCount(), command.address());
+                command.accountId(), command.companyName(), command.employeeCount(), command.phone(),
+                command.address());
         return clientQueryUseCase.findMyPage(command.accountId());
     }
 }

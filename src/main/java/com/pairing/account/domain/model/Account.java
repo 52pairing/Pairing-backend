@@ -168,6 +168,14 @@ public class Account {
         this.emailVerified = true;
     }
 
+    /** 마이페이지에서 전화번호를 수정한다. */
+    public void updatePhone(String phone) {
+        if (phone == null || phone.isBlank()) {
+            throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
+        }
+        this.phone = phone;
+    }
+
     // ==========================================
     // 조회용 판정
     // ==========================================

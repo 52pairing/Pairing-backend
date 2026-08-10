@@ -6,6 +6,7 @@ public record ClientProfileUpdateCommand(
         Long accountId,
         String companyName,
         EmployeeCount employeeCount,
+        String phone,
         String address
 ) {
 }

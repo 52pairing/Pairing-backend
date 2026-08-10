@@ -44,8 +44,7 @@ public class ClientController {
     @PatchMapping("/me")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "마이페이지 수정",
-            description = "사업자등록번호·사업 분야·업무이메일·담당자명은 수정할 수 없습니다. "
-                    + "전화번호·기업 로고는 계정 공통 화면(06번 계정 도메인)에서 다룹니다.")
+            description = "사업자등록번호·사업 분야·업무이메일·담당자명은 수정할 수 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST"})
     public ResponseEntity<ApiResponse<ClientMyPageResponse>> updateMe(
             @Valid @RequestBody ClientProfileUpdateRequest request,

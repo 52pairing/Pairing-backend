@@ -4,9 +4,10 @@ import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.exception.AccountErrorCode;
+import com.pairing.freelancer.application.usecase.FreelancerCommandUseCase;
 import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
+import com.pairing.freelancer.application.usecase.FreelancerQueryUseCase;
 import com.pairing.freelancer.application.usecase.ResumeUseCase;
-import com.pairing.freelancer.domain.model.FreelancerGrade;
 import com.pairing.freelancer.domain.model.ResumeStatus;
 import com.pairing.freelancer.presentation.api.request.FreelancerConditionRequest;
 import com.pairing.freelancer.presentation.api.request.FreelancerProfileUpdateRequest;
@@ -35,8 +36,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
-
 /**
  * 프리랜서 마이페이지 · 조건 · 이력서. (요구사항 R17, R21)
  *
@@ -44,8 +43,6 @@ import java.time.LocalDate;
  * 각각 따로 저장할 수 있어야 하기 때문이다.
  *
  * <p>매칭 중에도 수정할 수 있지만, 진행 중인 매칭에는 매칭 시작 시점의 정보가 적용된다.
- *
- * <p>스켈레톤이라 고정 응답을 돌려준다.
  */
 @RestController
 @RequestMapping("/api/v1/freelancers")
@@ -61,26 +58,32 @@ public class FreelancerController {
     private final ResumeUseCase resumeUseCase;
     private final AccountQueryUseCase accountQueryUseCase;
     private final AccountCommandUseCase accountCommandUseCase;
+    private final FreelancerQueryUseCase freelancerQueryUseCase;
+    private final FreelancerCommandUseCase freelancerCommandUseCase;
 
     @GetMapping("/me")
     @PreAuthorize("hasRole('FREELANCER')")
     @Operation(summary = "마이페이지 조회", description = "계정 정보와 등급·평점 요약을 함께 반환합니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED"})
+    @ApiErrorCodeExample(domain = AccountErrorCode.class, value = {"PROFILE_NOT_FOUND"})
     public ResponseEntity<ApiResponse<FreelancerMyPageResponse>> findMe(@CurrentAccountId Long accountId) {
-        // TODO: 계정 + 프로필 + 결제수단 마스킹 + 리뷰 집계 조회
-        return ResponseEntity.ok(ApiResponse.success("MY_PAGE_FOUND", "조회에 성공했습니다.", sampleMyPage()));
+        FreelancerMyPageResponse response = FreelancerMyPageResponse.from(freelancerQueryUseCase.findMyPage(accountId));
+        return ResponseEntity.ok(ApiResponse.success("MY_PAGE_FOUND", "조회에 성공했습니다.", response));
     }
 
     @PatchMapping("/me")
     @PreAuthorize("hasRole('FREELANCER')")
     @Operation(summary = "마이페이지 수정",
             description = "이름·생년월일·이메일은 수정할 수 없습니다. 비밀번호 변경은 PATCH /api/v1/auth/password 를 사용합니다.")
+    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED", "INVALID_REQUEST"})
+    @ApiErrorCodeExample(domain = AccountErrorCode.class, value = {"PROFILE_NOT_FOUND", "CURRENT_PASSWORD_MISMATCH"})
     public ResponseEntity<ApiResponse<FreelancerMyPageResponse>> updateMe(
             @Valid @RequestBody FreelancerProfileUpdateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 현재 비밀번호 확인 후 수정
-        return ResponseEntity.ok(ApiResponse.success("MY_PAGE_UPDATED", "수정되었습니다.", sampleMyPage()));
+        FreelancerMyPageResponse response =
+                FreelancerMyPageResponse.from(freelancerCommandUseCase.updateMyPage(request.toCommand(accountId)));
+        return ResponseEntity.ok(ApiResponse.success("MY_PAGE_UPDATED", "수정되었습니다.", response));
     }
 
     @GetMapping("/me/condition")
@@ -196,16 +199,6 @@ public class FreelancerController {
         }
         return new MatchingSettingsResponse(aiMatchingAgreed, matchingPaused, unmatchableReason == null,
                 unmatchableReason);
-    }
-
-    // ==========================================
-    // 스켈레톤 고정 응답. 구현하면서 제거한다.
-    // ==========================================
-
-    private FreelancerMyPageResponse sampleMyPage() {
-        return new FreelancerMyPageResponse(7L, "홍길동", "user@pairing.com", "01012345678",
-                LocalDate.of(1995, 3, 1), "서울 강남구", "profiles/uuid.png", true,
-                FreelancerGrade.SENIOR, 4.5, 12, true, true);
     }
 
 }

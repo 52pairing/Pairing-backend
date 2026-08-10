@@ -1,5 +1,6 @@
 package com.pairing.freelancer.presentation.api.request;
 
+import com.pairing.freelancer.application.command.FreelancerProfileUpdateCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -33,4 +34,9 @@ public record FreelancerProfileUpdateRequest(
         @NotNull(message = "AI 매칭 동의 여부는 필수입니다.")
         Boolean aiMatchingAgreed
 ) {
+
+    public FreelancerProfileUpdateCommand toCommand(Long accountId) {
+        return new FreelancerProfileUpdateCommand(accountId, currentPassword, profileFileId, phone, address,
+                aiMatchingAgreed);
+    }
 }
