@@ -201,6 +201,18 @@ Pairing-python 담당 팀원이 임베딩 모델을 `text-embedding-004` → `ge
 - 테스트는 `@SpringBootTest` 대신 순수 Mockito 단위테스트(`EmbeddingReindexServiceTest`)로 작성 — 이 서비스는 포트 호출만 반복하는 얇은 오케스트레이션이라 실제 DB/Gemini 없이도 충분히 검증되고, 안 그래도 알려진 풀스위트 전용 flaky 이슈(`.ai/HANDOFF.md` 참고)에 컨텍스트를 더 안 보태려는 목적도 있음.
 - `feature/matching-embedding-reindex` 브랜치. `.ai/API.md`(11. Matching 표), `.ai/STATE.md`(임베딩 모델명 갱신 + 재색인 API 언급) 동기화.
 
+## 2026-08-10 (계속) — Stage E 조건 감점 구현 (HANDOFF 10-2번, Pairing-python)
+
+일정/근무조건/단가를 하드필터로 배제하지 않고 LLM 최종선정에서 감점 요인으로만 반영하기로 한 결정(`.ai/STATE.md` "Stage B 조건필터 폐기")의 남은 절반. 여태 프롬프트가 직군/직무/경력/스킬/자기소개/경력사항만 보여주고 예산·단가·일정·근무조건은 LLM에게 아예 안 알려주고 있었어서, "감점하기로 했다"는 결정이 실제로는 아무 효과가 없던 상태였다.
+
+- `DirectoryRepository`: 포지션 쪽에 `budget_amount`/`period_value`/`period_unit`/`start_desired_date`/`start_negotiable`, 프리랜서 쪽에 `pay_unit`/`pay_amount`/`work_style`/`work_form`/`available_from`/`start_negotiable`/`period_value`/`period_unit` 추가. 프리랜서 쿼리는 `string_agg`(경력 요약) 때문에 GROUP BY가 있어서 새 컬럼을 SELECT뿐 아니라 GROUP BY에도 넣어야 했다.
+- `_build_prompt`: 조건 값을 프롬프트에 넣고 "어긋나도 후보에서 제외하지 말고 감점만 하고 사유에 적어라"를 명시. 감점 공식은 우리가 정하지 않고 LLM 판단에 맡김(설계 결정대로).
+- **함정 2개를 프롬프트에서 막았음**: (1) 총예산은 프로젝트 전체 인원·기간 합계인데 프리랜서 희망급여는 1인 월단가라, 그냥 넣으면 LLM이 4,800만 vs 620만을 직접 비교해서 과도하게 감점한다 — "두 숫자를 그대로 비교하지 말고 기간·인원 감안하라, 총예산은 참고치일 뿐 확정 상한 아니다"를 명시. (2) `start_negotiable`(협의 가능)이 켜진 항목은 어긋나도 감점하지 말라고 명시 — 안 그러면 "시작일 협의 가능"인 프리랜서가 일정 불일치로 부당하게 밀린다.
+- 조건을 아직 안 채운 프리랜서도 후보에 들어올 수 있어서, 값이 `None`인 항목은 줄 자체를 뺐다(그냥 찍으면 LLM이 "None"을 조건 값으로 읽는다).
+- 테스트 3건 추가(`tests/test_matching_service.py`): 조건 값이 실제로 프롬프트에 들어가는지, 협의가능 표시가 붙는지, 값 없을 때 줄이 빠지는지. 전체 22건 통과(기존 19 + 3), ruff 통과. 실제 렌더링된 프롬프트도 직접 출력해서 눈으로 확인함.
+- **API 응답 모양은 안 바뀜** — 기존 `reason`(파이프 구분 문자열)에 감점 사유가 항목으로 하나 더 붙는 형태라 프론트 변경 불필요.
+- 같은 브랜치(`feature/matching-stage-e-condition-penalty`)에 임베딩 모델 교체 관련 Python 문서 정정도 같이 실었다(`db/init/10-create-ai-schema.sql`, `README.md` — "차원 768은 text-embedding-004 기준"이 낡은 문구였고, `output_dimensionality`로 차원을 맞춰도 벡터 공간은 달라진다는 점이 빠져 있었음).
+
 ## 2026-08-10 (계속) — LLM 호출 비동기 처리 (강사 요구사항)
 
 강사 요구사항: "AI쪽 LLM 돌릴 때 프론트 화면에서 기다리게 하지 말고 비동기로 처리". 확인해보니
