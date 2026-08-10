@@ -83,7 +83,7 @@ class ChatServiceTest {
                 6, "MONTH", 50_000_000L, "REMOTE", "FULL_TIME",
                 "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
 
-        Negotiation negotiation = Negotiation.create(200L, PROJECT_ID, 10L, freelancerProfileId, 5_000_000L,
+        Negotiation negotiation = Negotiation.create(200L, PROJECT_ID, 10L, freelancerProfileId, 5_000_000L, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0)));
         negotiationId = negotiationRepository.save(negotiation).getId();
     }

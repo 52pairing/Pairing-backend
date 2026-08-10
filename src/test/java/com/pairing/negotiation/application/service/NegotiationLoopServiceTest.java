@@ -121,7 +121,7 @@ class NegotiationLoopServiceTest {
                         + "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                 100L, PROJECT_ID, 10L, 1L, freelancerProfileId, "NEGOTIATING");
 
-        Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId, 5_000_000L,
+        Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId, 5_000_000L, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0)));
         Negotiation saved = negotiationRepository.save(negotiation);
         negotiationId = saved.getId();

@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class NegotiationTest {
 
     private Negotiation withOneCondition() {
-        return Negotiation.create(1L, 1L, 10L, 51L, 50_000_000L,
+        return Negotiation.create(1L, 1L, 10L, 51L, 50_000_000L, 50_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "20000000", "25000000", 0)));
     }
 

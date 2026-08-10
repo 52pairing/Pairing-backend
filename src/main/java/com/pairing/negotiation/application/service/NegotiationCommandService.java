@@ -38,7 +38,6 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
         List<NegotiationCondition> conditions = NegotiationConditionCalculator.compute(
                 command.budgetCap(),
                 command.snapshot(),
-                project.budgetAmount(),
                 project.workStyle(),
                 project.workForm(),
                 project.startDesiredDate(),
@@ -46,15 +45,20 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
                 project.periodValue(),
                 project.periodUnit());
 
+        long freelancerMonthlyPay = command.snapshot().monthlyPay();
         Negotiation negotiation = Negotiation.create(
                 command.requestId(), command.projectId(), command.positionId(),
-                command.freelancerId(), command.budgetCap(), conditions);
+                command.freelancerId(), command.budgetCap(), freelancerMonthlyPay, conditions);
 
         // 불일치 조건이 0개면 협상할 게 없다 → AI 루프 없이 즉시 타결한다.
         // (사람 채팅방은 타결이 아니라 계약 체결 시 열린다.)
+        //
+        // 합의 금액은 예산 상한(budgetCap)이 아니라 프리랜서가 제시한 월 단가다. 조건이 0개라는 건
+        // 그 단가가 상한 이내라 다툴 게 없다는 뜻이므로, 상한을 합의값으로 쓰면 프리가 요구한 적 없는
+        // 금액이 계약서에 찍히고 클라도 상한을 전액 지불하게 된다(양쪽 모두에게 불리).
         boolean settledImmediately = conditions.isEmpty();
         if (settledImmediately) {
-            negotiation.agreeWithoutConditions(command.budgetCap());
+            negotiation.agreeWithoutConditions(freelancerMonthlyPay);
         }
 
         Long negotiationId = negotiationRepository.save(negotiation).getId();
