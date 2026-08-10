@@ -104,6 +104,34 @@ public class Settlement {
     }
 
     /**
+     * 프리랜서 착수금. 계약 체결(양측 서명 완료) 시점에 만들어진다. (P27·P29)
+     *
+     * <p>기준 금액이 프로젝트 예산이 아니라 <b>그 계약의 총액</b>이다. 여러 명을 뽑는 프로젝트는
+     * 프리랜서마다 계약 금액이 다르다. 클라이언트 착수금과 달리 {@code contractId} 가 채워진다.
+     */
+    public static Settlement createFreelancerDeposit(Long projectId, Long contractId, Long payerAccountId,
+                                                     long contractAmount, BigDecimal feeRate,
+                                                     BigDecimal gradeDiscount, long feeAmount) {
+        return new Settlement(
+                null,
+                TEMP_NO_PREFIX + UUID.randomUUID(),
+                projectId,
+                contractId,
+                payerAccountId,
+                PartyRole.FREELANCER,
+                SettlementPhase.DEPOSIT,
+                contractAmount,
+                feeRate,
+                gradeDiscount,
+                feeAmount,
+                SettlementStatus.PENDING,
+                null, null, null, null,
+                null,
+                null,
+                LocalDateTime.now());
+    }
+
+    /**
      * 클라이언트 성공보수. 프로젝트가 완료 대기로 넘어간 시점에 만들어진다. (P30)
      *
      * <p>계약 도메인이 붙기 전까지 기준 금액은 프로젝트 예산이다. contractId 도 아직 없다.
@@ -194,9 +222,19 @@ public class Settlement {
         return this.phase == SettlementPhase.DEPOSIT && this.payerRole == PartyRole.CLIENT;
     }
 
-    /** 클라이언트 성공보수 결제가 곧 프로젝트 종료다. 프리랜서 분은 상태를 바꾸지 않는다. (P30) */
+    /** 클라이언트 성공보수 결제가 곧 프로젝트 종료다. 프리랜서 성공보수는 상태를 바꾸지 않는다. (P30) */
     public boolean closesProject() {
         return this.phase == SettlementPhase.SUCCESS_FEE && this.payerRole == PartyRole.CLIENT;
+    }
+
+    /**
+     * 프리랜서 착수금 결제는 프로젝트를 진행중으로 넘길 후보다. (P27)
+     *
+     * <p>이 한 건만으로는 부족하다. 같은 프로젝트의 다른 프리랜서가 아직 안 냈을 수 있고 인원이
+     * 덜 찼을 수도 있다. 최종 판정은 호출부가 한다.
+     */
+    public boolean mayStartProgress() {
+        return this.phase == SettlementPhase.DEPOSIT && this.payerRole == PartyRole.FREELANCER;
     }
 
     /**

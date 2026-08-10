@@ -171,7 +171,12 @@ public class ContractController {
                         SignatureStatus.PENDING, null, null));
 
         return new ContractResponse(600L, "PR-2026-000123", 1L, "페어링 웹 리뉴얼", 300L,
-                "주식회사 페어링", "홍길동", JobRole.BACKEND, ContractStatus.SIGN_PENDING,
+                "주식회사 페어링", "홍길동",
+                new ContractResponse.ClientParty("주식회사 페어링", "1208147521", "정신아",
+                        "경기도 성남시 분당구 판교역로 235", "0212345678"),
+                new ContractResponse.FreelancerParty("홍길동", "01098765432", JobRole.BACKEND,
+                        "카카오뱅크 3333012345678 (예금주: 홍길동)"),
+                JobRole.BACKEND, ContractStatus.SIGN_PENDING,
                 22_000_000L, PayUnit.MONTHLY, 6_000_000L, 6_600_000L, 15_400_000L,
                 LocalDate.of(2026, 9, 1), LocalDate.of(2027, 2, 28),
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, null,

@@ -32,7 +32,9 @@ public class ContractProjectReaderAdapter implements ContractProjectReaderPort {
                 project.getWorkLocation(),
                 project.getStartDesiredDate(),
                 project.getPeriodValue(),
-                project.getPeriodUnit());
+                project.getPeriodUnit(),
+                project.getMainTask(),
+                project.getDetailScope());
     }
 
     @Override

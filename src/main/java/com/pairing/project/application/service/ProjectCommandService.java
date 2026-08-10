@@ -246,6 +246,18 @@ public class ProjectCommandService implements ProjectCommandUseCase {
     }
 
     @Override
+    public boolean startProgress(Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        if (!project.startProgress()) {
+            return false;
+        }
+        projectRepository.updateState(project);
+        return true;
+    }
+
+    @Override
     public void closeProject(Long projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));

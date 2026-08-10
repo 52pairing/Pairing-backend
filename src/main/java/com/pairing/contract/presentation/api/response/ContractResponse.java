@@ -32,6 +32,8 @@ public record ContractResponse(
         @Schema(description = "협상 ID", example = "300") Long negotiationId,
         @Schema(description = "클라이언트명", example = "주식회사 페어링") String clientName,
         @Schema(description = "프리랜서명", example = "홍길동") String freelancerName,
+        @Schema(description = "계약서 머리말의 갑 표시") ClientParty client,
+        @Schema(description = "계약서 머리말의 을 표시") FreelancerParty freelancer,
         @Schema(description = "계약 대상 직무") JobRole jobRole,
         @Schema(description = "상태") ContractStatus status,
 
@@ -88,6 +90,11 @@ public record ContractResponse(
                 contract.getNegotiationId(),
                 detail.clientName(),
                 detail.freelancerName(),
+                new ClientParty(detail.client().companyName(), detail.client().businessNo(),
+                        detail.client().representative(), detail.client().address(),
+                        detail.client().phone()),
+                new FreelancerParty(detail.freelancer().name(), detail.freelancer().phone(),
+                        detail.jobRole(), detail.freelancer().settlementAccount()),
                 detail.jobRole(),
                 contract.getStatus(),
                 contract.getTotalAmount(),
@@ -112,6 +119,27 @@ public record ContractResponse(
                 signatures,
                 contract.getSignedAt(),
                 contract.getCreatedAt());
+    }
+
+    @Schema(description = "계약서 머리말의 갑 표시")
+    public record ClientParty(
+            @Schema(description = "기업명", example = "카카오 주식회사") String companyName,
+            @Schema(description = "사업자등록번호", example = "1208147521") String businessNo,
+            @Schema(description = "대표자", example = "정신아") String representative,
+            @Schema(description = "주소") String address,
+            @Schema(description = "연락처", example = "0212345678") String phone
+    ) {
+    }
+
+    /** 정산 계좌는 조회 시점 값이다. 계약 테이블에 계좌 칸이 없어 체결 시점으로 동결하지 못한다. */
+    @Schema(description = "계약서 머리말의 을 표시")
+    public record FreelancerParty(
+            @Schema(description = "성명", example = "김민준") String name,
+            @Schema(description = "연락처", example = "01098765432") String phone,
+            @Schema(description = "직군", example = "BACKEND") JobRole jobRole,
+            @Schema(description = "정산 계좌", example = "카카오뱅크 3333012345678 (예금주: 김민준)")
+            String settlementAccount
+    ) {
     }
 
     @Schema(description = "계약서 조항")

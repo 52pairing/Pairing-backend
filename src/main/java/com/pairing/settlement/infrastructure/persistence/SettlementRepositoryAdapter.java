@@ -1,5 +1,6 @@
 package com.pairing.settlement.infrastructure.persistence;
 
+import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.settlement.domain.model.Settlement;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
@@ -36,6 +37,11 @@ public class SettlementRepositoryAdapter implements SettlementRepository {
     }
 
     @Override
+    public Optional<Settlement> findByContractId(Long contractId) {
+        return springDataRepository.findByContractId(contractId).map(settlementMapper::toDomain);
+    }
+
+    @Override
     public Page<Settlement> findByPayer(Long payerAccountId, SettlementPhase phase,
                                         SettlementStatus status, Pageable pageable) {
         return springDataRepository.findByPayer(payerAccountId, phase, status, pageable)
@@ -44,12 +50,18 @@ public class SettlementRepositoryAdapter implements SettlementRepository {
 
     @Override
     public Optional<Settlement> findPayableByProjectId(Long projectId) {
-        return springDataRepository.findFirstPayable(projectId, PAYABLE_STATUSES)
+        return springDataRepository.findFirstPayable(projectId, PartyRole.CLIENT, PAYABLE_STATUSES)
                 .map(settlementMapper::toDomain);
     }
 
     @Override
     public boolean existsUnpaidByPayer(Long payerAccountId) {
         return springDataRepository.existsByPayerAccountIdAndStatusIn(payerAccountId, PAYABLE_STATUSES);
+    }
+
+    @Override
+    public boolean existsUnpaidFreelancerDeposit(Long projectId) {
+        return springDataRepository.existsByProjectIdAndPayerRoleAndPhaseAndStatusIn(
+                projectId, PartyRole.FREELANCER, SettlementPhase.DEPOSIT, PAYABLE_STATUSES);
     }
 }

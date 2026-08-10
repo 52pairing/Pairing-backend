@@ -31,7 +31,12 @@ public interface ContractProjectReaderPort {
         public static final ProjectView EMPTY = new ProjectView(null, null);
     }
 
-    /** {@code clientProfileId} 는 계약의 갑이다. {@code account.id} 가 아니다. */
+    /**
+     * {@code clientProfileId} 는 계약의 갑이다. {@code account.id} 가 아니다.
+     *
+     * <p>{@code mainTask}/{@code detailScope} 는 계약서 제2조에 들어갈 업무 원문이다. 최대 1500자라
+     * 그대로 넣을 수 없어 AI 서버가 줄여 준다. 등록 시 선택 입력이라 둘 다 비어 있을 수 있다.
+     */
     record ProjectContractView(
             Long clientProfileId,
             WorkStyle workStyle,
@@ -39,7 +44,9 @@ public interface ContractProjectReaderPort {
             String workLocation,
             LocalDate startDesiredDate,
             int periodValue,
-            PeriodUnit periodUnit
+            PeriodUnit periodUnit,
+            String mainTask,
+            String detailScope
     ) {
     }
 }

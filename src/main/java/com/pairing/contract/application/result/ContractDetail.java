@@ -1,5 +1,7 @@
 package com.pairing.contract.application.result;
 
+import com.pairing.contract.application.port.ContractPartyReaderPort.ClientParty;
+import com.pairing.contract.application.port.ContractPartyReaderPort.FreelancerParty;
 import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractClause;
 import com.pairing.meta.domain.model.JobRole;
@@ -21,8 +23,17 @@ public record ContractDetail(
         Contract contract,
         String projectTitle,
         JobRole jobRole,
-        String clientName,
-        String freelancerName,
+        ClientParty client,
+        FreelancerParty freelancer,
         List<ContractClause> clauses
 ) {
+
+    /** 서명 현황에 붙일 이름. 프로필이 지워졌으면 null 이다. */
+    public String clientName() {
+        return client.companyName();
+    }
+
+    public String freelancerName() {
+        return freelancer.name();
+    }
 }
