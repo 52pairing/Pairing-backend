@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -17,7 +18,21 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "negotiation_message")
+/*
+ * 조회는 전부 negotiation_id 로 좁힌 뒤 (라운드 | 종류 | 생성시각)을 더하는 형태다. 인덱스가 없으면
+ * 협상방 진입·목록 배지·헤더 응답대기 카운트가 매번 전체 스캔이 되고, 메시지는 협상 1건당
+ * 라운드(최대 15) × 조건 수만큼 쌓여 금방 커진다.
+ *
+ *   idx_msg_nego_round : findByNegotiationIdOrderByRoundNoAscIdAsc(로그 조회),
+ *                        countByNegotiationIdAndMessageTypeAndRoundNo,
+ *                        countByNegotiationIdAndSenderTypeAndRoundNoAndMessageType,
+ *                        waiting-count 의 EXISTS/NOT EXISTS 서브쿼리
+ *   idx_msg_nego_created : countByNegotiationIdAndMessageTypeAndCreatedAtAfter(안 읽은 제안 수)
+ */
+@Table(name = "negotiation_message", indexes = {
+        @Index(name = "idx_msg_nego_round", columnList = "negotiation_id, round_no, message_type"),
+        @Index(name = "idx_msg_nego_created", columnList = "negotiation_id, message_type, created_at")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class NegotiationMessageJpaEntity {
