@@ -43,18 +43,35 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     // 협상 결과(타결/결렬)를 매칭 요청 건에 반영하는 인바운드 포트(방향: negotiation → matching).
     private final MatchingNegotiationOutcomeUseCase matchingOutcomeUseCase;
 
+    /**
+     * 마지노선 제출. <b>양측이 모두 낸 뒤에야</b> 대리인 협상(라운드 1)이 시작된다.
+     *
+     * <p>먼저 낸 쪽은 저장만 하고 상대를 기다린다. 한쪽 마지노선만으로 돌리면 선을 안 그은 쪽
+     * 대리인이 지킬 게 없어 그대로 양보하고, 상대는 동의한 적도 없는데 조건이 확정된다.
+     */
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
         Negotiation negotiation = load(negotiationId);
         PartyRole role = resolveRole(negotiation, accountId);
         ensureInProgress(negotiation);
+        if (negotiation.hasFloorsFrom(role)) {
+            throw new BusinessException(NegotiationErrorCode.FLOOR_ALREADY_SUBMITTED);
+        }
 
         // 요청자 본인 쪽 마지노선 저장(쟁점별).
         for (FloorInput floor : floors) {
             findByType(negotiation, floor.conditionType()).submitFloor(role, floor.value());
         }
 
-        // 초기 제안(라운드 1) 생성.
+        // 상대가 아직 안 냈으면 여기서 멈춘다. 상대 화면에는 '내 응답 필요'로 뜬다.
+        if (!negotiation.bothFloorsSubmitted()) {
+            persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
+                    "마지노선이 저장되었습니다. 상대방이 조건을 입력하면 AI 대리인 협상이 시작됩니다.")));
+            publish(negotiation, NegotiationEventType.STARTED);
+            return;
+        }
+
+        // 양측 마지노선이 모두 모였다 → 초기 제안(라운드 1) 생성.
         negotiation.incrementRound();
         List<NegotiationMessage> messages = proposeForPending(negotiation);
 
