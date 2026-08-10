@@ -61,8 +61,24 @@ class NegotiationCommandServiceTest {
 
     private static final Long PROJECT_ID = 8000L;
 
+    private Long clientProfileId;
+    private Long freelancerProfileId;
+
+    /**
+     * 프로젝트와 그 소유 프로필을 함께 만든다.
+     *
+     * <p>프로필을 실제로 만드는 이유: 즉시 타결 경로가 계약서를 생성하고, 계약은 양측 <b>계정 ID</b>를
+     * 프로필에서 역으로 찾는다. 존재하지 않는 ID 를 박아 두면 계약 생성이 실패하면서 협상 생성까지
+     * 같은 트랜잭션으로 롤백된다.
+     */
     private void insertProject(Long budgetAmount, WorkStyle workStyle, WorkForm workForm,
                                LocalDate startDesiredDate, boolean startNegotiable) {
+        clientProfileId = clientProfileRepository.save(ClientProfile.create(
+                910_201L, "삼성전자", "1234567890",
+                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
+        freelancerProfileId = freelancerProfileRepository.save(
+                FreelancerProfile.create(910_202L, LocalDate.of(1990, 1, 1))).getId();
+
         // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.
         jdbcTemplate.update("INSERT INTO project "
                         + "(id, client_id, title, budget_amount, work_style, work_form, "
@@ -71,13 +87,13 @@ class NegotiationCommandServiceTest {
                         + "total_headcount, confirmed_headcount, "
                         + "extension_count, free_rerecommend_used, paid_rerecommend_used) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                PROJECT_ID, 1L, "페어링 웹 리뉴얼", budgetAmount,
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", budgetAmount,
                 workStyle.name(), workForm.name(), startDesiredDate, startNegotiable,
                 6, "MONTH", "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
     }
 
     private CreateNegotiationCommand command(Long budgetCap, FreelancerConditionSnapshot snapshot) {
-        return new CreateNegotiationCommand(100L, PROJECT_ID, 10L, 51L, budgetCap, snapshot);
+        return new CreateNegotiationCommand(100L, PROJECT_ID, 10L, freelancerProfileId, budgetCap, snapshot);
     }
 
     @Test
@@ -94,7 +110,7 @@ class NegotiationCommandServiceTest {
         assertThat(saved.getStatus()).isEqualTo(NegotiationStatus.IN_PROGRESS);
         assertThat(saved.getBudgetCap()).isEqualTo(4_800_000L);
         assertThat(saved.getProjectId()).isEqualTo(PROJECT_ID);
-        assertThat(saved.getFreelancerId()).isEqualTo(51L);
+        assertThat(saved.getFreelancerId()).isEqualTo(freelancerProfileId);
         assertThat(saved.getConditions())
                 .extracting(NegotiationCondition::getConditionType)
                 .containsExactlyInAnyOrder(ConditionType.AMOUNT, ConditionType.WORK_STYLE,
