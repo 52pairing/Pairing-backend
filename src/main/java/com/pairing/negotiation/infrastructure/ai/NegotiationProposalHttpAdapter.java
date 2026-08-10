@@ -75,11 +75,12 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
             OutcomeItem item = outcomeById.get(condition.conditionId());
             if (item != null) {
                 // 이 조건의 파이썬 대화 + 결과 사용. 값은 계약 표기로 정규화해 싣는다.
-                pythonMessages.stream()
+                List<AgentMessage> conditionMessages = pythonMessages.stream()
                         .filter(m -> condition.conditionId().equals(m.conditionId()))
                         .map(m -> normalizeMessage(m, condition))
-                        .forEach(messages::add);
-                outcomes.add(normalizeOutcome(item, condition));
+                        .toList();
+                messages.addAll(conditionMessages);
+                outcomes.add(normalizeOutcome(item, condition, lastProposedValue(conditionMessages)));
             } else {
                 // 파이썬이 이 조건 결과를 못 줌 → stub A2A 폴백.
                 StubExchange stub = stubExchange(condition);
@@ -118,7 +119,8 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
      * 합의 결과를 계약 표기로 정규화한다. 해석할 수 없는 값(없는 enum·형식 이탈)이면 <b>합의로 인정하지 않는다</b>
      * — 그대로 락하면 계약 단계에서 못 읽는 값이 굳어지므로, 사람 승인 패널로 넘긴다.
      */
-    private ConditionOutcome normalizeOutcome(OutcomeItem item, ConditionInput condition) {
+    private ConditionOutcome normalizeOutcome(OutcomeItem item, ConditionInput condition,
+                                              String lastDialogueValue) {
         Optional<String> normalized = NegotiationAgreedValueNormalizer.normalize(
                 condition.type(), item.proposedValue(), reference(condition));
         if (normalized.isEmpty()) {
@@ -128,7 +130,28 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
             }
             return new ConditionOutcome(condition.conditionId(), item.proposedValue(), false);
         }
-        return new ConditionOutcome(condition.conditionId(), normalized.get(), item.agreed());
+
+        String value = normalized.get();
+        // 대화의 결론과 결과값이 다르면 합의로 인정하지 않는다.
+        // 화면에는 "330만에 합의했습니다"라고 찍히는데 실제로는 480만이 락되는 사례를 확인했다.
+        // 사람이 읽은 것과 다른 값이 계약으로 넘어가는 게 최악이라, 이럴 땐 사람 승인으로 넘긴다.
+        if (item.agreed() && lastDialogueValue != null && !lastDialogueValue.equals(value)) {
+            log.warn("대화 결론과 결과값이 달라 합의로 인정하지 않음: conditionId={}, 대화={}, 결과={}",
+                    condition.conditionId(), lastDialogueValue, value);
+            return new ConditionOutcome(condition.conditionId(), value, false);
+        }
+        return new ConditionOutcome(condition.conditionId(), value, item.agreed());
+    }
+
+    /** 이 조건 대화의 마지막 제안값(= 화면에 최종으로 보이는 값). 없으면 null. */
+    private String lastProposedValue(List<AgentMessage> conditionMessages) {
+        for (int i = conditionMessages.size() - 1; i >= 0; i--) {
+            String value = conditionMessages.get(i).proposedValue();
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     /**

@@ -157,6 +157,26 @@ class NegotiationLoopServiceTest {
     }
 
     @Test
+    @DisplayName("start: 해석할 수 없는 마지노선은 거부(NG_004)")
+    void startRejectsUnparsableFloorValue() {
+        // 화면이 "350만원"·"재택" 처럼 사람이 읽는 표기를 그대로 보내던 사례.
+        // 이대로 저장되면 대리인이 다른 값과 비교조차 못 한다.
+        assertThatThrownBy(() -> loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "550만원"))))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("start: 마지노선은 계약 표기로 정규화해 저장한다")
+    void startNormalizesFloorValue() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5,500,000")));
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getConditions().get(0).getFreelancerFloor()).isEqualTo("5500000");
+    }
+
+    @Test
     @DisplayName("start: 같은 당사자가 두 번 제출하면 NG_003")
     void startRejectsDuplicateSubmission() {
         loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
