@@ -1,5 +1,7 @@
 package com.pairing.contract.presentation.api.response;
 
+import com.pairing.contract.application.result.ContractDetail;
+import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.contract.domain.model.SignatureStatus;
 import com.pairing.meta.domain.model.PartyRole;
@@ -17,6 +19,8 @@ import java.util.List;
  * 표준계약서 상세. (요구사항 R43)
  *
  * <p>협상에서 합의된 금액·기간·업무 범위·근무 조건이 그대로 반영된다.
+ *
+ * <p>서명 기한은 두지 않는다. 요구사항 44행이 "계약서 생성 후 서명 기한은 무기한" 이다.
  */
 @Schema(description = "계약 상세 응답")
 public record ContractResponse(
@@ -48,15 +52,67 @@ public record ContractResponse(
         @Schema(description = "위약금 비율(%)", example = "10.00") java.math.BigDecimal penaltyRate,
         @Schema(description = "특약사항. 협상 로그를 근거로 작성된다.") String specialTerms,
 
-        // 서명 기한까지 서명하지 않으면 계약이 자동 취소될 수 있다. 화면 상단 경고 배너에 쓴다.
-        @Schema(description = "서명 기한") LocalDate signDeadline,
-
         @Schema(description = "계약서 조항 본문. 화면에 순서대로 나열한다") List<Clause> clauses,
         @Schema(description = "계약서 PDF fileId. 생성 전에는 null", example = "9") Long pdfFileId,
         @Schema(description = "당사자별 서명 현황") List<Signature> signatures,
         @Schema(description = "체결 시각") LocalDateTime signedAt,
         @Schema(description = "생성 시각") LocalDateTime createdAt
 ) {
+
+    /**
+     * 상세 응답 조립.
+     *
+     * <p>급여 단위는 월로 고정한다. 협상이 합의해 넘겨주는 값이 월 단가 하나뿐이다.
+     *
+     * <p>{@code clauses} 는 조회 시점에 렌더링된 계약서 본문이다. PDF 도 같은 렌더러를 쓰므로
+     * 화면과 파일의 문장이 갈리지 않는다.
+     */
+    public static ContractResponse from(ContractDetail detail) {
+        Contract contract = detail.contract();
+
+        List<Signature> signatures = contract.getSignatures().stream()
+                .map(s -> new Signature(
+                        s.getPartyRole(),
+                        s.getPartyRole() == PartyRole.CLIENT
+                                ? detail.clientName() : detail.freelancerName(),
+                        s.getStatus(),
+                        s.getSignedAt(),
+                        s.getRejectReason()))
+                .toList();
+
+        return new ContractResponse(
+                contract.getId(),
+                contract.getContractNo(),
+                contract.getProjectId(),
+                detail.projectTitle(),
+                contract.getNegotiationId(),
+                detail.clientName(),
+                detail.freelancerName(),
+                detail.jobRole(),
+                contract.getStatus(),
+                contract.getTotalAmount(),
+                PayUnit.MONTHLY,
+                contract.getSalaryAmount(),
+                contract.getDownAmount(),
+                contract.getFinalAmount(),
+                contract.getStartDate(),
+                contract.getEndDate(),
+                contract.getWorkStyle(),
+                contract.getWorkForm(),
+                contract.getWorkLocation(),
+                contract.getInspectionDays(),
+                contract.getPaymentDays(),
+                contract.getConfidentialYears(),
+                contract.getPenaltyRate(),
+                contract.getSpecialTerms(),
+                detail.clauses().stream()
+                        .map(c -> new Clause(c.no(), c.title(), c.content()))
+                        .toList(),
+                contract.getPdfFileId(),
+                signatures,
+                contract.getSignedAt(),
+                contract.getCreatedAt());
+    }
 
     @Schema(description = "계약서 조항")
     public record Clause(

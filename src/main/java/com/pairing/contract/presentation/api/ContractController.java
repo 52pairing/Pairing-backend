@@ -1,7 +1,11 @@
 package com.pairing.contract.presentation.api;
 
+import com.pairing.contract.application.command.SignContractCommand;
+import com.pairing.contract.application.usecase.ContractCommandUseCase;
+import com.pairing.contract.application.usecase.ContractQueryUseCase;
 import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.contract.domain.model.SignatureStatus;
+import com.pairing.contract.exception.ContractErrorCode;
 import com.pairing.contract.presentation.api.request.ContractRejectRequest;
 import com.pairing.contract.presentation.api.request.ContractSignRequest;
 import com.pairing.contract.presentation.api.request.ContractTerminateRequest;
@@ -20,8 +24,12 @@ import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,6 +59,9 @@ import java.util.List;
 @Tag(name = "14. Contract", description = "계약 API")
 public class ContractController {
 
+    private final ContractQueryUseCase contractQueryUseCase;
+    private final ContractCommandUseCase contractCommandUseCase;
+
     @GetMapping
     @Operation(summary = "내 계약 목록", description = "헤더의 계약관리 화면에 사용합니다.")
     public ResponseEntity<ApiResponse<PageResponse<ContractSummaryResponse>>> findMine(
@@ -59,24 +70,24 @@ public class ContractController {
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 내가 당사자인 계약 목록
-        ContractSummaryResponse summary = new ContractSummaryResponse(600L, "PR-2026-000123",
-                "페어링 웹 리뉴얼", "홍길동", ContractStatus.SIGN_PENDING, 22_000_000L,
-                LocalDate.of(2026, 9, 1), LocalDate.of(2027, 2, 28), true,PayUnit.MONTHLY, 6_200_000L );
+        Page<ContractSummaryResponse> data = contractQueryUseCase
+                .findMine(accountId, status, PageRequest.of(page, size))
+                .map(ContractSummaryResponse::from);
 
         return ResponseEntity.ok(ApiResponse.success("CONTRACTS_FOUND", "조회에 성공했습니다.",
-                new PageResponse<>(List.of(summary), page, size, 1, 1, true, true)));
+                PageResponse.from(data)));
     }
 
     @GetMapping("/{contractId}")
     @Operation(summary = "계약 상세", description = "계약서 본문에 들어가는 조건과 양측 서명 현황을 반환합니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"ACCESS_DENIED"})
+    @ApiErrorCodeExample(domain = ContractErrorCode.class,
+            value = {"CONTRACT_NOT_FOUND", "NOT_CONTRACT_PARTY"})
     public ResponseEntity<ApiResponse<ContractResponse>> findOne(
             @PathVariable Long contractId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 당사자 또는 관리자만 열람
-        return ResponseEntity.ok(ApiResponse.success("CONTRACT_FOUND", "조회에 성공했습니다.", sampleDetail()));
+        return ResponseEntity.ok(ApiResponse.success("CONTRACT_FOUND", "조회에 성공했습니다.",
+                ContractResponse.from(contractQueryUseCase.getDetail(contractId, accountId))));
     }
 
     @GetMapping("/{contractId}/pdf")
@@ -91,26 +102,37 @@ public class ContractController {
     }
 
     @PostMapping("/{contractId}/signature")
-    @Operation(summary = "계약 서명", description = "양측이 모두 서명하면 체결되고 착수금 수수료가 발생합니다.")
-    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "ACCESS_DENIED"})
+    @Operation(summary = "계약 서명",
+            description = "양측이 모두 서명하면 체결되고 해당 포지션 인원이 확정됩니다. 서명 기한은 없습니다.")
+    @ApiErrorCodeExample(domain = ContractErrorCode.class,
+            value = {"CONTRACT_NOT_FOUND", "NOT_CONTRACT_PARTY", "INVALID_CONTRACT_STATUS", "ALREADY_SIGNED"})
     public ResponseEntity<ApiResponse<ContractResponse>> sign(
             @PathVariable Long contractId,
             @Valid @RequestBody ContractSignRequest request,
-            @CurrentAccountId Long accountId
+            @CurrentAccountId Long accountId,
+            HttpServletRequest httpRequest
     ) {
-        // TODO: 서명 기록 -> 양측 완료 시 SIGNED, 착수금 정산 생성, 상대 알림
-        return ResponseEntity.ok(ApiResponse.success("CONTRACT_SIGNED", "서명했습니다.", sampleDetail()));
+        // 서명 증거로 접속 정보를 남긴다. 프록시 뒤라 값이 없을 수 있어 도메인이 null 을 허용한다.
+        contractCommandUseCase.sign(new SignContractCommand(contractId, accountId,
+                httpRequest.getRemoteAddr(), httpRequest.getHeader(HttpHeaders.USER_AGENT)));
+
+        return ResponseEntity.ok(ApiResponse.success("CONTRACT_SIGNED", "서명했습니다.",
+                ContractResponse.from(contractQueryUseCase.getDetail(contractId, accountId))));
     }
 
     @PostMapping("/{contractId}/rejection")
     @Operation(summary = "계약 서명 거부", description = "거부하면 상대에게 알림이 가고 해당 매칭은 종료됩니다.")
+    @ApiErrorCodeExample(domain = ContractErrorCode.class,
+            value = {"CONTRACT_NOT_FOUND", "NOT_CONTRACT_PARTY", "INVALID_CONTRACT_STATUS", "ALREADY_SIGNED"})
     public ResponseEntity<ApiResponse<ContractResponse>> reject(
             @PathVariable Long contractId,
             @Valid @RequestBody ContractRejectRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 서명 거부 기록, 계약 REJECTED
-        return ResponseEntity.ok(ApiResponse.success("CONTRACT_REJECTED", "서명을 거부했습니다.", sampleDetail()));
+        contractCommandUseCase.reject(contractId, accountId, request.reason());
+
+        return ResponseEntity.ok(ApiResponse.success("CONTRACT_REJECTED", "서명을 거부했습니다.",
+                ContractResponse.from(contractQueryUseCase.getDetail(contractId, accountId))));
     }
 
     @PostMapping("/{contractId}/completion")
@@ -154,7 +176,6 @@ public class ContractController {
                 LocalDate.of(2026, 9, 1), LocalDate.of(2027, 2, 28),
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, null,
                 7, 7, 3, new BigDecimal("10.00"), "협상 로그 기반 특약사항",
-                LocalDate.of(2026, 8, 10),
                 List.of(new ContractResponse.Clause(1, "용역의 내용",
                                 "프리랜서는 클라이언트의 요청에 따라 백엔드 개발 업무를 수행한다."),
                         new ContractResponse.Clause(2, "용역 기간",
