@@ -39,7 +39,10 @@ public class FreelancerProfileJpaEntity {
     @Column(name = "ai_matching_agreed", nullable = false)
     private boolean aiMatchingAgreed;
 
-    @Column(name = "matching_paused", nullable = false)
+    // columnDefinition으로 기본값을 명시한다 — 실제 스키마(db/init/02-create-schema.sql)에도
+    // DEFAULT FALSE라, 이 컬럼을 모르는 기존 raw SQL INSERT(다른 도메인 통합테스트의 시드 헬퍼)가
+    // 깨지지 않는다.
+    @Column(name = "matching_paused", nullable = false, columnDefinition = "boolean default false")
     private boolean matchingPaused;
 
     @Column(name = "grade", nullable = false, length = 20)
