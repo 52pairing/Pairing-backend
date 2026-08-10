@@ -13,7 +13,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 
 ## 기술 스택 (확정)
 
-- **임베딩**: Gemini `text-embedding-004` (768차원). 로컬 모델 아님, Spring 백엔드와 같은 Gemini API 키 공유(용도별로 모델명만 다르게 설정: `GeminiTask.EMBEDDING/MATCHING/REVIEW`)
+- **임베딩**: Gemini `gemini-embedding-001` (768차원, 축소 지정). 로컬 모델 아님, Spring 백엔드와 같은 Gemini API 키 공유(용도별로 모델명만 다르게 설정: `GeminiTask.EMBEDDING/MATCHING/REVIEW`). **(2026-08-10)** 원래 `text-embedding-004`였는데 신규 키에서 404가 나서 교체(Pairing-python PR #19). 차원은 그대로 768이라 DB 스키마 변경은 없지만, 모델이 바뀌면 벡터 공간 자체가 달라져 기존 벡터와 안 섞여야 한다 — 그래서 `POST /api/v1/matchings/admin/embeddings/reindex`(관리자 전용)를 추가해 기존 벡터를 새 모델로 일괄 재생성할 수 있게 함.
 - **벡터 저장소**: pgvector — Spring이 쓰는 **같은 PostgreSQL**에 `freelancer_embedding`, `position_embedding` 테이블 (AI 서버 소유, 이미 SQL 스키마 존재: `Pairing-python/db/init/10-create-ai-schema.sql`)
 - **LLM**: Gemini `gemini-2.0-flash` (`GeminiTask.MATCHING`), 구조화 출력은 `google-genai` SDK의 `response_schema`로 강제
 - **Spring↔Pairing-python 계약**: `Pairing-python/README.md` "3. 스프링 ↔ AI 서버 통신 규약" 절이 계약서. `X-Internal-Api-Key` 헤더 인증, `X-Trace-Id` 전파, 에러코드 `AI_001~AI_030`

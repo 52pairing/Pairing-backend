@@ -41,6 +41,12 @@ public class ResumeService implements ResumeUseCase {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<Long> findAllAccountIdsWithResume() {
+        return resumeRepository.findAllAccountIds();
+    }
+
+    @Override
     public ResumeResult upsert(UpsertResumeCommand command) {
         List<Education> educations = command.educations().stream()
                 .map(e -> Education.of(e.startDate(), e.endDate(), e.schoolName(), e.major(),

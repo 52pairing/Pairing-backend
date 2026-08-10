@@ -7,6 +7,7 @@ import com.pairing.matching.infrastructure.mapper.MatchingSnapshotMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -34,5 +35,12 @@ public class MatchingSnapshotRepositoryAdapter implements MatchingSnapshotReposi
         return springDataRepository.findByFreelancerIdAndPositionIdAndSnapshotType(freelancerId, positionId,
                         snapshotType)
                 .map(matchingSnapshotMapper::toDomain);
+    }
+
+    @Override
+    public List<MatchingSnapshot> findAllBySnapshotType(SnapshotType snapshotType) {
+        return springDataRepository.findAllBySnapshotType(snapshotType).stream()
+                .map(matchingSnapshotMapper::toDomain)
+                .toList();
     }
 }

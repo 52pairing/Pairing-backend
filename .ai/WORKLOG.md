@@ -188,3 +188,12 @@
 - 테스트: `MatchingIntegrationTest`에 4건 추가 — 만료 전 무료 재추천 막힘 → 만료 처리 → `REJECTED`+`rejectReason=EXPIRED` → 무료 재추천 풀림, 스케줄러 주기 사이에 수락 시도하면 `MT_016`으로 막히는 케이스, 직접 거절 시 `rejectReason=DIRECT_REJECT`.
 - 문서 동기화: `.ai/STATE.md`/`HANDOFF.md`/`API.md`(MT_016), `docs/api-spec.csv`(매칭 요청 발송 API 스켈레톤→구현완료), `docs/api-dto.csv`(rejectReason), 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`, Desktop) — mainTask/currentSituation 결정 반영, Pairing-python 하드필터/Stage F 가드 해결 반영, rejectReason 필드+enum 테이블 추가.
 - `feature/matching-request-auto-expire` 브랜치. `./gradlew clean build` 전체 통과 확인.
+
+## 2026-08-10 (계속) — 임베딩 일괄 재색인 관리자 API 추가
+
+Pairing-python 담당 팀원이 임베딩 모델을 `text-embedding-004` → `gemini-embedding-001`로 교체(신규 API 키에서 기존 모델이 404, PR #19). 차원(768)은 그대로라 DB 스키마는 안 바뀌지만, **모델이 바뀌면 같은 텍스트도 완전히 다른 벡터가 나와서** 옛 모델로 만든 벡터와 새 모델로 만든 벡터가 섞이면 에러 없이 조용히 추천 결과가 틀어진다. 현재는 이력서 저장/모집 시작 시점에만 임베딩이 생성돼서 기존 벡터를 한 번에 다시 만들 방법이 없다는 요청을 받음(임베딩 텍스트 조립 로직이 전부 Java 쪽에 있어 매칭 도메인 담당).
+
+- `POST /api/v1/matchings/admin/embeddings/reindex`(신규, ADMIN 전용, 다른 도메인 admin처럼 컨트롤러 자체 경로+전역 시큐리티 규칙 `/api/v1/*/admin/**`로만 막음) — 이력서 있는 프리랜서 전체 + 모집 시작한 포지션 전체(`MatchingSnapshotRepository`에 POSITION 타입 스냅샷이 있는 것들)를 순회하며 기존 텍스트 조립 로직(`FreelancerEmbeddingTextBuilder`/`PositionEmbeddingTextBuilder`)을 그대로 재사용해 `MatchingPort.upsertFreelancerEmbedding`/`upsertPositionEmbedding`을 다시 호출. 새 로직 중복 구현 없이 기존 호출을 반복하는 얇은 오케스트레이션(`EmbeddingReindexService`)이라 실패한 항목만 건너뛰고 나머지는 계속 진행, 성공/실패 건수를 응답으로 돌려줌.
+- 대상 목록을 고르려고 두 군데 추가: `ResumeRepository.findAllAccountIds()`(freelancer 도메인, 이력서 있는 계정 전체) → `FreelancerDirectoryPort.findAllFreelancerIdsWithResume()`, `MatchingSnapshotRepository.findAllBySnapshotType(POSITION)`(매칭 자신의 도메인이라 새 포트 불필요).
+- 테스트는 `@SpringBootTest` 대신 순수 Mockito 단위테스트(`EmbeddingReindexServiceTest`)로 작성 — 이 서비스는 포트 호출만 반복하는 얇은 오케스트레이션이라 실제 DB/Gemini 없이도 충분히 검증되고, 안 그래도 알려진 풀스위트 전용 flaky 이슈(`.ai/HANDOFF.md` 참고)에 컨텍스트를 더 안 보태려는 목적도 있음.
+- `feature/matching-embedding-reindex` 브랜치. `.ai/API.md`(11. Matching 표), `.ai/STATE.md`(임베딩 모델명 갱신 + 재색인 API 언급) 동기화.
