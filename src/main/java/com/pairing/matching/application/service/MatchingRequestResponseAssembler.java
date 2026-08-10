@@ -47,14 +47,24 @@ class MatchingRequestResponseAssembler {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record ProjectSnapshotPayload(String title, String companyName, String workLabel, String periodLabel,
-                                          LocalDate startDesiredDate, Long budgetAmount) {
+                                          LocalDate startDesiredDate, Long budgetAmount, String mainTask) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record PositionSnapshotPayload(JobRole jobRole, List<SkillCode> requiredSkills, Integer minCareerYears) {
     }
 
+    /** 목록/카드(발송·수락·거절 포함)에 쓴다. {@code mainTask}는 상세 전용이라 항상 null이다. */
     MatchingRequestResponse build(MatchingRequest request, Long viewerAccountId) {
+        return build(request, viewerAccountId, false);
+    }
+
+    /** 상세 조회({@code GET /requests/{requestId}})에만 쓴다. {@code mainTask}를 채워서 돌려준다. */
+    MatchingRequestResponse buildDetail(MatchingRequest request, Long viewerAccountId) {
+        return build(request, viewerAccountId, true);
+    }
+
+    private MatchingRequestResponse build(MatchingRequest request, Long viewerAccountId, boolean includeMainTask) {
         Account viewer = accountQueryUseCase.getById(viewerAccountId);
         ProjectSnapshotPayload project = readSnapshot(request.getPositionId(), SnapshotType.PROJECT,
                 ProjectSnapshotPayload.class);
@@ -82,6 +92,7 @@ class MatchingRequestResponseAssembler {
                 project.startDesiredDate(),
                 request.getStatus(),
                 project.budgetAmount(),
+                includeMainTask ? project.mainTask() : null,
                 request.getRequestedAt(),
                 request.getExpiresAt(),
                 request.getRespondedAt(),

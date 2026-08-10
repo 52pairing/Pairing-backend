@@ -14,6 +14,10 @@ import java.util.List;
  *
  * <p>클라이언트가 보낸 목록과 프리랜서가 받은 목록이 같은 형태를 쓴다.
  * 보는 쪽에 따라 상대 정보(counterpartName)가 달라진다.
+ *
+ * <p>{@code mainTask}는 목록/카드 응답(발송/수락/거절 포함)에서는 항상 null이고, 상세 조회
+ * ({@code GET /requests/{requestId}})에서만 값이 채워진다(3번 요청, 2026-08-09) — 줄바꿈이 있는
+ * 긴 텍스트라 카드에는 안 맞고 상세에서만 보여주기로 함.
  */
 @Schema(description = "매칭 요청 응답")
 public record MatchingRequestResponse(
@@ -50,6 +54,10 @@ public record MatchingRequestResponse(
 
         @Schema(description = "예산(원)", example = "50000000")
         Long budgetAmount,
+
+        @Schema(description = "프로젝트 주요 담당 업무. 목록/카드 응답에서는 null — 상세 조회(GET /requests/{requestId})에서만 채워진다.",
+                example = "주문 시스템 API 개발")
+        String mainTask,
 
         @Schema(description = "요청 시각")
         LocalDateTime requestedAt,

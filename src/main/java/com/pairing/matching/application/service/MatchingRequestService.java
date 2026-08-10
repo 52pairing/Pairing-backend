@@ -250,13 +250,17 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         MatchingRequest request = matchingRequestRepository.findById(requestId)
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
 
-        Long freelancerId = freelancerDirectoryPort.resolveFreelancerId(accountId);
-        boolean isFreelancerParty = request.getFreelancerId().equals(freelancerId);
+        // 클라이언트 소유 여부를 먼저 본다. resolveFreelancerId를 클라이언트 accountId로 부르면
+        // freelancer_profile이 없어 FREELANCER_NOT_FOUND(404)가 나서, 클라이언트가 자기 요청 상세를
+        // 볼 때마다 늘 404가 나던 버그가 있었다(테스트로 재현).
         boolean isClientParty = projectDirectoryPort.isOwnedByAccount(request.getProjectId(), accountId);
-        if (!isFreelancerParty && !isClientParty) {
-            throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
+        if (!isClientParty) {
+            Long freelancerId = freelancerDirectoryPort.resolveFreelancerId(accountId);
+            if (!request.getFreelancerId().equals(freelancerId)) {
+                throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
+            }
         }
-        return matchingRequestResponseAssembler.build(request, accountId);
+        return matchingRequestResponseAssembler.buildDetail(request, accountId);
     }
 
     private PageResponse<MatchingRequestResponse> toPageResponse(Page<MatchingRequest> requestPage, Long accountId) {

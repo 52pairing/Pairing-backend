@@ -61,6 +61,9 @@ class RecruitingStartedPositionHandler {
         projectPayload.put("periodLabel", summary.periodLabel());
         projectPayload.put("startDesiredDate", summary.startDesiredDate());
         projectPayload.put("budgetAmount", summary.budgetAmount());
+        // 매칭 요청 상세에서만 노출한다(3번 요청, 2026-08-09). 프로젝트 수정으로 바뀔 수 있는
+        // 필드라 R32 대상 — companyProfile(라이브 유지)과는 반대로 여기서 얼려둔다.
+        projectPayload.put("mainTask", summary.mainTask());
         saveSnapshotIfAbsent(projectId, positionId, SnapshotType.PROJECT, projectPayload);
 
         Map<String, Object> positionPayload = new LinkedHashMap<>();

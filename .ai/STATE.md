@@ -57,7 +57,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 - **결제→매칭 이벤트 리스너 신규 구현**: `RecruitingStartedEvent(projectId)`(project 도메인이 착수금 결제 커밋 후 발행)를 받아 포지션별로 ①스냅샷 동결(`MatchingSnapshot` PROJECT/POSITION 타입, 기존에 정의만 되고 안 쓰이던 것을 처음 사용) → ②임베딩 upsert(`MatchingPort.upsertPositionEmbedding`, Pairing-python의 `PUT /embeddings/positions` 신규 연동) → ③최초 추천 라운드 생성(`MatchingRoundCreationService.createRound` 재사용) 순서로 처리.
   - `RecruitingStartedEventListener`(포지션 목록 조회 + 포지션 단위 예외 격리) / `RecruitingStartedPositionHandler`(포지션 1건 처리, `@Transactional(REQUIRES_NEW)`)로 클래스를 분리했다 — 같은 빈 안에서 `this.method()`로 자기 자신을 호출하면 스프링 프록시를 안 거쳐서 `@Transactional`이 조용히 무시되는 문제(자체 호출 self-invocation)가 실제로 발생해서(테스트로 재현·확인함), 별도 빈으로 쪼개 진짜 프록시 호출이 되게 했다. `@TransactionalEventListener(AFTER_COMMIT)` 쓸 때 이 문제를 특히 조심해야 한다.
   - 멱등 가드(`countByPositionId > 0`)와 포지션 단위 예외 격리(한 포지션 실패해도 나머지 포지션은 계속 처리) 적용.
-  - 임베딩 텍스트는 지금 매칭 쪽 요약에 있는 필드(제목/직무/스킬/경력/근무조건/기간)로만 구성한다. mainTask/currentSituation/업무범위/우대사항은 아직 매칭 쪽 요약에 없어서(Task #4 결정 대기) 못 넣었다 — 결정되면 `RecruitingStartedPositionHandler.buildEmbeddingText`만 채우면 됨.
+  - 임베딩 텍스트는 지금 매칭 쪽 요약에 있는 필드(제목/직무/스킬/경력/근무조건/기간)로만 구성한다. **(2026-08-09 갱신)** `mainTask`는 매칭 요청 상세 노출 작업으로 매칭 쪽 요약(`ProjectPositionSummary`)에 이미 들어왔지만 임베딩 텍스트에는 아직 안 넣음(따로 결정 필요). `currentSituation`은 매칭 쪽 요약에 여전히 없음(노출 결정이 안 나서 안 가져옴). 업무범위/우대사항(`detailScope`/`extraNote`)은 이미 포함됨.
 - `com.pairing.matching.presentation.api.MatchingIntegrationTest`(H2 통합테스트, 9개)와 `com.pairing.matching.application.service.RecruitingStartedEventListenerTest`(2개) 신규 작성 — 스텁 어댑터 교체·오늘 버그 수정·이벤트 리스너를 전부 실제 요청/이벤트로 검증. 이 과정에서 `MatchingRoundCreationService.persistCandidates`의 `applyGuard`/`applyGradeWeight` 호출 순서가 뒤바뀌어 있던 것도 별도로 발견해 수정함(실제 추천 라운드 생성 시 매번 예외가 나는 상태였음).
 - **PR #51 오픈** (`feature/matching-directory-adapters` → `develop`). 첫 push 때 CI가 재추천 테스트에서만 500으로 실패 — 원인은 `/rerecommendations`에 걸린 레이트리밋(`RateLimitProvider`)이 Redis 없는 CI에서 실제 연결을 시도해서였음(로컬은 Redis가 떠 있어 안 드러남). 테스트에서 `RateLimitProvider`를 목 처리해서 해결, 커밋·push 완료. 상세는 `.ai/WORKLOG.md` 2026-08-09 참고.
 - **참고**: 이 개발 환경에 GitHub CLI(`gh`)가 없어서 이슈/PR 생성은 AI가 텍스트(제목/본문)만 만들어주고 사용자가 GitHub 웹에서 직접 생성하는 방식으로 진행 중.
@@ -140,6 +140,16 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
 - `_build_prompt`/`_describe_candidate`/`_describe_position`에 이 필드들 채우고, "조건 불일치해도 제외하지 말고 감점+사유로 반영하라"는 프롬프트 지시 추가.
 - Stage F 가드는 원래도 직무/스킬만 검증하는 설계였으니 변경 불필요.
 
+## 2026-08-09 갱신 — 매칭 요청 상세에 `mainTask` 노출
+
+3번 답변: `mainTask`(주요 담당 업무)만 노출, `currentSituation`(현재 상황)은 배경 설명이라 안 노출. 노출 위치도 목록/카드가 아니라 **요청 상세**(`GET /requests/{requestId}`)로 한정 — 줄바꿈 있는 최대 1500자 텍스트라 카드에는 안 맞음.
+
+- `ProjectPositionSummary`(매칭 로컬, `application.result`)에 `mainTask` 필드 추가, `ProjectDirectoryAdapter.findPositionSummary`가 project 도메인 응답에서 그대로 매핑(이미 나오고 있던 값, 매칭 쪽만 안 옮기고 있었음).
+- `RecruitingStartedPositionHandler.freezeSnapshot`이 PROJECT 스냅샷 payload에 `mainTask`도 얼려둠(R32 대상 — 프로젝트 수정으로 바뀔 수 있는 필드라 라이브로 안 읽고 모집 시작 시점 값 고정). **이미 모집 시작한 프로젝트의 스냅샷에는 이 필드가 없어서 null로 나옴** — 새로 모집 시작하는 프로젝트부터 채워짐.
+- `MatchingRequestResponseAssembler`에 `buildDetail()` 신규 추가(기존 `build()`는 유지, `mainTask` 항상 null) — `MatchingRequestService.findRequest()`만 `buildDetail()`을 쓰도록 교체. `MatchingRequestResponse`에 `mainTask` 필드 추가.
+- **버그 발견·수정**: 이번에 처음으로 `GET /requests/{requestId}`에 실제 테스트를 붙이다가 발견 — `findRequest()`가 `resolveFreelancerId(accountId)`를 클라이언트 소유 여부 확인보다 먼저 무조건 불러서, **클라이언트가 자기가 보낸 요청의 상세를 조회할 때마다 항상 404(FREELANCER_NOT_FOUND)가 나던 버그**였다. 이 엔드포인트를 실제로 검증하는 테스트가 지금까지 하나도 없어서 안 드러났음. 클라이언트 소유 여부를 먼저 확인하고, 아닐 때만 `resolveFreelancerId`를 부르도록 순서 변경.
+- `docs/api-dto.csv`/`.ai/API.md` 동기화. `MatchingIntegrationTest`에 "상세에서만 보이고 목록/받은요청에서는 안 보인다" 검증 테스트 추가.
+
 ## 아직 팀 확인 대기 중인 것
 
 | 항목 | 상태 |
@@ -147,7 +157,7 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
 | 적합도 점수 스케일이 진짜 0~100인지 | policy.md "정의 필요, 월요일 확정" 회의 결과 대기 |
 | 골드 등급 수수료 할인 여부 | 다이아만 정책에 명시됨, 확인 필요 |
 | 프로젝트 등록에 인원별 예산 배분 필드 존재 여부 | 없으면 지금처럼 순예산 전체 조합으로만 판단 |
-| `currentSituation`(프로젝트 현재 상황)/`mainTask`(주요 담당 업무)를 프리랜서의 "받은 매칭 요청" 카드에 노출할지 | 2026-08-08 팀에 질문 전달, 답 대기 중. 데이터는 이미 `ProjectQueryUseCase`에서 옴, 노출하려면 `MatchingRequestResponse`에 필드 2개만 추가하면 됨 |
+| ~~`currentSituation`/`mainTask`를 프리랜서의 "받은 매칭 요청" 카드에 노출할지~~ | **2026-08-09 3번 답변 완료·구현 완료.** `mainTask`만 노출, 카드가 아니라 **요청 상세**(`GET /requests/{requestId}`)에서만. `currentSituation`은 노출 안 함(배경 설명이라 길어지기만 함). 아래 "2026-08-09 갱신 — 매칭 요청 상세 mainTask 노출" 참고 |
 | ~~budgetCap 계산 시 기간이 WEEK 단위면 몇 주를 1개월로 칠지~~ | **2026-08-09 확정: 4주=1개월.** `BudgetCapCalculator` 코드 정리 완료 |
 
 ## 프론트 공유 문서 (레포 밖)
