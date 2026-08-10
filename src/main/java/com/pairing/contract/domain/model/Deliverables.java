@@ -27,7 +27,14 @@ public final class Deliverables {
         throw new IllegalStateException("Utility class");
     }
 
+    /**
+     * 직군별 산출물 목록.
+     *
+     * <p>{@code null} 을 허용한다. 프로젝트가 지워진 계약은 직무를 알 수 없는데(계약은 5년 보관이라
+     * 원본보다 오래 남는다) 계약서 열람은 돼야 한다. {@code Map.of} 는 null 키 조회에서
+     * NPE 를 던지므로 여기서 먼저 걸러 낸다.
+     */
     public static List<String> of(JobCategory jobCategory) {
-        return BY_CATEGORY.getOrDefault(jobCategory, FALLBACK);
+        return jobCategory == null ? FALLBACK : BY_CATEGORY.getOrDefault(jobCategory, FALLBACK);
     }
 }

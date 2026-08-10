@@ -1,7 +1,10 @@
 package com.pairing.contract.application.result;
 
 import com.pairing.contract.domain.model.Contract;
+import com.pairing.contract.domain.model.ContractClause;
 import com.pairing.meta.domain.model.JobRole;
+
+import java.util.List;
 
 /**
  * 계약 상세 + 다른 도메인에서 붙인 표시값.
@@ -10,12 +13,16 @@ import com.pairing.meta.domain.model.JobRole;
  * 참조만 갖는다. 화면에 필요한 이름은 조회 시점에 붙인다.
  *
  * <p>원본이 지워졌으면 null 이 들어온다. 계약은 5년 보관이라 프로젝트보다 오래 남는다.
+ *
+ * <p>{@code clauses} 는 계약서 본문이다. 조회할 때마다 다시 만든다 — 문구가 전부 고정이고
+ * 값은 계약이 들고 있어 결과가 항상 같다.
  */
 public record ContractDetail(
         Contract contract,
         String projectTitle,
         JobRole jobRole,
         String clientName,
-        String freelancerName
+        String freelancerName,
+        List<ContractClause> clauses
 ) {
 }

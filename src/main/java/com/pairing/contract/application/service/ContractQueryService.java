@@ -10,6 +10,7 @@ import com.pairing.contract.domain.model.ContractSignature;
 import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.contract.domain.model.SignatureStatus;
 import com.pairing.contract.domain.repository.ContractRepository;
+import com.pairing.contract.domain.service.ContractClauseRenderer;
 import com.pairing.contract.exception.ContractErrorCode;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.PartyRole;
@@ -58,7 +59,8 @@ public class ContractQueryService implements ContractQueryUseCase {
                 project.projectTitle(),
                 project.jobRole(),
                 partyReaderPort.findClientName(contract.getClientId()),
-                partyReaderPort.findFreelancerName(contract.getFreelancerId()));
+                partyReaderPort.findFreelancerName(contract.getFreelancerId()),
+                ContractClauseRenderer.render(contract, project.projectTitle(), project.jobRole()));
     }
 
     /** 목록 카드 한 장. 상대 이름은 보는 사람의 반대편을 채운다. */

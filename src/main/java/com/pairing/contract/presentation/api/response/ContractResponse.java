@@ -64,8 +64,8 @@ public record ContractResponse(
      *
      * <p>급여 단위는 월로 고정한다. 협상이 합의해 넘겨주는 값이 월 단가 하나뿐이다.
      *
-     * <p>{@code clauses} 는 아직 빈 배열이다. 조항 본문 생성은 계약서 렌더링 작업에서 붙인다.
-     * 그때 {@code content_json} 에 굳혀 상세 응답과 PDF 가 같은 문장을 쓰게 한다.
+     * <p>{@code clauses} 는 조회 시점에 렌더링된 계약서 본문이다. PDF 도 같은 렌더러를 쓰므로
+     * 화면과 파일의 문장이 갈리지 않는다.
      */
     public static ContractResponse from(ContractDetail detail) {
         Contract contract = detail.contract();
@@ -105,7 +105,9 @@ public record ContractResponse(
                 contract.getConfidentialYears(),
                 contract.getPenaltyRate(),
                 contract.getSpecialTerms(),
-                List.of(),
+                detail.clauses().stream()
+                        .map(c -> new Clause(c.no(), c.title(), c.content()))
+                        .toList(),
                 contract.getPdfFileId(),
                 signatures,
                 contract.getSignedAt(),
