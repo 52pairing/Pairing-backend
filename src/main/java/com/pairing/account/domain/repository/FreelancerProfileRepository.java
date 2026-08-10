@@ -16,7 +16,7 @@ public interface FreelancerProfileRepository {
     Optional<FreelancerProfile> findById(Long id);
 
     /**
-     * 주어진 계정 중 활성 계정이면서 AI 매칭에 동의한 계정 id 만 돌려준다.
+     * 주어진 계정 중 활성 계정이면서 AI 매칭에 동의했고 매칭을 일시중지하지 않은 계정 id 만 돌려준다.
      *
      * <p>프로필 전체를 매핑하지 않고 id 만 읽는다. 후보 집계용이라 다른 필드가 필요 없다.
      */

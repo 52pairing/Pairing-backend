@@ -330,4 +330,82 @@ class FreelancerMyPageIntegrationTest {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @DisplayName("가입만 하고 이력서를 채우지 않으면 매칭 설정은 동의 상태여도 이력서 미완성으로 매칭 대상이 아니다")
+    void matchingSettingsIsNotMatchableWithoutResume() throws Exception {
+        mockMvc.perform(get("/api/v1/freelancers/me/matching-settings").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.aiMatchingAgreed").value(true))
+                .andExpect(jsonPath("$.data.matchingPaused").value(false))
+                .andExpect(jsonPath("$.data.matchable").value(false))
+                .andExpect(jsonPath("$.data.unmatchableReason").value("이력서를 완성해야 추천 대상에 포함됩니다."));
+    }
+
+    @Test
+    @DisplayName("이력서까지 채우면 매칭 설정 조회에서 matchable이 true가 된다")
+    void matchingSettingsIsMatchableOnceResumeIsCompleted() throws Exception {
+        mockMvc.perform(put("/api/v1/freelancers/me/resume")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resumeBody("010-9999-8888"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/freelancers/me/matching-settings").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchable").value(true))
+                .andExpect(jsonPath("$.data.unmatchableReason").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("매칭 설정을 저장하면 실제로 DB에 반영되고, 다시 조회해도 저장한 값이 그대로 나온다")
+    void matchingSettingsUpdateIsPersisted() throws Exception {
+        mockMvc.perform(put("/api/v1/freelancers/me/resume")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resumeBody("010-9999-8888"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/freelancers/me/matching-settings")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"aiMatchingAgreed":true,"matchingPaused":true}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.aiMatchingAgreed").value(true))
+                .andExpect(jsonPath("$.data.matchingPaused").value(true))
+                .andExpect(jsonPath("$.data.matchable").value(false))
+                .andExpect(jsonPath("$.data.unmatchableReason").value("매칭을 재개해야 추천 대상에 포함됩니다."));
+
+        var savedProfile = freelancerProfileRepository.findAll().get(0);
+        org.assertj.core.api.Assertions.assertThat(savedProfile.isMatchingPaused()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(savedProfile.isAiMatchingAgreed()).isTrue();
+
+        mockMvc.perform(get("/api/v1/freelancers/me/matching-settings").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchingPaused").value(true))
+                .andExpect(jsonPath("$.data.matchable").value(false));
+    }
+
+    @Test
+    @DisplayName("AI 매칭 동의를 끄면 이력서를 완성했어도 매칭 대상이 아니고, 동의 미비 사유가 우선한다")
+    void matchingSettingsAiMatchingNotAgreedTakesPriorityOverResume() throws Exception {
+        mockMvc.perform(put("/api/v1/freelancers/me/resume")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resumeBody("010-9999-8888"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/freelancers/me/matching-settings")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"aiMatchingAgreed":false,"matchingPaused":false}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchable").value(false))
+                .andExpect(jsonPath("$.data.unmatchableReason").value("AI 매칭에 동의해야 추천 대상에 포함됩니다."));
+
+        var savedProfile = freelancerProfileRepository.findAll().get(0);
+        org.assertj.core.api.Assertions.assertThat(savedProfile.isAiMatchingAgreed()).isFalse();
+    }
 }

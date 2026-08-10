@@ -1,5 +1,9 @@
 package com.pairing.freelancer.presentation.api;
 
+import com.pairing.account.application.usecase.AccountCommandUseCase;
+import com.pairing.account.application.usecase.AccountQueryUseCase;
+import com.pairing.account.domain.model.FreelancerProfile;
+import com.pairing.account.exception.AccountErrorCode;
 import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.freelancer.application.usecase.ResumeUseCase;
 import com.pairing.freelancer.domain.model.FreelancerGrade;
@@ -15,6 +19,7 @@ import com.pairing.freelancer.presentation.api.response.MatchingSettingsResponse
 import com.pairing.freelancer.presentation.api.response.ResumeResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
+import com.pairing.global.exception.BusinessException;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import io.swagger.v3.oas.annotations.Operation;
@@ -48,8 +53,14 @@ import java.time.LocalDate;
 @Tag(name = "20. Freelancer", description = "프리랜서 마이페이지/이력서 API")
 public class FreelancerController {
 
+    private static final String REASON_AI_MATCHING_NOT_AGREED = "AI 매칭에 동의해야 추천 대상에 포함됩니다.";
+    private static final String REASON_MATCHING_PAUSED = "매칭을 재개해야 추천 대상에 포함됩니다.";
+    private static final String REASON_RESUME_INCOMPLETE = "이력서를 완성해야 추천 대상에 포함됩니다.";
+
     private final FreelancerConditionUseCase freelancerConditionUseCase;
     private final ResumeUseCase resumeUseCase;
+    private final AccountQueryUseCase accountQueryUseCase;
+    private final AccountCommandUseCase accountCommandUseCase;
 
     @GetMapping("/me")
     @PreAuthorize("hasRole('FREELANCER')")
@@ -145,9 +156,11 @@ public class FreelancerController {
     public ResponseEntity<ApiResponse<MatchingSettingsResponse>> findMyMatchingSettings(
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 프로필 설정값 + 이력서 완성 여부로 matchable 판정
-        return ResponseEntity.ok(ApiResponse.success("MATCHING_SETTINGS_FOUND", "조회에 성공했습니다.",
-                new MatchingSettingsResponse(true, false, true, null)));
+        FreelancerProfile profile = accountQueryUseCase.findFreelancerProfileByAccountId(accountId)
+                .orElseThrow(() -> new BusinessException(AccountErrorCode.PROFILE_NOT_FOUND));
+        MatchingSettingsResponse response =
+                toMatchingSettingsResponse(accountId, profile.isAiMatchingAgreed(), profile.isMatchingPaused());
+        return ResponseEntity.ok(ApiResponse.success("MATCHING_SETTINGS_FOUND", "조회에 성공했습니다.", response));
     }
 
     @PutMapping("/me/matching-settings")
@@ -158,10 +171,31 @@ public class FreelancerController {
             @Valid @RequestBody MatchingSettingsRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 설정 저장. 중지로 바뀌면 추천 대상에서 제외
-        return ResponseEntity.ok(ApiResponse.success("MATCHING_SETTINGS_UPDATED", "변경되었습니다.",
-                new MatchingSettingsResponse(request.aiMatchingAgreed(), request.matchingPaused(),
-                        !request.matchingPaused(), null)));
+        accountCommandUseCase.updateFreelancerMatchingSettings(accountId, request.aiMatchingAgreed(),
+                request.matchingPaused());
+        MatchingSettingsResponse response =
+                toMatchingSettingsResponse(accountId, request.aiMatchingAgreed(), request.matchingPaused());
+        return ResponseEntity.ok(ApiResponse.success("MATCHING_SETTINGS_UPDATED", "변경되었습니다.", response));
+    }
+
+    /**
+     * 추천 대상 포함 여부(matchable) 판정. AI 매칭 동의 -&gt; 매칭 일시중지 -&gt; 이력서 완성 순으로
+     * 확인해서 가장 먼저 걸리는 사유 하나만 돌려준다.
+     */
+    private MatchingSettingsResponse toMatchingSettingsResponse(Long accountId, boolean aiMatchingAgreed,
+                                                                 boolean matchingPaused) {
+        String unmatchableReason;
+        if (!aiMatchingAgreed) {
+            unmatchableReason = REASON_AI_MATCHING_NOT_AGREED;
+        } else if (matchingPaused) {
+            unmatchableReason = REASON_MATCHING_PAUSED;
+        } else if (resumeUseCase.findMyResume(accountId).isEmpty()) {
+            unmatchableReason = REASON_RESUME_INCOMPLETE;
+        } else {
+            unmatchableReason = null;
+        }
+        return new MatchingSettingsResponse(aiMatchingAgreed, matchingPaused, unmatchableReason == null,
+                unmatchableReason);
     }
 
     // ==========================================

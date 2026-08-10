@@ -23,19 +23,21 @@ public class FreelancerProfile {
     private String address;
     private Long profileFileId;
     private boolean aiMatchingAgreed;
+    private boolean matchingPaused;
     private String grade;
     private LocalDateTime gradeCheckedAt;
     private LocalDateTime deletedAt;
 
     private FreelancerProfile(Long id, Long accountId, LocalDate birthDate, String address, Long profileFileId,
-                              boolean aiMatchingAgreed, String grade, LocalDateTime gradeCheckedAt,
-                              LocalDateTime deletedAt) {
+                              boolean aiMatchingAgreed, boolean matchingPaused, String grade,
+                              LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
         this.id = id;
         this.accountId = accountId;
         this.birthDate = birthDate;
         this.address = address;
         this.profileFileId = profileFileId;
         this.aiMatchingAgreed = aiMatchingAgreed;
+        this.matchingPaused = matchingPaused;
         this.grade = grade;
         this.gradeCheckedAt = gradeCheckedAt;
         this.deletedAt = deletedAt;
@@ -45,13 +47,19 @@ public class FreelancerProfile {
         if (accountId == null || birthDate == null) {
             throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
         }
-        return new FreelancerProfile(null, accountId, birthDate, null, null, true, INITIAL_GRADE, null, null);
+        return new FreelancerProfile(null, accountId, birthDate, null, null, true, false, INITIAL_GRADE, null, null);
     }
 
     public static FreelancerProfile reconstitute(Long id, Long accountId, LocalDate birthDate, String address,
-                                                 Long profileFileId, boolean aiMatchingAgreed, String grade,
-                                                 LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
+                                                 Long profileFileId, boolean aiMatchingAgreed, boolean matchingPaused,
+                                                 String grade, LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
         return new FreelancerProfile(id, accountId, birthDate, address, profileFileId, aiMatchingAgreed,
-                grade, gradeCheckedAt, deletedAt);
+                matchingPaused, grade, gradeCheckedAt, deletedAt);
+    }
+
+    /** 마이페이지 > 매칭 설정. {@code PUT /me/matching-settings}. */
+    public void updateMatchingSettings(boolean aiMatchingAgreed, boolean matchingPaused) {
+        this.aiMatchingAgreed = aiMatchingAgreed;
+        this.matchingPaused = matchingPaused;
     }
 }

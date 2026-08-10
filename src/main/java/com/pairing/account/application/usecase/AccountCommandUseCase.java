@@ -34,4 +34,7 @@ public interface AccountCommandUseCase {
 
     /** 클라이언트 마이페이지(기업정보) 수정. 사업자등록번호·사업 분야는 대상이 아니다. */
     void updateClientProfile(Long accountId, String companyName, EmployeeCount employeeCount, String address);
+
+    /** 프리랜서 마이페이지 > 매칭 설정 수정. 없으면 {@code AC_002}. */
+    void updateFreelancerMatchingSettings(Long accountId, boolean aiMatchingAgreed, boolean matchingPaused);
 }

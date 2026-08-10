@@ -99,3 +99,14 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 - Spring↔AI서버 연동 참고 구현: `C:\Algoga_V3_backend`의 `com.kidmily.algoga_server.chatbot` 도메인 (Port/Adapter/서킷브레이커/레이트리밋/내부API 전부 실제 코드로 있음)
 - 매칭 DTO 계약: `com.pairing.matching.presentation.api.*` (이미 확정, 필드 변경 시 `.ai/API.md`와 `docs/api-dto.csv` 같이 갱신)
 - 프론트 전달용 API-화면 매핑 문서(레포 밖, 사용자가 직접 관리): `C:\Users\user\Desktop\AI매칭_API_화면매핑_최신본.md`
+
+## 2026-08-10 신규 — freelancer `/me/matching-settings` 스텁 교체 (원래 2번 담당, 사용자가 직접 진행하기로 함)
+
+마이페이지 AI매칭 토글이 `FreelancerController`에서 저장 없이 에코만 하는 스텁이었음을 발견. 원래 freelancer 도메인(2번) 파일이라 4번이 건드릴 일이 아니었는데, 사용자가 직접 만들기로 결정 — **freelancer 폴더를 건드리는 걸 알고 진행하는 것**(도메인 경계 예외).
+
+**구현 완료.** 상세는 `.ai/WORKLOG.md` "freelancer `/me/matching-settings` 실구현 완료" 참고. 요약:
+- `db/init/02-create-schema.sql`의 `matching_paused` 컬럼에 JPA/도메인 매핑 연결 완료.
+- `FreelancerProfile`/`FreelancerProfileJpaEntity`/`FreelancerProfileMapper`에 `matchingPaused` 추가, `AccountCommandUseCase.updateFreelancerMatchingSettings` 신규.
+- `matchable` = `aiMatchingAgreed && !matchingPaused && 이력서 존재`, 사유 우선순위는 동의 미비 > 일시중지 > 이력서 미완성으로 확정.
+- `FreelancerController`의 두 엔드포인트(`GET`/`PUT /me/matching-settings`) 스텁 제거, 실구현으로 교체. `FreelancerMyPageIntegrationTest`에 H2 통합테스트 4개 추가.
+- `feature/freelancer-matching-settings` 브랜치, 코드+테스트+문서 같은 커밋으로 push.
