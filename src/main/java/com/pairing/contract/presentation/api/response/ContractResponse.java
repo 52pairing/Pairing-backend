@@ -4,6 +4,7 @@ import com.pairing.contract.application.result.ContractDetail;
 import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.contract.domain.model.SignatureStatus;
+import com.pairing.global.infrastructure.s3.CdnMappable;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.PayUnit;
@@ -79,6 +80,7 @@ public record ContractResponse(
                                 ? detail.clientName() : detail.freelancerName(),
                         s.getStatus(),
                         s.getSignedAt(),
+                        detail.signatureImageUrls().get(s.getAccountId()),
                         s.getRejectReason()))
                 .toList();
 
@@ -150,13 +152,19 @@ public record ContractResponse(
     ) {
     }
 
+    /**
+     * {@code signatureImageUrl} 은 화면에서 그린 서명 그림이다. 안 그리고 동의만 했으면 null.
+     *
+     * <p>DB 에는 object key 만 있고 {@link CdnMappable} 이라 직렬화 시점에 절대 URL 로 바뀐다.
+     */
     @Schema(description = "서명 현황")
     public record Signature(
             @Schema(description = "당사자 구분") PartyRole partyRole,
             @Schema(description = "이름", example = "홍길동") String name,
             @Schema(description = "서명 상태") SignatureStatus status,
             @Schema(description = "서명 시각") LocalDateTime signedAt,
+            @Schema(description = "서명 이미지 주소. 없으면 null") String signatureImageUrl,
             @Schema(description = "거부 사유") String rejectReason
-    ) {
+    ) implements CdnMappable {
     }
 }

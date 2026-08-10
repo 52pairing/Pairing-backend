@@ -29,7 +29,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -41,6 +43,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -90,15 +93,27 @@ public class ContractController {
                 ContractResponse.from(contractQueryUseCase.getDetail(contractId, accountId))));
     }
 
-    @GetMapping("/{contractId}/pdf")
-    @Operation(summary = "계약서 PDF 다운로드 정보", description = "체결 완료 후 내려받을 수 있는 URL 을 반환합니다.")
-    public ResponseEntity<ApiResponse<ContractFileResponse>> findPdf(
+    @GetMapping(value = "/{contractId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    @Operation(summary = "계약서 PDF 다운로드",
+            description = "계약서를 PDF 로 내려받습니다. 서명 전에도 받을 수 있고, 서명이 끝나면 "
+                    + "하단 서명란에 서명 이미지와 시각이 함께 찍힙니다. 당사자만 받을 수 있습니다.")
+    @ApiErrorCodeExample(domain = ContractErrorCode.class,
+            value = {"CONTRACT_NOT_FOUND", "NOT_CONTRACT_PARTY", "PDF_RENDER_FAILED"})
+    public ResponseEntity<byte[]> downloadPdf(
             @PathVariable Long contractId,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: PDF 생성 여부 확인 후 URL 반환
-        return ResponseEntity.ok(ApiResponse.success("CONTRACT_PDF_FOUND", "조회에 성공했습니다.",
-                new ContractFileResponse(9L, "PR-2026-000123.pdf", "contracts/uuid.pdf")));
+        byte[] pdf = contractQueryUseCase.renderPdf(contractId, accountId);
+        String fileName = contractQueryUseCase.pdfFileName(contractId, accountId);
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                // 파일명에 한글이 없어도 RFC 5987 형식으로 주면 브라우저가 일관되게 처리한다.
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(fileName, StandardCharsets.UTF_8)
+                                .build().toString())
+                .body(pdf);
     }
 
     @PostMapping("/{contractId}/signature")
@@ -114,6 +129,7 @@ public class ContractController {
     ) {
         // 서명 증거로 접속 정보를 남긴다. 프록시 뒤라 값이 없을 수 있어 도메인이 null 을 허용한다.
         contractCommandUseCase.sign(new SignContractCommand(contractId, accountId,
+                request.signatureFileId(),
                 httpRequest.getRemoteAddr(), httpRequest.getHeader(HttpHeaders.USER_AGENT)));
 
         return ResponseEntity.ok(ApiResponse.success("CONTRACT_SIGNED", "서명했습니다.",
@@ -166,9 +182,9 @@ public class ContractController {
     private ContractResponse sampleDetail() {
         List<ContractResponse.Signature> signatures = List.of(
                 new ContractResponse.Signature(PartyRole.CLIENT, "주식회사 페어링",
-                        SignatureStatus.SIGNED, LocalDateTime.now(), null),
+                        SignatureStatus.SIGNED, LocalDateTime.now(), "signatures/uuid.png", null),
                 new ContractResponse.Signature(PartyRole.FREELANCER, "홍길동",
-                        SignatureStatus.PENDING, null, null));
+                        SignatureStatus.PENDING, null, null, null));
 
         return new ContractResponse(600L, "PR-2026-000123", 1L, "페어링 웹 리뉴얼", 300L,
                 "주식회사 페어링", "홍길동",

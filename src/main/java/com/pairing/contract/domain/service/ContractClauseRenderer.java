@@ -5,12 +5,14 @@ import com.pairing.contract.domain.model.ContractClause;
 import com.pairing.contract.domain.model.ContractDraftText;
 import com.pairing.contract.domain.model.Deliverables;
 import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.SkillCode;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 계약서 본문 조항을 만든다. 상세 조회와 PDF 가 같은 문장을 쓴다.
@@ -38,8 +40,9 @@ public final class ContractClauseRenderer {
     private static final String UNKNOWN_JOB_ROLE = "협의된 직무";
     private static final String REMOTE_LOCATION = "을이 지정하는 장소로 하며, 갑은 별도의 근무 장소를 제공하지 않는다";
 
-    /** 제2조 항 번호. 담당 업무 항이 빠질 수 있어 자리를 고정하지 않는다. */
-    private static final String[] MARKS = {"①", "②", "③", "④"};
+    /** 제2조 항 번호. 담당 업무·요구 기술 항이 빠질 수 있어 자리를 고정하지 않는다. */
+    private static final String[] MARKS = {"①", "②", "③", "④", "⑤", "⑥"};
+    private static final String MARKS_CHARS = String.join("", MARKS);
 
     private ContractClauseRenderer() {
         throw new IllegalStateException("Utility class");
@@ -50,10 +53,11 @@ public final class ContractClauseRenderer {
      *
      * @param projectTitle      프로젝트명. 원본이 지워졌으면 null (계약은 5년 보관이라 더 오래 남는다)
      * @param jobRole           계약 대상 직무. 위와 같은 이유로 null 을 허용한다
+     * @param skills            포지션 요구 기술. 없거나 원본이 지워졌으면 빈 목록
      * @param draft             AI 가 다듬은 자유 텍스트. 아직 안 채워졌으면(DRAFT) null
      * @param settlementAccount 을의 정산 계좌 한 줄. 미등록이면 null
      */
-    public record ClauseContext(String projectTitle, JobRole jobRole,
+    public record ClauseContext(String projectTitle, JobRole jobRole, List<SkillCode> skills,
                                 ContractDraftText draft, String settlementAccount) {
     }
 
@@ -67,7 +71,7 @@ public final class ContractClauseRenderer {
         int months = months(contract);
 
         clauses.add(purpose(context.projectTitle()));
-        clauses.add(scope(context.jobRole(), context.draft()));
+        clauses.add(scope(context));
         clauses.add(period(contract, months));
         clauses.add(amount(contract, months));
         clauses.add(payment(context.settlementAccount()));
@@ -103,16 +107,22 @@ public final class ContractClauseRenderer {
      * <p>담당 업무와 세부 업무 범위는 AI 가 줄인 문장이다. 원문이 없으면 AI 도 빈 문자열을
      * 돌려주므로(없는 업무를 지어내지 않는다) 그때는 해당 항을 빼거나 일반 문구로 대체한다.
      */
-    private static ContractClause scope(JobRole jobRole, ContractDraftText draft) {
+    private static ContractClause scope(ClauseContext context) {
+        JobRole jobRole = context.jobRole();
+        ContractDraftText draft = context.draft();
+
         String label = jobRole == null ? UNKNOWN_JOB_ROLE : jobRole.getLabel();
         List<String> deliverables = jobRole == null
                 ? Deliverables.of(null) : Deliverables.of(jobRole.getCategory());
 
-        StringBuilder content = new StringBuilder("① 을이 수행할 직무는 %s이다.".formatted(label));
+        StringBuilder content = new StringBuilder("① 본 계약의 대상 프로젝트는 「%s」이다."
+                .formatted(orDefault(context.projectTitle(), UNKNOWN_PROJECT)));
+
+        content.append(line("%s 을이 수행할 직무는 %s이다.".formatted(mark(content), label)));
 
         String mainTask = draft == null ? null : draft.mainTaskSummary();
         if (mainTask != null && !mainTask.isBlank()) {
-            content.append(line("② 을이 수행할 주요 업무는 다음과 같다. " + mainTask));
+            content.append(line("%s 을이 수행할 주요 업무는 다음과 같다. ".formatted(mark(content)) + mainTask));
         }
 
         content.append(line("%s 을이 제출할 산출물은 다음과 같다. ".formatted(mark(content))
@@ -124,12 +134,25 @@ public final class ContractClauseRenderer {
                 ? "갑이 제공한 과업 내용과 양 당사자가 협상 과정에서 합의한 사항에 따른다."
                 : detailScope + "로 한다.")));
 
+        String skills = skillLabels(context.skills());
+        if (!skills.isBlank()) {
+            content.append(line("%s 요구 기술은 다음과 같다. ".formatted(mark(content)) + skills));
+        }
+
         return new ContractClause(2, "계약 대상 및 업무 범위", content.toString());
     }
 
-    /** 항 번호. 담당 업무 항이 빠질 수 있어 고정하지 않고 지금까지 쓴 개수로 매긴다. */
+    /** 화면에 쓰는 표기 그대로 적는다. enum 이름(SPRING_BOOT)이 계약서에 나가면 안 된다. */
+    private static String skillLabels(List<SkillCode> skills) {
+        if (skills == null || skills.isEmpty()) {
+            return "";
+        }
+        return skills.stream().map(SkillCode::getLabel).collect(Collectors.joining(", "));
+    }
+
+    /** 항 번호. 담당 업무·요구 기술 항이 빠질 수 있어 고정하지 않고 지금까지 쓴 개수로 매긴다. */
     private static String mark(StringBuilder content) {
-        return MARKS[(int) content.chars().filter(c -> "①②③④".indexOf(c) >= 0).count()];
+        return MARKS[(int) content.chars().filter(c -> MARKS_CHARS.indexOf(c) >= 0).count()];
     }
 
     private static ContractClause period(Contract contract, int months) {

@@ -7,6 +7,7 @@ import com.pairing.contract.domain.model.ContractClause;
 import com.pairing.meta.domain.model.JobRole;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 계약 상세 + 다른 도메인에서 붙인 표시값.
@@ -18,6 +19,9 @@ import java.util.List;
  *
  * <p>{@code clauses} 는 계약서 본문이다. 조회할 때마다 다시 만든다 — 문구가 전부 고정이고
  * 값은 계약이 들고 있어 결과가 항상 같다.
+ *
+ * <p>{@code signatureImageUrls} 는 서명 그림의 주소를 계정 ID 로 찾는 표다. 서명은 계약이
+ * {@code file_id} 만 들고 있어 주소는 조회 시점에 붙인다. 안 그린 서명은 키가 없다.
  */
 public record ContractDetail(
         Contract contract,
@@ -25,7 +29,8 @@ public record ContractDetail(
         JobRole jobRole,
         ClientParty client,
         FreelancerParty freelancer,
-        List<ContractClause> clauses
+        List<ContractClause> clauses,
+        Map<Long, String> signatureImageUrls
 ) {
 
     /** 서명 현황에 붙일 이름. 프로필이 지워졌으면 null 이다. */

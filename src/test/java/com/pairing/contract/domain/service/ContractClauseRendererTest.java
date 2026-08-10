@@ -4,6 +4,7 @@ import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractClause;
 import com.pairing.contract.domain.model.ContractDraftText;
 import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.SkillCode;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 import org.junit.jupiter.api.DisplayName;
@@ -39,10 +40,52 @@ class ContractClauseRendererTest {
 
     private Map<Integer, String> render(Contract contract, String title, JobRole jobRole,
                                         ContractDraftText draft, String settlementAccount) {
-        return ContractClauseRenderer.render(contract,
-                        new ContractClauseRenderer.ClauseContext(title, jobRole, draft, settlementAccount))
-                .stream()
+        return render(contract, context(title, jobRole, List.of(), draft, settlementAccount));
+    }
+
+    private Map<Integer, String> render(Contract contract, ContractClauseRenderer.ClauseContext context) {
+        return ContractClauseRenderer.render(contract, context).stream()
                 .collect(Collectors.toMap(ContractClause::no, ContractClause::content));
+    }
+
+    private ContractClauseRenderer.ClauseContext context(String title, JobRole jobRole,
+                                                         List<SkillCode> skills, ContractDraftText draft,
+                                                         String settlementAccount) {
+        return new ContractClauseRenderer.ClauseContext(title, jobRole, skills, draft, settlementAccount);
+    }
+
+    @Test
+    @DisplayName("저장 전에도 계약번호가 비어 있지 않다")
+    void contractNoIsNeverNullBeforeSave() {
+        // contract_no 는 NOT NULL + UNIQUE 다. 최종 번호가 id 를 포함해 INSERT 전에는 만들 수 없으니
+        // 임시번호를 넣어 둔다. null 로 두면 저장 자체가 막힌다.
+        Contract contract = basic();
+
+        assertThat(contract.getContractNo()).isNotBlank().startsWith("TMP-");
+
+        // 저장 후 채번. 임시번호일 때만 덮어쓴다.
+        Contract saved = reconstituteWithId(contract, 7L);
+        saved.assignContractNo(2026);
+        assertThat(saved.getContractNo()).isEqualTo("CT-2026-000007");
+
+        // 이미 확정된 번호는 다시 불러도 안 바뀐다.
+        saved.assignContractNo(2027);
+        assertThat(saved.getContractNo()).isEqualTo("CT-2026-000007");
+    }
+
+    /** 저장으로 id 가 붙은 상태를 흉내 낸다. */
+    private Contract reconstituteWithId(Contract source, Long id) {
+        return Contract.reconstitute(id, source.getContractNo(), source.getNegotiationId(),
+                source.getProjectId(), source.getPositionId(), source.getClientId(),
+                source.getFreelancerId(), source.getSalaryAmount(), source.getTotalAmount(),
+                source.getDownAmount(), source.getFinalAmount(), source.getStartDate(),
+                source.getEndDate(), source.getWorkStyle(), source.getWorkForm(),
+                source.getWorkLocation(), source.getInspectionDays(), source.getPaymentDays(),
+                source.getConfidentialYears(), source.getPenaltyRate(), source.getSpecialTerms(),
+                source.getContentJson(), source.getPdfFileId(), source.getEsignProvider(),
+                source.getEsignDocId(), source.getStatus(), source.getSignedAt(),
+                source.getCompletedAt(), source.getTerminatedAt(), source.getTerminatedBy(),
+                source.getRetentionUntil(), source.getCreatedAt(), source.getSignatures());
     }
 
     @Test
@@ -71,32 +114,37 @@ class ContractClauseRendererTest {
     }
 
     @Test
-    @DisplayName("AI 문구가 없으면 제2조는 직무·산출물·일반 문구 3항이다")
+    @DisplayName("AI 문구도 요구 기술도 없으면 제2조는 4항이다")
     void scopeWithoutDraft() {
         String clause = render(basic(), "A", JobRole.BACKEND, null).get(2);
 
         assertThat(clause)
-                .contains("① 을이 수행할 직무는")
-                .contains("② 을이 제출할 산출물은")
-                .contains("③ 세부 업무 범위는 갑이 제공한 과업 내용")
-                .doesNotContain("④");
+                .contains("① 본 계약의 대상 프로젝트는 「A」이다.")
+                .contains("② 을이 수행할 직무는")
+                .contains("③ 을이 제출할 산출물은")
+                .contains("④ 세부 업무 범위는 갑이 제공한 과업 내용")
+                .doesNotContain("⑤");
     }
 
     @Test
-    @DisplayName("AI 문구가 있으면 담당 업무 항이 끼고 뒤 항 번호가 밀린다")
-    void scopeWithDraft() {
+    @DisplayName("AI 문구와 요구 기술이 있으면 항이 늘고 번호가 밀린다")
+    void scopeWithDraftAndSkills() {
         ContractDraftText draft = new ContractDraftText(
                 "모바일 앱용 RESTful API 설계 및 개발",
                 "Node.js 기반 API 구현, 데이터베이스 스키마 설계",
                 "별도의 특약사항 없음");
 
-        String clause = render(basic(), "A", JobRole.BACKEND, draft).get(2);
+        String clause = render(basic(), context("페어링 웹 리뉴얼", JobRole.BACKEND,
+                List.of(SkillCode.JAVA, SkillCode.SPRING_BOOT), draft, null)).get(2);
 
         assertThat(clause)
-                .contains("① 을이 수행할 직무는")
-                .contains("② 을이 수행할 주요 업무는 다음과 같다. 모바일 앱용 RESTful API 설계 및 개발")
-                .contains("③ 을이 제출할 산출물은")
-                .contains("④ 세부 업무 범위는 Node.js 기반 API 구현");
+                .contains("① 본 계약의 대상 프로젝트는 「페어링 웹 리뉴얼」이다.")
+                .contains("② 을이 수행할 직무는")
+                .contains("③ 을이 수행할 주요 업무는 다음과 같다. 모바일 앱용 RESTful API 설계 및 개발")
+                .contains("④ 을이 제출할 산출물은")
+                .contains("⑤ 세부 업무 범위는 Node.js 기반 API 구현")
+                // enum 이름(SPRING_BOOT)이 아니라 화면 표기가 나가야 한다.
+                .contains("⑥ 요구 기술은 다음과 같다. Java, Spring Boot");
     }
 
     @Test
@@ -108,8 +156,8 @@ class ContractClauseRendererTest {
         String clause = render(basic(), "A", JobRole.BACKEND, draft).get(2);
 
         assertThat(clause)
-                .contains("② 을이 수행할 주요 업무는")
-                .contains("④ 세부 업무 범위는 갑이 제공한 과업 내용");
+                .contains("③ 을이 수행할 주요 업무는")
+                .contains("⑤ 세부 업무 범위는 갑이 제공한 과업 내용");
     }
 
     @Test
@@ -151,7 +199,7 @@ class ContractClauseRendererTest {
     @DisplayName("제1조부터 제15조까지 빠짐없이 오름차순으로 나온다")
     void clauseNumbersAreComplete() {
         List<Integer> numbers = ContractClauseRenderer.render(basic(),
-                        new ContractClauseRenderer.ClauseContext("A", JobRole.BACKEND, null, null))
+                        context("A", JobRole.BACKEND, List.of(), null, null))
                 .stream().map(ContractClause::no).toList();
 
         assertThat(numbers).containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title th:text="${contractNo}">계약서</title>
+    <style>
+        /*
+         * openhtmltopdf 는 시스템 폰트를 쓰지 않는다. 여기 등록한 폰트만 PDF 에 임베드되고,
+         * 빠지면 한글이 전부 빈칸으로 나온다. 실제 파일은 ContractPdfRenderer 가 주입한다.
+         */
+        @page { size: A4; margin: 20mm 18mm; }
+
+        body { font-family: "NotoSansKR", sans-serif; font-size: 10pt; line-height: 1.7; color: #1a1a1a; }
+
+        h1 { font-size: 18pt; text-align: center; margin: 0 0 4mm; letter-spacing: 2pt; }
+        .subtitle { text-align: center; font-size: 8.5pt; color: #666; margin-bottom: 10mm; }
+
+        h2 { font-size: 11pt; margin: 7mm 0 2mm; padding-bottom: 1.5mm; border-bottom: 1px solid #2c3e6b; }
+
+        .parties { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
+        .parties td { width: 50%; vertical-align: top; padding: 0 3mm; }
+
+        table.info { width: 100%; border-collapse: collapse; font-size: 9pt; }
+        table.info th { width: 32%; text-align: left; color: #666; font-weight: normal;
+                        padding: 1.2mm 0; vertical-align: top; }
+        table.info td { padding: 1.2mm 0; vertical-align: top; }
+
+        .clause { margin-bottom: 1mm; white-space: pre-line; }
+
+        table.fee { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin: 2mm 0; }
+        table.fee th, table.fee td { border: 1px solid #ccc; padding: 1.5mm; text-align: center; }
+        table.fee th { background: #f4f5f8; font-weight: normal; }
+
+        .sign-area { margin-top: 12mm; page-break-inside: avoid; }
+        .sign-title { text-align: center; font-size: 11pt; margin-bottom: 5mm; }
+        .sign-box { width: 100%; border-collapse: collapse; }
+        .sign-box td { width: 50%; border: 1px solid #ddd; padding: 4mm; text-align: center;
+                       vertical-align: top; height: 38mm; }
+        .sign-role { font-size: 8.5pt; color: #666; }
+        .sign-name { font-size: 12pt; margin: 2mm 0; }
+        .sign-image { max-height: 20mm; }
+        .sign-at { font-size: 8pt; color: #888; }
+        .sign-pending { font-size: 9pt; color: #b00; }
+
+        .footer { margin-top: 8mm; text-align: center; font-size: 8pt; color: #888; }
+    </style>
+</head>
+<body>
+
+<h1>프리랜서 용역 계약서</h1>
+<p class="subtitle">
+    계약 번호: <span th:text="${contractNo}">CT-2026-000001</span>
+    · 작성일: <span th:text="${createdAt}">2026-09-01</span>
+</p>
+
+<h2>당사자 표시</h2>
+<table class="parties">
+    <tr>
+        <td>
+            <table class="info">
+                <tr><th>갑 (클라이언트)</th><td></td></tr>
+                <tr><th>기업명</th><td th:text="${client.companyName} ?: '-'">주식회사 페어링</td></tr>
+                <tr><th>사업자등록번호</th><td th:text="${client.businessNo} ?: '-'">1234567890</td></tr>
+                <tr><th>대표자</th><td th:text="${client.representative} ?: '-'">홍길동</td></tr>
+                <tr><th>주소</th><td th:text="${client.address} ?: '-'">서울시</td></tr>
+                <tr><th>연락처</th><td th:text="${client.phone} ?: '-'">0212345678</td></tr>
+            </table>
+        </td>
+        <td>
+            <table class="info">
+                <tr><th>을 (프리랜서)</th><td></td></tr>
+                <tr><th>성명</th><td th:text="${freelancer.name} ?: '-'">김민준</td></tr>
+                <tr><th>연락처</th><td th:text="${freelancer.phone} ?: '-'">01012345678</td></tr>
+                <tr><th>직군</th><td th:text="${jobRoleLabel}">백엔드 개발자</td></tr>
+                <tr><th>정산 계좌</th><td th:text="${settlementAccount} ?: '-'">은행 000</td></tr>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<p>갑과 을은 아래와 같이 계약을 체결한다.</p>
+
+<div th:each="clause : ${clauses}">
+    <h2 th:text="'제' + ${clause.no} + '조 (' + ${clause.title} + ')'">제1조 (목적)</h2>
+    <div class="clause" th:text="${clause.content}">본문</div>
+
+    <!-- 제6조 수수료는 문장보다 표가 읽기 쉬워 여기서만 따로 그린다. -->
+    <table class="fee" th:if="${clause.no == 6}">
+        <tr>
+            <th>구분</th><th>1억 미만 · 갑</th><th>1억 미만 · 을</th>
+            <th>1억 이상 · 갑</th><th>1억 이상 · 을</th>
+        </tr>
+        <tr><td>착수금 수수료</td><td>3%</td><td>4%</td><td>2%</td><td>4%</td></tr>
+        <tr><td>성공보수 수수료</td><td>7%</td><td>6%</td><td>6%</td><td>6%</td></tr>
+    </table>
+</div>
+
+<div class="sign-area">
+    <p class="sign-title">■ 서명</p>
+    <table class="sign-box">
+        <tr>
+            <td th:each="signature : ${signatures}">
+                <div class="sign-role" th:text="${signature.roleLabel}">갑 (클라이언트)</div>
+                <div class="sign-name" th:text="${signature.name} ?: '-'">홍길동</div>
+
+                <img class="sign-image" th:if="${signature.imageUrl != null}"
+                     th:src="${signature.imageUrl}" alt="서명" />
+
+                <div class="sign-at" th:if="${signature.signedAt != null}"
+                     th:text="${signature.signedAt} + ' 전자 서명'">2026-09-01 전자 서명</div>
+                <div class="sign-pending" th:if="${signature.signedAt == null}">서명 대기</div>
+            </td>
+        </tr>
+    </table>
+</div>
+
+<p class="footer">본 계약서는 페어링 플랫폼을 통해 전자적으로 체결되었습니다.</p>
+
+</body>
+</html>

@@ -66,6 +66,27 @@ public class ContractDraftListener {
     }
 
     /**
+     * 갑·을 모두에게 알린다. 서명 화면이 열렸다는 신호다.
+     *
+     * <p>실패해도 삼킨다. 알림은 부수 효과인데 여기서 예외가 나가면 같은 트랜잭션인 상태 전이까지
+     * 롤백되어 계약이 DRAFT 에 갇힌다. 그러면 아무도 서명하지 못한다. 알림이 없는 계약서보다
+     * 열리지 않는 계약서가 나쁘다.
+     */
+    private void notifyParties(Contract contract) {
+        try {
+            contract.getSignatures().forEach(signature -> notify(contract, signature.getAccountId()));
+        } catch (Exception e) {
+            log.warn("계약서 생성 알림 실패. 계약은 서명 대기로 넘어갔다. contractId={}", contract.getId(), e);
+        }
+    }
+
+    private void notify(Contract contract, Long accountId) {
+        notificationCreateUseCase.create(new CreateNotificationCommand(
+                accountId, NotificationType.CONTRACT_CREATED, TITLE, CONTENT,
+                LINK_PREFIX + contract.getId()));
+    }
+
+    /**
      * 문구를 얻는다. AI 가 실패하면 원문을 잘라 쓴다 — 모양은 덜 다듬어져도 실제 업무 내용이 들어간다.
      *
      * <p>담당 업무 원문이 비면 아예 호출하지 않는다. 파이썬 쪽 {@code main_task} 가 필수라
@@ -115,13 +136,4 @@ public class ContractDraftListener {
         }
     }
 
-    /** 갑·을 모두에게 알린다. 서명 화면이 열렸다는 신호다. */
-    private void notifyParties(Contract contract) {
-        String link = LINK_PREFIX + contract.getId();
-
-        contract.getSignatures().forEach(signature ->
-                notificationCreateUseCase.create(new CreateNotificationCommand(
-                        signature.getAccountId(), NotificationType.CONTRACT_CREATED,
-                        TITLE, CONTENT, link)));
-    }
 }

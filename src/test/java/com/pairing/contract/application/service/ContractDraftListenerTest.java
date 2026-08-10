@@ -130,6 +130,22 @@ class ContractDraftListenerTest {
     }
 
     @Test
+    @DisplayName("알림이 실패해도 계약은 서명 대기로 넘어간다")
+    void notificationFailureDoesNotBlockSigning() {
+        // 알림은 부수 효과다. 여기서 예외가 나가면 같은 트랜잭션인 상태 전이까지 롤백되어
+        // 계약이 DRAFT 에 갇히고 아무도 서명하지 못한다.
+        given(draftPort.draft(any())).willReturn(Optional.of(
+                new ContractDraftText("API 설계", "구현", "특약")));
+        given(notificationCreateUseCase.create(any()))
+                .willThrow(new RuntimeException("알림 저장 실패"));
+
+        listener.on(event(List.of(AGREED_NOTE)));
+
+        assertThat(contract.getStatus()).isEqualTo(ContractStatus.SIGN_PENDING);
+        verify(contractRepository).updateState(any());
+    }
+
+    @Test
     @DisplayName("이미 서명 대기면 두 번 처리하지 않는다")
     void isIdempotent() {
         given(draftPort.draft(any())).willReturn(Optional.of(

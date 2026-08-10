@@ -3,6 +3,7 @@ package com.pairing.contract.application.service;
 import com.pairing.chat.application.usecase.ChatActivationUseCase;
 import com.pairing.contract.application.command.SignContractCommand;
 import com.pairing.contract.application.event.ContractSignedEvent;
+import com.pairing.contract.application.port.ContractFileReaderPort;
 import com.pairing.contract.application.port.FreelancerGradeReaderPort;
 import com.pairing.contract.application.usecase.ContractCommandUseCase;
 import com.pairing.contract.domain.model.Contract;
@@ -36,6 +37,7 @@ public class ContractCommandService implements ContractCommandUseCase {
     private static final String VERIFICATION_METHOD = "SESSION";
 
     private final ContractRepository contractRepository;
+    private final ContractFileReaderPort contractFileReaderPort;
     private final ProjectCommandUseCase projectCommandUseCase;
     private final ChatActivationUseCase chatActivationUseCase;
     private final DepositSettlementUseCase depositSettlementUseCase;
@@ -48,7 +50,8 @@ public class ContractCommandService implements ContractCommandUseCase {
 
         // 타임스탬프 토큰은 외부 시각 보증 기관을 붙일 때 채운다. 지금은 서명 시각만 남긴다.
         boolean concluded = contract.sign(command.accountId(), VERIFICATION_METHOD,
-                command.ipAddress(), command.userAgent(), null, null);
+                command.ipAddress(), command.userAgent(), null,
+                requireSignatureFile(command.signatureFileId()));
 
         contractRepository.updateState(contract);
 
@@ -91,6 +94,22 @@ public class ContractCommandService implements ContractCommandUseCase {
         // 인원별 상태를 계약 완료로 옮기는 쪽(매칭)이 듣는다.
         eventPublisher.publishEvent(new ContractSignedEvent(contract.getId(), contract.getProjectId(),
                 contract.getPositionId(), contract.getFreelancerId()));
+    }
+
+    /**
+     * 서명 이미지 확인. 선택이라 없으면 그대로 넘긴다.
+     *
+     * <p>존재하지 않는 fileId 를 그대로 저장하면 나중에 PDF 를 그릴 때 서명란이 깨진다. 그 시점에는
+     * 이미 체결된 계약이라 되돌릴 수 없으므로, 서명 시점에 막는다.
+     */
+    private Long requireSignatureFile(Long signatureFileId) {
+        if (signatureFileId == null) {
+            return null;
+        }
+        if (!contractFileReaderPort.exists(signatureFileId)) {
+            throw new BusinessException(ContractErrorCode.SIGNATURE_NOT_FOUND);
+        }
+        return signatureFileId;
     }
 
     /** 계약 존재 + 당사자 확인. 갑·을 두 명만 서명·거부할 수 있다. */

@@ -41,7 +41,7 @@ public class ContractProjectReaderAdapter implements ContractProjectReaderPort {
     public ProjectView findByPositionId(Long positionId) {
         try {
             ProjectPositionSummary summary = projectQueryUseCase.findProjectPositionSummary(positionId);
-            return new ProjectView(summary.title(), summary.jobRole());
+            return new ProjectView(summary.title(), summary.jobRole(), summary.skills());
         } catch (BusinessException e) {
             if (e.getErrorCode() == ProjectErrorCode.PROJECT_NOT_FOUND
                     || e.getErrorCode() == ProjectErrorCode.POSITION_NOT_FOUND) {

@@ -2,9 +2,12 @@ package com.pairing.contract.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pairing.contract.application.port.ContractFileReaderPort;
 import com.pairing.contract.application.port.ContractPartyReaderPort;
+import com.pairing.contract.application.port.ContractPdfPort;
 import com.pairing.contract.application.port.ContractProjectReaderPort;
 import com.pairing.contract.application.result.ContractDetail;
+import com.pairing.contract.application.result.ContractPdfView;
 import com.pairing.contract.application.result.ContractSummary;
 import com.pairing.contract.application.usecase.ContractQueryUseCase;
 import com.pairing.contract.domain.model.Contract;
@@ -16,6 +19,7 @@ import com.pairing.contract.domain.repository.ContractRepository;
 import com.pairing.contract.domain.service.ContractClauseRenderer;
 import com.pairing.contract.exception.ContractErrorCode;
 import com.pairing.global.exception.BusinessException;
+import com.pairing.global.infrastructure.s3.S3Settings;
 import com.pairing.meta.domain.model.PartyRole;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +27,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 계약 조회.
@@ -40,6 +48,9 @@ public class ContractQueryService implements ContractQueryUseCase {
     private final ContractRepository contractRepository;
     private final ContractProjectReaderPort projectReaderPort;
     private final ContractPartyReaderPort partyReaderPort;
+    private final ContractFileReaderPort fileReaderPort;
+    private final ContractPdfPort contractPdfPort;
+    private final S3Settings s3Settings;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -70,8 +81,70 @@ public class ContractQueryService implements ContractQueryUseCase {
                 client,
                 freelancer,
                 ContractClauseRenderer.render(contract, new ContractClauseRenderer.ClauseContext(
-                        project.projectTitle(), project.jobRole(), draftText(contract),
-                        freelancer.settlementAccount())));
+                        project.projectTitle(), project.jobRole(), project.skills(),
+                        draftText(contract), freelancer.settlementAccount())),
+                signatureImageUrls(contract));
+    }
+
+    @Override
+    public byte[] renderPdf(Long contractId, Long accountId) {
+        return contractPdfPort.render(toPdfView(getDetail(contractId, accountId)));
+    }
+
+    @Override
+    public String pdfFileName(Long contractId, Long accountId) {
+        return getDetail(contractId, accountId).contract().getContractNo() + ".pdf";
+    }
+
+    /**
+     * PDF 템플릿에 넣을 값으로 편다.
+     *
+     * <p>서명 그림은 <b>절대 주소</b>여야 한다. 응답 DTO 는 object key 를 담고 직렬화 시점에
+     * CDN 루트가 붙지만, PDF 는 렌더러가 직접 받아 와야 해서 여기서 미리 붙인다.
+     */
+    private ContractPdfView toPdfView(ContractDetail detail) {
+        Contract contract = detail.contract();
+
+        List<ContractPdfView.Signature> signatures = contract.getSignatures().stream()
+                .map(signature -> new ContractPdfView.Signature(
+                        signature.getPartyRole() == PartyRole.CLIENT ? "갑 (클라이언트)" : "을 (프리랜서)",
+                        signature.getPartyRole() == PartyRole.CLIENT
+                                ? detail.clientName() : detail.freelancerName(),
+                        absoluteUrl(detail.signatureImageUrls().get(signature.getAccountId())),
+                        ContractPdfView.format(signature.getSignedAt())))
+                .toList();
+
+        return new ContractPdfView(
+                contract.getContractNo(),
+                ContractPdfView.format(contract.getCreatedAt()),
+                new ContractPdfView.Party(detail.client().companyName(), detail.client().businessNo(),
+                        detail.client().representative(), detail.client().address(),
+                        detail.client().phone(), detail.clientName()),
+                new ContractPdfView.Party(null, null, null, null,
+                        detail.freelancer().phone(), detail.freelancerName()),
+                detail.jobRole() == null ? "-" : detail.jobRole().getLabel(),
+                detail.freelancer().settlementAccount(),
+                detail.clauses(),
+                signatures);
+    }
+
+    private String absoluteUrl(String objectKey) {
+        return objectKey == null ? null : s3Settings.getCdnBase() + "/" + objectKey;
+    }
+
+    /** 서명 그림 주소. 안 그린 서명은 담지 않는다. 파일이 지워졌으면 키가 있어도 값이 없다. */
+    private Map<Long, String> signatureImageUrls(Contract contract) {
+        Map<Long, String> urls = new HashMap<>();
+
+        contract.getSignatures().stream()
+                .filter(signature -> signature.getSignatureFileId() != null)
+                .forEach(signature -> {
+                    String url = fileReaderPort.findUrl(signature.getSignatureFileId());
+                    if (url != null) {
+                        urls.put(signature.getAccountId(), url);
+                    }
+                });
+        return urls;
     }
 
     /**

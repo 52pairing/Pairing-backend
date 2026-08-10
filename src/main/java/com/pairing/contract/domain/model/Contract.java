@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 표준계약서. 서명(ContractSignature)을 포함하는 애그리거트 루트다.
@@ -43,6 +44,14 @@ public class Contract {
 
     private static final int MAX_SPECIAL_TERMS = 5000;
     private static final int PARTY_COUNT = 2;
+
+    /**
+     * 저장 전 임시 계약번호. 최종 번호가 id 를 포함하는데 INSERT 전에는 id 가 없다.
+     *
+     * <p>{@code contract_no} 가 NOT NULL + UNIQUE 라 null 로는 저장 자체가 안 된다. 정산번호와
+     * 같은 방식으로 겹치지 않는 임시값을 넣고 {@link #assignContractNo} 로 덮어쓴다.
+     */
+    private static final String TEMP_NO_PREFIX = "TMP-";
 
     private Long id;
     private String contractNo;
@@ -165,7 +174,8 @@ public class Contract {
         signatures.add(ContractSignature.create(clientAccountId, PartyRole.CLIENT));
         signatures.add(ContractSignature.create(freelancerAccountId, PartyRole.FREELANCER));
 
-        return new Contract(null, null, negotiationId, projectId, positionId, clientId, freelancerId,
+        return new Contract(null, TEMP_NO_PREFIX + UUID.randomUUID(),
+                negotiationId, projectId, positionId, clientId, freelancerId,
                 salaryAmount, salaryAmount * months, NO_SPLIT, NO_SPLIT,
                 startDate, endDate, workStyle, workForm,
                 workStyle == WorkStyle.ONSITE ? workLocation : null,
@@ -201,7 +211,11 @@ public class Contract {
      * <p>정산번호와 같은 방식이다. 저장 직후 같은 트랜잭션에서 덮어쓴다.
      */
     public void assignContractNo(int year) {
-        if (this.id == null || this.contractNo != null) {
+        if (this.id == null) {
+            return;
+        }
+        // 이미 확정된 번호는 건드리지 않는다. 임시번호일 때만 덮어쓴다.
+        if (this.contractNo != null && !this.contractNo.startsWith(TEMP_NO_PREFIX)) {
             return;
         }
         this.contractNo = "CT-%d-%06d".formatted(year, this.id);
