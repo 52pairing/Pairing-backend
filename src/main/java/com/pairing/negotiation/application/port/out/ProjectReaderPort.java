@@ -5,6 +5,7 @@ import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -17,6 +18,12 @@ import java.util.Optional;
 public interface ProjectReaderPort {
 
     Optional<ProjectView> findById(Long projectId);
+
+    /**
+     * 내가 소유한 프로젝트 ID 목록. 협상은 clientProfileId 를 갖지 않아, 클라 기준으로 협상을 셀 때
+     * 이 목록으로 좁힌다(헤더 응답대기 배지). 소유 프로젝트가 없으면 빈 목록.
+     */
+    List<Long> findMyProjectIds(Long accountId);
 
     /** 협상에 필요한 project 최소 조회 모델. */
     record ProjectView(

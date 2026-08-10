@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -48,5 +49,19 @@ public class NegotiationRepositoryAdapter implements NegotiationRepository {
     public Page<Negotiation> findByProjectId(Long projectId, NegotiationStatus status, Pageable pageable) {
         return springDataRepository.findByProjectId(projectId, status, pageable)
                 .map(negotiationMapper::toDomainSummary);
+    }
+
+    @Override
+    public long countWaitingForFreelancer(Long freelancerProfileId) {
+        return springDataRepository.countWaitingForFreelancer(freelancerProfileId);
+    }
+
+    @Override
+    public long countWaitingForClient(List<Long> projectIds) {
+        // 빈 IN 절은 DB 마다 동작이 갈린다. 프로젝트가 없으면 셀 협상도 없으므로 질의하지 않는다.
+        if (projectIds == null || projectIds.isEmpty()) {
+            return 0L;
+        }
+        return springDataRepository.countWaitingForClient(projectIds);
     }
 }

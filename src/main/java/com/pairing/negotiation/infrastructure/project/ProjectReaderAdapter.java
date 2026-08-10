@@ -8,6 +8,7 @@ import com.pairing.project.exception.ProjectErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -45,5 +46,13 @@ public class ProjectReaderAdapter implements ProjectReaderPort {
             }
             throw e;
         }
+    }
+
+    @Override
+    public List<Long> findMyProjectIds(Long accountId) {
+        if (accountId == null) {
+            return List.of();
+        }
+        return projectQueryUseCase.findProjectIdsByAccountId(accountId);
     }
 }

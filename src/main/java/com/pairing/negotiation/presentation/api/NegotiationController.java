@@ -25,6 +25,7 @@ import com.pairing.negotiation.presentation.api.response.NegotiationAdminSummary
 import com.pairing.negotiation.presentation.api.response.NegotiationMessageResponse;
 import com.pairing.negotiation.presentation.api.response.NegotiationResponse;
 import com.pairing.negotiation.presentation.api.response.NegotiationSummaryResponse;
+import com.pairing.negotiation.presentation.api.response.NegotiationWaitingCountResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -181,6 +182,18 @@ public class NegotiationController {
     ) {
         negotiationLoopUseCase.markRead(negotiationId, accountId);
         return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_READ", "읽음 처리했습니다."));
+    }
+
+    @GetMapping("/waiting-count")
+    @Operation(summary = "응답 대기 협상 건수",
+            description = "헤더 배지용. 내가 답해야 하는 협상(진행 중 + 이번 라운드 AI 제안에 내 응답이 없음) 건수를"
+                    + " 돌려줍니다. 목록(/mine)은 페이징이라 1페이지만 받으면 숫자가 실제보다 작아지므로 별도로 셉니다."
+                    + " 클라·프리 양쪽인 계정은 합산됩니다.")
+    public ResponseEntity<ApiResponse<NegotiationWaitingCountResponse>> countWaiting(
+            @CurrentAccountId Long accountId
+    ) {
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_WAITING_COUNT", "응답 대기 건수를 조회했습니다.",
+                new NegotiationWaitingCountResponse(negotiationQueryUseCase.countWaitingForMe(accountId))));
     }
 
     // ==========================================
