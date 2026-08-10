@@ -33,6 +33,16 @@ public interface NegotiationQueryUseCase {
     NegotiationLogVerifier.Result verifyLog(Long negotiationId, Long accountId);
 
     /**
+     * 헤더 배지용 '내 응답 대기' 협상 건수. 목록의 {@code waitingForMe} 와 같은 기준으로 센다.
+     *
+     * <p>목록({@link #findMine})은 페이징이라 프론트가 1페이지만 받으면 숫자가 실제보다 작아진다.
+     * 헤더는 화면 어디서나 정확한 수가 필요하므로 DB 에서 전량을 센다.
+     *
+     * <p>한 계정이 클라·프리 양쪽일 수 있어 두 역할을 합산한다. 어느 쪽도 아니면 0.
+     */
+    long countWaitingForMe(Long accountId);
+
+    /**
      * 타결 협상의 계약 생성용 스냅샷(서버간 호출). AGREED 조건만 담고 마지노선은 담지 않는다.
      *
      * <p>{@link #getDetail}은 뷰어 계정이 필요하고 floor 를 뷰어 기준으로 걸러 내므로 계약 생성에는 맞지 않아 따로 둔다.

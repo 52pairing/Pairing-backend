@@ -71,6 +71,20 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
     }
 
     @Override
+    public long countWaitingForMe(Long accountId) {
+        if (accountId == null) {
+            return 0L;
+        }
+        // 한 계정이 클라·프리 양쪽일 수 있다. 각 역할로 센 뒤 합친다(둘 다 아니면 0).
+        long asFreelancer = partyProfilePort.findFreelancerProfileIdByAccountId(accountId)
+                .map(negotiationRepository::countWaitingForFreelancer)
+                .orElse(0L);
+        long asClient = negotiationRepository.countWaitingForClient(
+                projectReaderPort.findMyProjectIds(accountId));
+        return asFreelancer + asClient;
+    }
+
+    @Override
     public AgreedNegotiationView getAgreedForContract(Long negotiationId) {
         Negotiation negotiation = negotiationRepository.findById(negotiationId)
                 .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NEGOTIATION_NOT_FOUND));
