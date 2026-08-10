@@ -8,6 +8,7 @@ import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
 import com.pairing.chat.application.result.ChatMessageView;
 import com.pairing.chat.application.result.ChatRoomView;
+import com.pairing.chat.application.usecase.ChatActivationUseCase;
 import com.pairing.chat.application.usecase.ChatCommandUseCase;
 import com.pairing.chat.application.usecase.ChatQueryUseCase;
 import com.pairing.chat.domain.model.ChatMemberRole;
@@ -35,13 +36,15 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 채팅 도메인 검증: 타결 프로비저닝 → 방·참여자·시스템 메시지, 전송/안읽음/읽음/나가기 규칙. */
+/** 채팅 도메인 검증: 계약 체결 → 방·참여자·시스템 메시지, 전송/안읽음/읽음/나가기 규칙. */
 @SpringBootTest
 @Transactional
 class ChatServiceTest {
 
     @Autowired
     private ChatCommandUseCase commandUseCase;
+    @Autowired
+    private ChatActivationUseCase activationUseCase;
     @Autowired
     private ChatQueryUseCase queryUseCase;
     @Autowired
@@ -85,15 +88,16 @@ class ChatServiceTest {
         negotiationId = negotiationRepository.save(negotiation).getId();
     }
 
-    private Long provisionRoom() {
-        commandUseCase.provisionForAgreedNegotiation(negotiationId);
+    /** 계약 체결로 방을 연다. 채팅 관련 검증은 모두 이 상태에서 한다. */
+    private Long openRoom() {
+        activationUseCase.openForSignedContract(negotiationId);
         return chatRoomRepository.findByNegotiationId(negotiationId).orElseThrow().getId();
     }
 
     @Test
-    @DisplayName("타결 프로비저닝: 방 + 양측 참여자 + 시스템 메시지 생성, 입력창 활성화")
-    void provisionCreatesRoomAndMembers() {
-        Long roomId = provisionRoom();
+    @DisplayName("계약 체결: 방 + 양측 참여자 + 안내 메시지 생성, 입력창은 바로 열린다")
+    void openCreatesRoomAndMembers() {
+        Long roomId = openRoom();
 
         ChatRoom room = chatRoomRepository.findById(roomId).orElseThrow();
         assertThat(room.isInputEnabled()).isTrue();
@@ -105,15 +109,22 @@ class ChatServiceTest {
 
         // 방 생성 안내(시스템 메시지) 1건이 최신 메시지로 잡힌다.
         ChatRoomView view = queryUseCase.getRoom(roomId, FREELANCER_ACCOUNT_ID);
-        assertThat(view.lastMessage()).contains("타결");
+        assertThat(view.lastMessage()).contains("계약이 체결되었습니다");
         assertThat(view.counterpartName()).isEqualTo("삼성전자");   // 프리 뷰어 → 상대(클라 회사명)
     }
 
     @Test
-    @DisplayName("멱등: 이미 방이 있으면 재프로비저닝해도 방은 하나")
+    @DisplayName("협상이 타결돼도 계약 체결 전에는 방이 없다")
+    void noRoomBeforeContractSigned() {
+        assertThat(chatRoomRepository.findByNegotiationId(negotiationId)).isEmpty();
+        assertThat(queryUseCase.findMyRooms(CLIENT_ACCOUNT_ID)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("멱등: 이미 방이 있으면 재호출해도 방은 하나")
     void provisionIsIdempotent() {
-        provisionRoom();
-        commandUseCase.provisionForAgreedNegotiation(negotiationId);
+        openRoom();
+        activationUseCase.openForSignedContract(negotiationId);
 
         assertThat(queryUseCase.findMyRooms(CLIENT_ACCOUNT_ID)).hasSize(1);
     }
@@ -121,7 +132,7 @@ class ChatServiceTest {
     @Test
     @DisplayName("메시지 전송: 저장·mine 표시, 상대의 안읽음 수 증가")
     void sendMessageAndUnread() {
-        Long roomId = provisionRoom();
+        Long roomId = openRoom();
 
         ChatMessageView sent = commandUseCase.sendMessage(roomId, CLIENT_ACCOUNT_ID, "안녕하세요, 일정 조율 가능할까요?");
         assertThat(sent.mine()).isTrue();
@@ -140,7 +151,7 @@ class ChatServiceTest {
     @Test
     @DisplayName("읽음 처리: 안읽음 수가 0이 된다")
     void markAsReadClearsUnread() {
-        Long roomId = provisionRoom();
+        Long roomId = openRoom();
         commandUseCase.sendMessage(roomId, CLIENT_ACCOUNT_ID, "확인 부탁드려요");
         assertThat(queryUseCase.countTotalUnread(FREELANCER_ACCOUNT_ID)).isEqualTo(2);
 
@@ -152,7 +163,7 @@ class ChatServiceTest {
     @Test
     @DisplayName("입력창 활성 방에서 참여자가 아니면 전송 거부(NOT_PARTICIPANT)")
     void nonParticipantCannotSend() {
-        Long roomId = provisionRoom();
+        Long roomId = openRoom();
         Long stranger = 999_999L;
 
         assertThatThrownBy(() -> commandUseCase.sendMessage(roomId, stranger, "hi"))
@@ -163,7 +174,7 @@ class ChatServiceTest {
     @Test
     @DisplayName("나가기: 방이 진행 중(ACTIVE)이면 나갈 수 없다(LEAVE_NOT_ALLOWED)")
     void cannotLeaveActiveRoom() {
-        Long roomId = provisionRoom();
+        Long roomId = openRoom();
 
         assertThatThrownBy(() -> commandUseCase.leave(roomId, CLIENT_ACCOUNT_ID))
                 .isInstanceOf(BusinessException.class)

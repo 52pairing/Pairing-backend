@@ -2,7 +2,6 @@ package com.pairing.negotiation.application.service;
 
 import com.pairing.global.exception.BusinessException;
 import com.pairing.negotiation.application.command.CreateNegotiationCommand;
-import com.pairing.negotiation.application.port.out.ChatRoomCreationPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort.ProjectView;
 import com.pairing.negotiation.application.usecase.NegotiationCommandUseCase;
@@ -27,7 +26,6 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
     private final NegotiationRepository negotiationRepository;
     private final NegotiationMessageRepository messageRepository;
     private final ProjectReaderPort projectReaderPort;
-    private final ChatRoomCreationPort chatRoomCreationPort;
 
     @Override
     public Long create(CreateNegotiationCommand command) {
@@ -52,7 +50,8 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
                 command.requestId(), command.projectId(), command.positionId(),
                 command.freelancerId(), command.budgetCap(), conditions);
 
-        // 불일치 조건이 0개면 협상할 게 없다 → 즉시 타결하고 사람 채팅방을 연다(AI 루프 없이 바로 채팅).
+        // 불일치 조건이 0개면 협상할 게 없다 → AI 루프 없이 즉시 타결한다.
+        // (사람 채팅방은 타결이 아니라 계약 체결 시 열린다.)
         boolean settledImmediately = conditions.isEmpty();
         if (settledImmediately) {
             negotiation.agreeWithoutConditions(command.budgetCap());
@@ -62,7 +61,6 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
 
         if (settledImmediately) {
             sealAgreementSnapshot(negotiationId, negotiation);   // 최종 조건 봉인(증거 일관성)
-            chatRoomCreationPort.createForAgreedNegotiation(negotiationId);
         }
         return negotiationId;
     }

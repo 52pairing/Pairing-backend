@@ -6,7 +6,7 @@ import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
-import com.pairing.chat.application.usecase.ChatCommandUseCase;
+import com.pairing.chat.application.usecase.ChatActivationUseCase;
 import com.pairing.chat.domain.repository.ChatRoomRepository;
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
@@ -35,7 +35,7 @@ class NegotiationChatRoomLinkTest {
     @Autowired
     private NegotiationQueryUseCase queryUseCase;
     @Autowired
-    private ChatCommandUseCase chatCommandUseCase;
+    private ChatActivationUseCase chatActivationUseCase;
     @Autowired
     private ChatRoomRepository chatRoomRepository;
     @Autowired
@@ -77,16 +77,16 @@ class NegotiationChatRoomLinkTest {
     }
 
     @Test
-    @DisplayName("채팅방 생성 전에는 chatRoomId 가 null")
+    @DisplayName("계약 체결 전에는 chatRoomId 가 null")
     void nullBeforeProvision() {
         NegotiationView view = queryUseCase.getDetail(negotiationId, FREELANCER_ACCOUNT_ID);
         assertThat(view.chatRoomId()).isNull();
     }
 
     @Test
-    @DisplayName("타결 프로비저닝 후에는 상세에 채팅방 ID 가 채워진다")
+    @DisplayName("계약 체결로 방이 열리면 상세에 채팅방 ID 가 채워진다")
     void filledAfterProvision() {
-        chatCommandUseCase.provisionForAgreedNegotiation(negotiationId);
+        chatActivationUseCase.openForSignedContract(negotiationId);
         Long roomId = chatRoomRepository.findByNegotiationId(negotiationId).orElseThrow().getId();
 
         NegotiationView view = queryUseCase.getDetail(negotiationId, FREELANCER_ACCOUNT_ID);
