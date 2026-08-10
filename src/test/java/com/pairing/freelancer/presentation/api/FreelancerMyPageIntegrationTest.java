@@ -426,10 +426,11 @@ class FreelancerMyPageIntegrationTest {
     }
 
     @Test
-    @DisplayName("현재 비밀번호가 맞으면 전화번호·주소·프로필사진·AI매칭동의가 반영되고 다시 조회해도 그대로 나온다")
-    void updateMeWithCorrectPasswordUpdatesProfile() throws Exception {
+    @DisplayName("이메일 인증을 마쳤으면 전화번호·주소·프로필사진·AI매칭동의가 반영되고 다시 조회해도 그대로 나온다")
+    void updateMeWhenEmailVerifiedUpdatesProfile() throws Exception {
+        given(verifiedMarkerPort.isVerified(EMAIL, VerificationPurpose.PROFILE_UPDATE)).willReturn(true);
+
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("currentPassword", PASSWORD);
         body.put("profileFileId", profileImageFileId);
         body.put("phone", "010-9999-0000");
         body.put("address", "서울 마포구");
@@ -452,10 +453,11 @@ class FreelancerMyPageIntegrationTest {
     }
 
     @Test
-    @DisplayName("현재 비밀번호가 틀리면 AC_007로 막고 아무것도 바뀌지 않는다")
-    void updateMeWithWrongPasswordFails() throws Exception {
+    @DisplayName("이메일 인증을 안 마쳤으면 AU_006으로 막고 아무것도 바뀌지 않는다")
+    void updateMeWithoutEmailVerificationFails() throws Exception {
+        given(verifiedMarkerPort.isVerified(EMAIL, VerificationPurpose.PROFILE_UPDATE)).willReturn(false);
+
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("currentPassword", "WrongPassw0rd!");
         body.put("phone", "010-9999-0000");
         body.put("address", "서울 마포구");
         body.put("aiMatchingAgreed", true);
@@ -465,7 +467,7 @@ class FreelancerMyPageIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("AC_007"));
+                .andExpect(jsonPath("$.errorCode").value("AU_006"));
 
         mockMvc.perform(get("/api/v1/freelancers/me").cookie(accessToken))
                 .andExpect(status().isOk())

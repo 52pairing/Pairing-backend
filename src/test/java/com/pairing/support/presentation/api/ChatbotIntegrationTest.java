@@ -191,6 +191,9 @@ class ChatbotIntegrationTest {
                         .cookie(token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(askBody(sessionId, question))))
+                // 상태 검증 없이 넘어가면 10번 호출 중 실패한 호출이 조용히 묻히고, 한참 뒤
+                // usedCount 검증에서야 원인 모를 실패로 터진다. 실패한 호출에서 바로 터지게 한다.
+                .andExpect(status().isOk())
                 .andReturn();
     }
 
