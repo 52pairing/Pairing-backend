@@ -72,7 +72,7 @@ class NegotiationChatRoomLinkTest {
                 "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
 
         negotiationId = negotiationRepository.save(Negotiation.create(810L, PROJECT_ID, 10L,
-                freelancerProfileId, 5_000_000L,
+                freelancerProfileId, 5_000_000L, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0)))).getId();
     }
 

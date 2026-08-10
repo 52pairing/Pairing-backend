@@ -35,6 +35,12 @@ spring:
         show_sql: false
         jdbc:
           time_zone: Asia/Seoul
+          # saveAll 을 호출해도 이 값이 없으면 INSERT 가 건별로 나간다. 협상은 라운드당 조건 수만큼
+          # 메시지를 한꺼번에 쌓으므로 배치로 묶어 왕복을 줄인다.
+          batch_size: 50
+        # 배치는 같은 테이블 연속일 때만 묶인다. 섞여 들어와도 묶이도록 정렬한다.
+        order_inserts: true
+        order_updates: true
 
   mail:
     # 인증 메일 발송용 SMTP. 값은 환경변수로만 주입한다.

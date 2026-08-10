@@ -96,7 +96,7 @@ class NegotiationQueryServiceTest {
                         LocalDate.of(2026, 1, 1), true, 6, PeriodUnit.MONTH)));
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
-                50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));
+                50_000_000L, 50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));
         NegotiationCondition amount = negotiation.getConditions().get(0);
         amount.submitFloor(PartyRole.CLIENT, "3500000");
         amount.submitFloor(PartyRole.FREELANCER, "3800000");
@@ -171,6 +171,24 @@ class NegotiationQueryServiceTest {
         n.getConditions().get(0).lock("3600000");
         n.agree(3_600_000L);
         negotiationRepository.save(n);
+    }
+
+    @Test
+    @DisplayName("상세: viewerRole 과 waitingForMe 가 내려간다(승인 패널 노출 판정용)")
+    void detailExposesViewerRoleAndWaitingForMe() {
+        NegotiationResponse before = NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, freelancerAccountId));
+        assertThat(before.viewerRole()).isEqualTo(PartyRole.FREELANCER);
+        assertThat(before.waitingForMe()).isFalse();   // 아직 제안 없음
+
+        proposeRound1();
+
+        NegotiationResponse after = NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, freelancerAccountId));
+        assertThat(after.waitingForMe()).isTrue();     // 내 응답 차례 → 승인 패널
+        assertThat(NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, CLIENT_ACCOUNT_ID)).viewerRole())
+                .isEqualTo(PartyRole.CLIENT);
     }
 
     @Test

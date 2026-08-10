@@ -205,13 +205,21 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         }
     }
 
+    /**
+     * 합의된 <b>월 단가</b>(원). AMOUNT 가 협상 대상이었으면 그 합의값, 아니면 수락 시점 프리 희망 단가다.
+     *
+     * <p>예산 상한(budgetCap)으로 떨어뜨리지 않는다. AMOUNT 조건이 없다는 건 프리 단가가 상한 이내라
+     * 다툴 게 없었다는 뜻이라, 상한을 합의값으로 쓰면 아무도 제시한 적 없는 금액이 계약서에 찍힌다.
+     */
     private long finalAmount(Negotiation negotiation) {
         return negotiation.getConditions().stream()
                 .filter(c -> c.getConditionType() == ConditionType.AMOUNT && c.getAgreedValue() != null)
                 .map(c -> parseOrNull(c.getAgreedValue()))
                 .filter(v -> v != null)
                 .findFirst()
-                .orElse(negotiation.getBudgetCap());
+                .orElseGet(() -> negotiation.getFreelancerMonthlyPay() != null
+                        ? negotiation.getFreelancerMonthlyPay()
+                        : negotiation.getBudgetCap());   // 구 데이터(월단가 미보존) 방어
     }
 
     private NegotiationCondition findByType(Negotiation negotiation, ConditionType type) {

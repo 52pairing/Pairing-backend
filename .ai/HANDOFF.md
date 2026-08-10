@@ -4,7 +4,8 @@
 
 **2026-08-10 배치.** `feature/freelancer-matching-settings`(freelancer `/me/matching-settings` 실구현 +
 matchingPaused 하드필터 반영, 원래 2번 담당이지만 4번이 직접 진행), `feature/matching-request-auto-expire`
-(응답기한 3일 자동 만료 스케줄러 + `rejectReason` 필드 노출) 작업 완료, push 대기/완료 상태는
+(응답기한 3일 자동 만료 스케줄러 + `rejectReason` 필드 노출), `feature/matching-embedding-reindex`
+(임베딩 모델 교체 대응 관리자 일괄 재색인 API, Pairing-python 팀원 요청) 작업 완료, push 대기/완료 상태는
 `.ai/WORKLOG.md` 최신 항목 참고. `MatchingRequestResponse.rejectReason`(DIRECT_REJECT/EXPIRED/
 NEGOTIATION_FAILED) 신규 — 직접 거절과 자동 만료를 프론트가 구분할 수 있게 함.
 

@@ -4,6 +4,8 @@ import com.pairing.freelancer.presentation.api.response.FreelancerConditionRespo
 import com.pairing.matching.application.result.FreelancerCardSummary;
 import com.pairing.matching.application.result.FreelancerResumeSummary;
 
+import java.util.List;
+
 /**
  * freelancer 도메인 조회 포트. 매칭은 이 인터페이스로만 프리랜서 정보를 읽는다.
  *
@@ -28,4 +30,7 @@ public interface FreelancerDirectoryPort {
      * {@code ResumeUpdatedEventListener}가 이력서 저장 이벤트를 받을 때마다 호출한다.
      */
     FreelancerResumeSummary findResumeSummary(Long freelancerId);
+
+    /** 이력서를 등록한 모든 프리랜서 ID. 임베딩 일괄 재색인 대상을 고르는 데 쓴다. */
+    List<Long> findAllFreelancerIdsWithResume();
 }

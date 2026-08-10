@@ -30,7 +30,7 @@ class NegotiationPersistenceTest {
     private NegotiationRepository negotiationRepository;
 
     private Negotiation newNegotiation() {
-        return Negotiation.create(100L, 1L, 10L, 51L, 50_000_000L, List.of(
+        return Negotiation.create(100L, 1L, 10L, 51L, 50_000_000L, 50_000_000L, List.of(
                 NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0),
                 NegotiationCondition.create(ConditionType.PERIOD, "6", "4", 1)));
     }

@@ -44,7 +44,7 @@ class NegotiationProgressServiceTest {
     @DisplayName("생성 직후(미시작): 라운드 0, 새 제안 0")
     void freshNegotiationHasZeroRound() {
         Long requestId = 7_770_002L;
-        negotiationRepository.save(Negotiation.create(requestId, 8300L, 10L, 20L, 5_000_000L,
+        negotiationRepository.save(Negotiation.create(requestId, 8300L, 10L, 20L, 5_000_000L, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0))));
 
         NegotiationProgress progress = progressUseCase.findProgressByRequestId(requestId).orElseThrow();
@@ -82,7 +82,7 @@ class NegotiationProgressServiceTest {
 
     /** 라운드 1 진행 + AMOUNT·PERIOD 제안 1건씩 남긴 협상을 만들고 negotiationId 반환. */
     private Long seedNegotiationWithTwoProposals(Long requestId) {
-        Negotiation saved = negotiationRepository.save(Negotiation.create(requestId, 8300L, 10L, 20L, 5_000_000L,
+        Negotiation saved = negotiationRepository.save(Negotiation.create(requestId, 8300L, 10L, 20L, 5_000_000L, 5_000_000L,
                 List.of(NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0),
                         NegotiationCondition.create(ConditionType.PERIOD, "3", "6", 1))));
         Long negotiationId = saved.getId();

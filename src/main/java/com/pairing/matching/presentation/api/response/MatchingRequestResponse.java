@@ -69,8 +69,9 @@ public record MatchingRequestResponse(
         @Schema(description = "응답 시각")
         LocalDateTime respondedAt,
 
-        @Schema(description = "거절/만료 사유. status가 REJECTED일 때만 값이 있다. "
-                + "직접 거절과 응답 기한 만료를 구분하는 용도 — 둘 다 REJECTED라 status만으로는 구분이 안 된다.")
+        @Schema(description = "거절/만료/협상결렬 사유. status가 REJECTED 또는 NEGOTIATION_FAILED일 때만 값이 있다. "
+                + "직접 거절(DIRECT_REJECT)과 응답 기한 만료(EXPIRED)는 둘 다 status=REJECTED라 이 필드 없이는 "
+                + "구분이 안 되고, 협상 결렬(NEGOTIATION_FAILED)은 status 자체가 NEGOTIATION_FAILED다.")
         RejectReason rejectReason,
 
         // 협상 중 카드에 "라운드 4/15" 로 찍는다. 협상 시작 전에는 null.

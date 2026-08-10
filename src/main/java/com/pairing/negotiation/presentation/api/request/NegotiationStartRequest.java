@@ -30,11 +30,13 @@ public record NegotiationStartRequest(
     @Schema(description = "쟁점별 마지노선")
     public record MinimumCondition(
 
-            @Schema(description = "쟁점 종류", example = "PAY")
+            @Schema(description = "쟁점 종류. AMOUNT/PERIOD/START_DATE/WORK_STYLE/WORK_FORM/SCOPE/OTHER", example = "AMOUNT")
             @NotNull(message = "쟁점 종류는 필수입니다.")
             ConditionType conditionType,
 
-            @Schema(description = "마지노선 값", example = "350")
+            @Schema(description = "마지노선 값(문자열). AMOUNT 는 원 단위 숫자(화면의 만 원 × 10000), "
+                    + "PERIOD 는 \"4 MONTH\", WORK_STYLE/WORK_FORM 은 enum 코드, START_DATE 는 yyyy-MM-dd",
+                    example = "3500000")
             @NotBlank(message = "마지노선 값은 필수입니다.")
             String value
     ) {

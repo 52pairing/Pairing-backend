@@ -23,7 +23,8 @@ public class NegotiationMapper {
         }
         return new NegotiationJpaEntity(
                 d.getId(), d.getRequestId(), d.getProjectId(), d.getPositionId(), d.getFreelancerId(),
-                d.getStatus(), d.getTotalRound(), d.getAgreedAmount(), d.getBudgetCap(), d.getFloorAmount(),
+                d.getStatus(), d.getTotalRound(), d.getAgreedAmount(), d.getBudgetCap(),
+                d.getFreelancerMonthlyPay(), d.getFloorAmount(),
                 d.getAiOutAt(), d.getStartedAt(), d.getEndedAt(), d.getEndReason(),
                 d.getClientLastReadAt(), d.getFreelancerLastReadAt(), conds);
     }
@@ -53,7 +54,8 @@ public class NegotiationMapper {
     private Negotiation reconstitute(NegotiationJpaEntity e, List<NegotiationCondition> conds) {
         return Negotiation.reconstitute(
                 e.getId(), e.getRequestId(), e.getProjectId(), e.getPositionId(), e.getFreelancerId(),
-                e.getStatus(), e.getTotalRound(), e.getAgreedAmount(), e.getBudgetCap(), e.getFloorAmount(),
+                e.getStatus(), e.getTotalRound(), e.getAgreedAmount(), e.getBudgetCap(),
+                e.getFreelancerMonthlyPay(), e.getFloorAmount(),
                 e.getAiOutAt(), e.getStartedAt(), e.getEndedAt(), e.getEndReason(),
                 e.getClientLastReadAt(), e.getFreelancerLastReadAt(), conds);
     }

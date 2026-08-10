@@ -248,6 +248,7 @@
 | GET | `/api/v1/matchings/requests/{requestId}` | O | 요청 상세. `mainTask`(프로젝트 주요 담당 업무)는 이 엔드포인트에서만 값이 채워짐(3번 요청, 2026-08-09) — 목록/발송/수락/거절 응답은 항상 null |
 | POST | `/api/v1/matchings/requests/{requestId}/acceptance` | FREELANCER | 수락 → 협상 시작 |
 | POST | `/api/v1/matchings/requests/{requestId}/rejection` | FREELANCER | body `{reason}` 거절 |
+| POST | `/api/v1/matchings/admin/embeddings/reindex` | ADMIN | 이력서 있는 프리랜서 전체 + 모집 시작한 포지션 전체 임베딩 재생성. 임베딩 모델 교체로 벡터 공간이 바뀌었을 때 씀(2026-08-10 추가) |
 
 - 후보 카드는 `fitReasons[]`(태그 칩), `payUnit`/`payAmount`, `ratingAverage`, `skills[]` 로 그린다. 적합도 점수 숫자는 화면에 노출하지 않는다.
 - 재추천 `type`: `FREE`(무료 1회) / `PAID`(유료, 후보 1명당 10,000원). 최초 추천은 `INITIAL`. 프로젝트당 총 6회.

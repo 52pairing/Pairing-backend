@@ -35,7 +35,6 @@ public final class NegotiationConditionCalculator {
     public static List<NegotiationCondition> compute(
             long budgetCap,
             FreelancerConditionSnapshot freelancer,
-            Long projectBudgetAmount,
             WorkStyle projectWorkStyle,
             WorkForm projectWorkForm,
             LocalDate projectStartDesiredDate,
@@ -46,11 +45,14 @@ public final class NegotiationConditionCalculator {
         List<NegotiationCondition> conditions = new ArrayList<>();
 
         // AMOUNT: 예산 상한(가드) 대비 프리 월단가. minAcceptAmount 를 프리 floor 로 프리필.
+        //
+        // 클라 희망값도 budgetCap(월 단가 상한)을 쓴다. 예전엔 projectBudgetAmount(계약 기간 전체 총액)를
+        // 넣어 한 조건 안에서 클라=총액 / 프리=월단가로 단위가 갈렸고, 그 사이에서 합의된 값은 어느
+        // 단위인지 정의되지 않았다. 협상·화면·계약 모두 월 단가로 통일한다.
         long monthlyPay = freelancer.monthlyPay();
         if (monthlyPay > budgetCap) {
-            String clientAmount = String.valueOf(projectBudgetAmount != null ? projectBudgetAmount : budgetCap);
             NegotiationCondition amount = NegotiationCondition.create(ConditionType.AMOUNT,
-                    clientAmount, String.valueOf(monthlyPay), conditions.size());
+                    String.valueOf(budgetCap), String.valueOf(monthlyPay), conditions.size());
             if (freelancer.minAcceptAmount() != null) {
                 amount.submitFloor(PartyRole.FREELANCER, String.valueOf(freelancer.minAcceptAmount()));
             }
