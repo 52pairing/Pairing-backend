@@ -4,7 +4,6 @@ import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCase;
 import com.pairing.negotiation.application.event.NegotiationEvent;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
-import com.pairing.negotiation.application.port.out.ChatRoomCreationPort;
 import com.pairing.negotiation.application.port.out.NegotiationEventPort;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
@@ -41,7 +40,6 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final NegotiationViewerResolver viewerResolver;
     private final NegotiationEventPort eventPort;
     private final NegotiationProposalPort proposalPort;
-    private final ChatRoomCreationPort chatRoomCreationPort;
     // 협상 결과(타결/결렬)를 매칭 요청 건에 반영하는 인바운드 포트(방향: negotiation → matching).
     private final MatchingNegotiationOutcomeUseCase matchingOutcomeUseCase;
 
@@ -106,11 +104,7 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
 
         persist(negotiation, messages);
 
-        // 타결 시 사람 채팅방을 연다(AI Out → 사람 채팅). 같은 트랜잭션이라 방 생성 실패 시 타결도 롤백된다.
-        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
-            chatRoomCreationPort.createForAgreedNegotiation(negotiation.getId());
-        }
-
+        // 사람 채팅방은 타결이 아니라 계약 체결 시 열린다(계약 도메인이 ChatActivationUseCase 로 호출).
         publish(negotiation, switch (negotiation.getStatus()) {
             case AGREED -> NegotiationEventType.AGREED;
             case FAILED -> NegotiationEventType.FAILED;

@@ -34,6 +34,9 @@ public interface SpringDataSettlementRepository extends JpaRepository<Settlement
     List<SettlementJpaEntity> findByProjectIdAndStatusInOrderByIdAsc(
             Long projectId, List<SettlementStatus> statuses);
 
+    /** 탈퇴 가능 여부 판정용. 행을 읽지 않고 존재만 확인한다. */
+    boolean existsByPayerAccountIdAndStatusIn(Long payerAccountId, List<SettlementStatus> statuses);
+
     default Optional<SettlementJpaEntity> findFirstPayable(Long projectId, List<SettlementStatus> statuses) {
         return findByProjectIdAndStatusInOrderByIdAsc(projectId, statuses).stream().findFirst();
     }

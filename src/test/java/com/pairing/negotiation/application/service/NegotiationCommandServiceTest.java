@@ -102,9 +102,8 @@ class NegotiationCommandServiceTest {
     }
 
     @Test
-    @DisplayName("모든 조건이 맞으면 협상 없이 즉시 타결되고 채팅방이 열린다")
+    @DisplayName("모든 조건이 맞으면 협상 없이 즉시 타결된다(채팅방은 계약 체결 시 열린다)")
     void createWithNoMismatchSettlesImmediately() {
-        // 프로비저닝(채팅방 개설)이 당사자 정보를 읽으므로 프로필을 실제로 심는다.
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 910_101L, "삼성전자", "1234567890",
                 BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
@@ -131,7 +130,8 @@ class NegotiationCommandServiceTest {
         assertThat(saved.getConditions()).isEmpty();
         assertThat(saved.getStatus()).isEqualTo(NegotiationStatus.AGREED);
         assertThat(saved.getAgreedAmount()).isEqualTo(5_000_000L);
-        assertThat(chatRoomRepository.findByNegotiationId(id)).isPresent();
+        // 타결만으로는 방이 생기지 않는다. 계약이 체결돼야 열린다.
+        assertThat(chatRoomRepository.findByNegotiationId(id)).isEmpty();
 
         // 최종 조건이 해시체인 로그에 봉인되고, 그 체인이 유효하다(증거).
         List<NegotiationMessage> logs = messageRepository.findByNegotiationId(id);

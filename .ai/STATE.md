@@ -1,6 +1,6 @@
 # 현재 상태 — AI매칭(4번 파트)
 
-최종 갱신: 2026-08-09
+최종 갱신: 2026-08-10
 
 ## 담당 범위
 
@@ -98,8 +98,11 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
   `existsActiveByProjectId()`는 P41 무료 재추천 판정용이라 REQUEST_PENDING도 "있음"으로 세서 기준이
   다르다고 3번이 명시적으로 경고, 재사용 안 함. `markNegotiationAgreed()`(타결)는 안 건드림 — 계약
   대기 전이는 계약 도메인이 계약서 생성 시점에 `awaitContract()`로 직접 넘기기로 함(요구사항 1233).
-  `expire()`(응답기한 만료)는 실제로 호출하는 곳이 아직 없어서(자동 만료 스케줄러 자체가 미구현) 지금은
-  훅 지점이 없음 — 나중에 만들 때 같이 syncStage 넣을 것.
+  **(2026-08-10 완료)** `expire()`(응답기한 만료)는 `MatchingRequestExpiryScheduler`(10분 주기,
+  `application.scheduler` 패키지)가 `MatchingRequestService.expireOverdueRequests()`를 호출해서
+  처리한다 — `syncProjectStage`도 함께 호출. 스케줄러 주기 사이의 창구(만료됐는데 아직 처리 전)는
+  `accept()`/`reject()` 진입 시 `isExpired()`를 먼저 검사해서 그 자리에서 만료 처리하고 `MT_016`으로
+  막도록 같이 처리함(리뷰에서 발견된 구멍).
 - 회귀 테스트: `MatchingIntegrationTest`에 CLOSED/CANCELED 프로젝트 차단 2건 + accept 시 프로젝트
   상태가 실제로 NEGOTIATING으로 바뀌는지 검증 추가. `MatchingNegotiationOutcomeServiceTest`에 결렬 후
   프로젝트가 RECRUITING으로 되돌아가는지 검증 추가(프로젝트 row를 실제로 심어야 함 — `syncStage`/

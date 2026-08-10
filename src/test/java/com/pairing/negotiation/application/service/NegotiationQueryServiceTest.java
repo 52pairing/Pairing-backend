@@ -174,6 +174,69 @@ class NegotiationQueryServiceTest {
     }
 
     @Test
+    @DisplayName("응답대기 건수: 제안이 오고 내 응답이 없으면 1건으로 센다")
+    void waitingCountAfterProposal() {
+        assertThat(queryUseCase.countWaitingForMe(freelancerAccountId)).isZero();   // 제안 전
+
+        proposeRound1();
+
+        assertThat(queryUseCase.countWaitingForMe(freelancerAccountId)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("응답대기 건수: 내가 응답하면 0으로 줄고, 다음 라운드 제안이 오면 다시 1")
+    void waitingCountAfterResponse() {
+        proposeRound1();
+        messageRepository.saveAll(List.of(NegotiationMessage.response(negotiationId, amountConditionId, 1,
+                SenderType.FREELANCER, "제안을 수락했습니다.", "YES", freelancerAccountId)));
+
+        assertThat(queryUseCase.countWaitingForMe(freelancerAccountId)).isZero();
+
+        // 라운드 2 제안이 오면 다시 내 차례다.
+        Negotiation n = negotiationRepository.findById(negotiationId).orElseThrow();
+        n.incrementRound();
+        negotiationRepository.save(n);
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 2,
+                SenderType.SYSTEM, "월 370만원을 제안합니다.", "재협상", "3700000")));
+
+        assertThat(queryUseCase.countWaitingForMe(freelancerAccountId)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("응답대기 건수: 종료된 협상은 세지 않는다")
+    void waitingCountExcludesEnded() {
+        proposeRound1();
+        Negotiation n = negotiationRepository.findById(negotiationId).orElseThrow();
+        n.fail("테스트 종료");
+        negotiationRepository.save(n);
+
+        assertThat(queryUseCase.countWaitingForMe(freelancerAccountId)).isZero();
+    }
+
+    @Test
+    @DisplayName("응답대기 건수: 당사자가 아니면 0")
+    void waitingCountForStranger() {
+        proposeRound1();
+
+        assertThat(queryUseCase.countWaitingForMe(STRANGER_ACCOUNT_ID)).isZero();
+    }
+
+    @Test
+    @DisplayName("응답대기 건수: 클라는 내가 소유한 프로젝트의 협상으로 센다")
+    void waitingCountAsClient() {
+        // 협상은 clientProfileId 를 갖지 않아 소유 프로젝트 목록으로 좁힌다.
+        when(projectReaderPort.findMyProjectIds(CLIENT_ACCOUNT_ID)).thenReturn(List.of(PROJECT_ID));
+        proposeRound1();
+
+        assertThat(queryUseCase.countWaitingForMe(CLIENT_ACCOUNT_ID)).isEqualTo(1);
+
+        // 클라가 응답하면 빠진다.
+        messageRepository.saveAll(List.of(NegotiationMessage.response(negotiationId, amountConditionId, 1,
+                SenderType.CLIENT, "제안을 수락했습니다.", "YES", CLIENT_ACCOUNT_ID)));
+        assertThat(queryUseCase.countWaitingForMe(CLIENT_ACCOUNT_ID)).isZero();
+    }
+
+    @Test
     @DisplayName("계약용 조회: 뷰어 계정 없이 타결 스냅샷을 돌려주고, 합의값은 계약 표기 그대로다")
     void agreedForContract() {
         settleNegotiation();

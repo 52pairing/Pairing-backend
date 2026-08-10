@@ -13,9 +13,11 @@ import java.util.Optional;
 /**
  * 협상 후 사람 채팅방. 협상 1건당 방 하나가 생긴다(negotiation_id UNIQUE).
  *
- * <p>협상 중에는 입력창이 잠겨 있고 A2A 응답만 가능하다. 모든 조건이 합의되면(AI Out) 이 방이 열리고
- * {@code inputEnabled=true} 로 생성된다. 나가기는 대금 지급 완료 등으로 방이 종료(CLOSED)된 뒤에만
- * 허용한다.
+ * <p>방이 생기는 시점은 <b>계약 체결</b>이다. 협상 중에는 A2A 응답(숫자·선택지)만 가능하고, 협상이
+ * 타결돼도 계약이 체결되기 전까지는 방이 없다. 프로젝트 진행 대화는 계약이 성립한 뒤에 시작하기 때문이며,
+ * 계약이 무산되면 빈 방이 남지 않는다.
+ *
+ * <p>나가기는 대금 지급 완료 등으로 방이 종료(CLOSED)된 뒤에만 허용한다.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -43,7 +45,7 @@ public class ChatRoom {
         this.closedAt = closedAt;
     }
 
-    /** 협상 타결 시 방을 연다. 입력창은 바로 활성화된다(협상이 끝났으므로). */
+    /** 계약 체결 시 방을 연다. 이 시점부터 대화가 가능하므로 입력창은 바로 활성화된다. */
     public static ChatRoom open(Long negotiationId, List<ChatRoomMember> members) {
         LocalDateTime now = LocalDateTime.now();
         return new ChatRoom(null, negotiationId, true, ChatRoomStatus.ACTIVE, members, now, now, null);

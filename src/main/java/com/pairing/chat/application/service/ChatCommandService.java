@@ -5,6 +5,7 @@ import com.pairing.chat.application.port.out.ChatDirectoryPort;
 import com.pairing.chat.application.port.out.ChatDirectoryPort.NegotiationParties;
 import com.pairing.chat.application.port.out.ChatEventPort;
 import com.pairing.chat.application.result.ChatMessageView;
+import com.pairing.chat.application.usecase.ChatActivationUseCase;
 import com.pairing.chat.application.usecase.ChatCommandUseCase;
 import com.pairing.chat.domain.model.ChatMemberRole;
 import com.pairing.chat.domain.model.ChatMessage;
@@ -24,7 +25,7 @@ import java.util.List;
 @Service
 @Transactional
 @RequiredArgsConstructor
-public class ChatCommandService implements ChatCommandUseCase {
+public class ChatCommandService implements ChatCommandUseCase, ChatActivationUseCase {
 
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -32,8 +33,8 @@ public class ChatCommandService implements ChatCommandUseCase {
     private final ChatEventPort chatEventPort;
 
     @Override
-    public void provisionForAgreedNegotiation(Long negotiationId) {
-        // 멱등: 이미 방이 있으면 아무 것도 하지 않는다(재타결 호출·재시도 대비).
+    public void openForSignedContract(Long negotiationId) {
+        // 멱등: 이미 방이 있으면 아무 것도 하지 않는다(재호출·재시도 대비).
         if (chatRoomRepository.findByNegotiationId(negotiationId).isPresent()) {
             return;
         }
@@ -48,7 +49,7 @@ public class ChatCommandService implements ChatCommandUseCase {
 
         ChatRoom saved = chatRoomRepository.save(ChatRoom.open(negotiationId, members));
         chatMessageRepository.save(ChatMessage.system(saved.getId(),
-                "협상이 타결되어 채팅이 시작되었습니다. 자유롭게 대화해 주세요."));
+                "계약이 체결되었습니다. 프로젝트 진행을 위해 자유롭게 대화해 주세요."));
     }
 
     @Override

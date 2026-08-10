@@ -118,7 +118,7 @@
 4. ~~budgetCap의 WEEK→개월 환산 규칙~~ — 4주=1개월로 확정, 반영 완료.
 5. ~~임베딩 텍스트에 `detailScope`/`extraNote`도 빠져있음(HANDOFF 22번)~~ — 완료.
 6. ~~`resolveFreelancerId`/`findCondition`(freelancerId 기준)~~ — 완료. 계정 승인은 이미 끝나 있었고 매칭 어댑터만 안 바꿔놓은 상태였음.
-7. `expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현 — 나중에 만들 때 `syncStage` 호출도 같이 넣을 것(HANDOFF 25번 참고).
+7. ~~`expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현~~ — **2026-08-10 완료.** `MatchingRequestExpiryScheduler` 신규(10분 주기) + `accept()`/`reject()`에 `isExpired()` 선체크 추가(스케줄러 주기 사이 창구 방지, MT_016). 아래 "매칭 요청 응답기한 자동 만료" 참고.
 8. ~~`AI매칭_API_화면매핑_최신본.md`(MT_009/quantity 경고) 반영 확인~~ — 완료. 그 이후 코드가 또 바뀌어서(MT_012 실제 검증 추가, MT_013/MT_014/MT_015 신규) 문서가 다시 뒤처짐 — 사용자가 직접 갱신할 항목.
 9. ~~Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번)~~ — **2026-08-09 완료.**
     - **AI매칭 동의 + 직군/직무 일치**: `freelancer_embedding`→`freelancer_profile`→`freelancer_condition`/`account` 조인으로 벡터 검색 자체에서 필터링(`EmbeddingRepository.search_similar_freelancers`). `MatchingService.recommend()`가 포지션 조회를 먼저 하도록 순서 변경(job_category/job_role을 얻으려고). `GET /embeddings/positions/{id}/candidates`(Java에서 실제로 부르는 곳이 없는 죽은 엔드포인트)는 job_category/job_role이 없으면 필터 없이 그대로 동작하도록 옵셔널 처리해서 안 건드림.
@@ -175,3 +175,16 @@
 - `FreelancerController` 두 엔드포인트 실구현으로 교체. TODO 주석 제거.
 - 테스트: `FreelancerMyPageIntegrationTest`에 4개 추가(H2, 실제 HTTP 요청) — 이력서 없을 때 미완성 사유, 이력서 완료 후 matchable, PUT 저장이 실제로 DB에 반영되는지(리포지토리 직접 조회로 재확인), AI매칭 동의 해제가 이력서 완료보다 우선하는지. `./gradlew build` 전체 통과.
 - `feature/freelancer-matching-settings` 브랜치. 문서만 올리지 않도록 이번엔 코드와 같은 커밋/브랜치로 묶어서 push.
+
+## 2026-08-10 (계속) — 매칭 요청 응답기한(3일) 자동 만료 + rejectReason 노출
+
+프론트 화면 시안(프리랜서 "프로젝트 제안" 목록) 리뷰 중 발견: `expiresAt`/`expire()`/`isExpired()`는 이미 있었는데 실제로 호출하는 곳이 없어서, 프리랜서가 요청을 방치하면 `REQUEST_PENDING`으로 영원히 남는 상태였음. 이게 단순 표시 문제가 아니라 **무료 재추천 조건(P41)을 실제로 막는 살아있는 버그**였음을 코드 추적으로 확인 — `MatchingRerecommendService.assertFreeAvailable()`가 `existsActiveByProjectId()`를 보는데, 이건 `REJECTED`/`NEGOTIATION_FAILED`가 아닌 상태가 하나라도 있으면 true라서, 응답 안 한 프리랜서 한 명 때문에 클라이언트가 무료 재추천을 영원히 못 쓸 수 있었음.
+
+- `MatchingRequestExpiryScheduler`(신규, `application.scheduler`) — 10분마다 `expireOverdueRequests()` 호출. `ProjectRecruitExpiryScheduler`와 같은 패턴(`@EnableScheduling`은 `ProjectSchedulingConfig`가 전역으로 이미 켜둠).
+- `accept()`/`reject()`는 스케줄러 주기(10분) 사이의 창구를 막기 위해 진입 시 `isExpired()`를 먼저 확인 — 지났으면 그 자리에서 만료 처리 후 `MT_016`으로 막음.
+- **버그 발견·수정**: 처음엔 만료 처리(`request.expire()` + `save()`)를 accept()/reject() 자신의 트랜잭션 안에서 그냥 하고 바로 예외를 던졌는데, 그 예외가 트랜잭션을 롤백시켜서 방금 저장한 만료 처리까지 같이 사라지는 걸 테스트가 잡아냄(코드 리뷰로 트랜잭션 위험을 미리 지적받고, 실제로 통합테스트 돌려보니 그대로 재현됨). `MatchingRequestExpirer`(신규, REQUIRES_NEW)로 분리해서 해결 — `RecruitingStartedPositionHandler`와 같은 이유(자기 자신 호출로는 REQUIRES_NEW가 실제로 적용 안 됨)로 별도 빈으로 뺐음. 스케줄러의 배치 처리(`expireOverdueRequests()`)도 같은 이유로 건별 독립 커밋되도록 이 빈을 거치게 바꿔서, "한 건 실패해도 나머지는 처리한다"는 말이 실제로 성립하게 함.
+- **`rejectReason` 필드 추가**: 화면 시안에 "응답 기한 만료"와 "거절함" 배너가 서로 다른 문구로 있는데, 지금 API는 둘 다 `status=REJECTED`로만 내려가서 프론트가 구분을 못 하는 걸 발견. `MatchingRequestResponse`에 `rejectReason`(`RejectReason` enum, `DIRECT_REJECT`/`EXPIRED`/`NEGOTIATION_FAILED`) 추가 — `status`처럼 원본 enum 그대로 내려주고 라벨 매핑은 프론트가 함. mainTask와 달리 상세 전용이 아니라 목록/카드에도 항상 채워짐(배너가 목록 카드에도 나오는 시안이라서).
+- 화면 시안에 있던 "AI 94%" 점수 배지는 **일부러 안 만듦** — `fitScore`는 클라이언트 등급 가중치가 반영된 값이라 프리랜서에게 그대로 보여주면 "왜 나는 같은 실력인데 점수가 다르지"로 오해살 수 있고, 원래 정책도 "적합도 점수 숫자는 노출 안 함"(클라이언트 후보 카드 기준)이라 프리랜서 쪽도 그대로 따르기로 사용자가 결정.
+- 테스트: `MatchingIntegrationTest`에 4건 추가 — 만료 전 무료 재추천 막힘 → 만료 처리 → `REJECTED`+`rejectReason=EXPIRED` → 무료 재추천 풀림, 스케줄러 주기 사이에 수락 시도하면 `MT_016`으로 막히는 케이스, 직접 거절 시 `rejectReason=DIRECT_REJECT`.
+- 문서 동기화: `.ai/STATE.md`/`HANDOFF.md`/`API.md`(MT_016), `docs/api-spec.csv`(매칭 요청 발송 API 스켈레톤→구현완료), `docs/api-dto.csv`(rejectReason), 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`, Desktop) — mainTask/currentSituation 결정 반영, Pairing-python 하드필터/Stage F 가드 해결 반영, rejectReason 필드+enum 테이블 추가.
+- `feature/matching-request-auto-expire` 브랜치. `./gradlew clean build` 전체 통과 확인.
