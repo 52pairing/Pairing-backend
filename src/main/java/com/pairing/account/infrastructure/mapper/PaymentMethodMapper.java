@@ -21,8 +21,10 @@ public interface PaymentMethodMapper {
                 entity.getCardNumberEnc(),
                 entity.getCardBrand(),
                 entity.getCardLast4(),
+                entity.getCardHolder(),
                 entity.getBankCode(),
                 entity.getAccountNoEnc(),
+                entity.getAccountLast4(),
                 entity.getAccountHolder(),
                 entity.getDeletedAt()
         );

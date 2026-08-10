@@ -19,7 +19,7 @@ public final class PaymentPolicy {
         if (card == null) {
             return null;
         }
-        return new CardCommand(digitsOnly(card.cardNumber()), trim(card.cardBrand()));
+        return new CardCommand(digitsOnly(card.cardNumber()), trim(card.cardBrand()), trim(card.cardHolder()));
     }
 
     public static BankAccountCommand normalize(BankAccountCommand bankAccount) {

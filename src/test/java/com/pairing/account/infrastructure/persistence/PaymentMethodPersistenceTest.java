@@ -50,7 +50,7 @@ class PaymentMethodPersistenceTest {
         paymentMethodRepository.saveAll(List.of(
                 PaymentMethod.createCard(accountId, dataEncryptionPort.encrypt(CARD_NUMBER), "신한카드", "5678"),
                 PaymentMethod.createBankAccount(
-                        accountId, "088", dataEncryptionPort.encrypt(ACCOUNT_NO), "홍길동")));
+                        accountId, "088", dataEncryptionPort.encrypt(ACCOUNT_NO), "6789", "홍길동")));
 
         List<PaymentMethod> saved = paymentMethodRepository.findAllByAccountId(accountId);
         assertThat(saved).hasSize(2);

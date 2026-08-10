@@ -1,10 +1,12 @@
 package com.pairing.account.presentation.api;
 
+import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.AccountStatus;
 import com.pairing.account.domain.model.PaymentMethodType;
 import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SignupType;
+import com.pairing.account.exception.AccountErrorCode;
 import com.pairing.account.presentation.api.request.AccountSuspendRequest;
 import com.pairing.account.presentation.api.request.AccountWithdrawRequest;
 import com.pairing.account.presentation.api.request.BankAccountUpdateRequest;
@@ -52,6 +54,7 @@ import java.util.List;
 public class AccountController {
 
     private final AccountQueryUseCase accountQueryUseCase;
+    private final AccountCommandUseCase accountCommandUseCase;
 
     // ==========================================
     // 결제수단 (마이페이지 > 결제수단)
@@ -76,25 +79,29 @@ public class AccountController {
     @Operation(summary = "카드 정보 수정",
             description = "가입 시 등록된 카드를 수정합니다. 신규 등록·삭제 API는 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "UNAUTHORIZED"})
+    @ApiErrorCodeExample(domain = AccountErrorCode.class, value = {"PAYMENT_METHOD_NOT_FOUND"})
     public ResponseEntity<ApiResponse<PaymentMethodResponse>> updateCard(
             @Valid @RequestBody CardUpdateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 숫자만 정규화 후 암호화 저장
-        return ResponseEntity.ok(ApiResponse.success("CARD_UPDATED", "카드 정보를 수정했습니다.", sampleCard()));
+        PaymentMethodResponse data = PaymentMethodResponse.from(
+                accountCommandUseCase.updateCard(accountId, request.toCommand()));
+        return ResponseEntity.ok(ApiResponse.success("CARD_UPDATED", "카드 정보를 수정했습니다.", data));
     }
 
     @PutMapping("/me/payment-methods/bank-account")
     @Operation(summary = "계좌 정보 수정",
             description = "가입 시 등록된 계좌를 수정합니다. 신규 등록·삭제 API는 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "UNAUTHORIZED"})
+    @ApiErrorCodeExample(domain = AccountErrorCode.class,
+            value = {"UNKNOWN_BANK_CODE", "PAYMENT_METHOD_NOT_FOUND"})
     public ResponseEntity<ApiResponse<PaymentMethodResponse>> updateBankAccount(
             @Valid @RequestBody BankAccountUpdateRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 은행 코드 검증 -> 숫자만 정규화 후 암호화 저장
-        return ResponseEntity.ok(ApiResponse.success("BANK_ACCOUNT_UPDATED", "계좌 정보를 수정했습니다.",
-                sampleBankAccount()));
+        PaymentMethodResponse data = PaymentMethodResponse.from(
+                accountCommandUseCase.updateBankAccount(accountId, request.toCommand()));
+        return ResponseEntity.ok(ApiResponse.success("BANK_ACCOUNT_UPDATED", "계좌 정보를 수정했습니다.", data));
     }
 
     // ==========================================
@@ -172,16 +179,6 @@ public class AccountController {
     // ==========================================
     // 스켈레톤 고정 응답. 구현하면서 제거한다.
     // ==========================================
-
-    private PaymentMethodResponse sampleCard() {
-        return new PaymentMethodResponse(300L, PaymentMethodType.CARD, "신한카드 **** 1234",
-                "신한카드", "1234", "김개발", null, null, null);
-    }
-
-    private PaymentMethodResponse sampleBankAccount() {
-        return new PaymentMethodResponse(301L, PaymentMethodType.BANK_ACCOUNT, "신한은행 **** 6789",
-                null, null, null, "신한은행", "6789", "김개발");
-    }
 
     private AdminAccountDetailResponse sampleAdminAccountDetail() {
         return new AdminAccountDetailResponse(7L, "MEM-001", Role.CLIENT, "김담당", "hr@samsung.com",
