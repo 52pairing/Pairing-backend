@@ -10,6 +10,7 @@ import com.pairing.auth.application.port.VerifiedMarkerPort;
 import com.pairing.auth.application.result.SendCodeResult;
 import com.pairing.auth.application.usecase.EmailVerificationUseCase;
 import com.pairing.auth.domain.model.EmailVerification;
+import com.pairing.auth.domain.model.VerificationPurpose;
 import com.pairing.auth.domain.repository.EmailVerificationRepository;
 import com.pairing.auth.exception.AuthErrorCode;
 import com.pairing.auth.settings.AuthSettings;
@@ -92,6 +93,17 @@ public class EmailVerificationService implements EmailVerificationUseCase {
         emailVerificationRepository.save(verification);
 
         verifiedMarkerPort.mark(email, command.purpose(), authSettings.getVerifiedMarkerTtl());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isVerified(String email, VerificationPurpose purpose) {
+        return verifiedMarkerPort.isVerified(ContactPolicy.normalizeEmail(email), purpose);
+    }
+
+    @Override
+    public void clearVerification(String email, VerificationPurpose purpose) {
+        verifiedMarkerPort.clear(ContactPolicy.normalizeEmail(email), purpose);
     }
 
     private String subjectOf(SendCodeCommand command) {

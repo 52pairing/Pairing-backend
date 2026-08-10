@@ -16,6 +16,7 @@ import com.pairing.auth.application.port.SessionRegistryPort;
 import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
+import com.pairing.auth.domain.model.VerificationPurpose;
 import com.pairing.file.domain.model.FilePurpose;
 import com.pairing.file.infrastructure.persistence.FileJpaEntity;
 import com.pairing.file.infrastructure.persistence.SpringDataFileRepository;
@@ -46,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -407,5 +409,66 @@ class FreelancerMyPageIntegrationTest {
 
         var savedProfile = freelancerProfileRepository.findAll().get(0);
         org.assertj.core.api.Assertions.assertThat(savedProfile.isAiMatchingAgreed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("마이페이지 조회는 계정 정보와 프로필 정보를 함께 반환한다")
+    void findMeReturnsAccountAndProfileInfo() throws Exception {
+        mockMvc.perform(get("/api/v1/freelancers/me").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("홍길동"))
+                .andExpect(jsonPath("$.data.email").value(EMAIL))
+                .andExpect(jsonPath("$.data.phone").value(ACCOUNT_PHONE.replace("-", "")))
+                .andExpect(jsonPath("$.data.birthDate").value("1995-03-01"))
+                .andExpect(jsonPath("$.data.aiMatchingAgreed").value(true))
+                .andExpect(jsonPath("$.data.grade").value("JUNIOR"))
+                .andExpect(jsonPath("$.data.resumeCompleted").value(false));
+    }
+
+    @Test
+    @DisplayName("현재 비밀번호가 맞으면 전화번호·주소·프로필사진·AI매칭동의가 반영되고 다시 조회해도 그대로 나온다")
+    void updateMeWithCorrectPasswordUpdatesProfile() throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("currentPassword", PASSWORD);
+        body.put("profileFileId", profileImageFileId);
+        body.put("phone", "010-9999-0000");
+        body.put("address", "서울 마포구");
+        body.put("aiMatchingAgreed", false);
+
+        mockMvc.perform(patch("/api/v1/freelancers/me")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phone").value("01099990000"))
+                .andExpect(jsonPath("$.data.address").value("서울 마포구"))
+                .andExpect(jsonPath("$.data.aiMatchingAgreed").value(false));
+
+        mockMvc.perform(get("/api/v1/freelancers/me").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phone").value("01099990000"))
+                .andExpect(jsonPath("$.data.address").value("서울 마포구"))
+                .andExpect(jsonPath("$.data.aiMatchingAgreed").value(false));
+    }
+
+    @Test
+    @DisplayName("현재 비밀번호가 틀리면 AC_007로 막고 아무것도 바뀌지 않는다")
+    void updateMeWithWrongPasswordFails() throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("currentPassword", "WrongPassw0rd!");
+        body.put("phone", "010-9999-0000");
+        body.put("address", "서울 마포구");
+        body.put("aiMatchingAgreed", true);
+
+        mockMvc.perform(patch("/api/v1/freelancers/me")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("AC_007"));
+
+        mockMvc.perform(get("/api/v1/freelancers/me").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phone").value(ACCOUNT_PHONE.replace("-", "")));
     }
 }

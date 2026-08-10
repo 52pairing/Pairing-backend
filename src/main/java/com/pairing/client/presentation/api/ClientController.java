@@ -1,5 +1,6 @@
 package com.pairing.client.presentation.api;
 
+import com.pairing.auth.exception.AuthErrorCode;
 import com.pairing.client.application.usecase.ClientCommandUseCase;
 import com.pairing.client.application.usecase.ClientQueryUseCase;
 import com.pairing.client.presentation.api.request.ClientProfileUpdateRequest;
@@ -45,8 +46,9 @@ public class ClientController {
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "마이페이지 수정",
             description = "사업자등록번호·사업 분야·업무이메일·담당자명은 수정할 수 없습니다. "
-                    + "전화번호·기업 로고는 계정 공통 화면(06번 계정 도메인)에서 다룹니다.")
+                    + "수정 전에 POST /api/v1/auth/email-verifications(purpose=PROFILE_UPDATE)로 이메일 인증을 먼저 마쳐야 합니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST"})
+    @ApiErrorCodeExample(domain = AuthErrorCode.class, value = {"EMAIL_NOT_VERIFIED"})
     public ResponseEntity<ApiResponse<ClientMyPageResponse>> updateMe(
             @Valid @RequestBody ClientProfileUpdateRequest request,
             @CurrentAccountId Long accountId

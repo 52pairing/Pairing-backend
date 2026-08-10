@@ -13,6 +13,7 @@ public record ClientMyPageResult(
         EmployeeCount employeeCount,
         String email,
         String name,
+        String phone,
         String address,
         ClientGrade grade,
         Double ratingAverage,

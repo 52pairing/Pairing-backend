@@ -1,5 +1,6 @@
 package com.pairing.freelancer.presentation.api.request;
 
+import com.pairing.freelancer.application.command.FreelancerProfileUpdateCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -9,14 +10,11 @@ import jakarta.validation.constraints.Size;
  * 프리랜서 계정 정보 수정. (요구사항 R17)
  *
  * <p>이름과 생년월일은 수정할 수 없다. 비밀번호 변경은 {@code PATCH /api/v1/auth/password} 를 쓴다.
- * 수정 전에 비밀번호 확인이 필요하므로 currentPassword 를 함께 받는다.
+ * 수정 전에 {@code POST /api/v1/auth/email-verifications}(purpose=PROFILE_UPDATE)로 이메일 인증을
+ * 먼저 마쳐야 한다.
  */
 @Schema(description = "프리랜서 정보 수정 요청")
 public record FreelancerProfileUpdateRequest(
-
-        @Schema(description = "본인 확인용 현재 비밀번호")
-        @Size(max = 20)
-        String currentPassword,
 
         @Schema(description = "프로필 사진 fileId", example = "3")
         Long profileFileId,
@@ -33,4 +31,8 @@ public record FreelancerProfileUpdateRequest(
         @NotNull(message = "AI 매칭 동의 여부는 필수입니다.")
         Boolean aiMatchingAgreed
 ) {
+
+    public FreelancerProfileUpdateCommand toCommand(Long accountId) {
+        return new FreelancerProfileUpdateCommand(accountId, profileFileId, phone, address, aiMatchingAgreed);
+    }
 }

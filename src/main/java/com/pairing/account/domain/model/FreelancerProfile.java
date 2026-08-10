@@ -62,4 +62,11 @@ public class FreelancerProfile {
         this.aiMatchingAgreed = aiMatchingAgreed;
         this.matchingPaused = matchingPaused;
     }
+
+    /** 마이페이지 기본 정보 수정. {@code matchingPaused} 는 별도 화면(매칭 설정) 책임이라 건드리지 않는다. */
+    public void updateProfile(String address, Long profileFileId, boolean aiMatchingAgreed) {
+        this.address = address;
+        this.profileFileId = profileFileId;
+        this.aiMatchingAgreed = aiMatchingAgreed;
+    }
 }

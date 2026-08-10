@@ -1,5 +1,6 @@
 package com.pairing.freelancer.presentation.api.response;
 
+import com.pairing.freelancer.application.result.FreelancerMyPageResult;
 import com.pairing.freelancer.domain.model.FreelancerGrade;
 import com.pairing.global.infrastructure.s3.CdnMappable;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -29,4 +30,22 @@ public record FreelancerMyPageResponse(
         @Schema(description = "이력서 작성 완료 여부", example = "true") boolean resumeCompleted,
         @Schema(description = "탈퇴 가능 여부. 진행 중 프로젝트나 미납금이 있으면 false", example = "true") boolean withdrawable
 ) implements CdnMappable {
+
+    public static FreelancerMyPageResponse from(FreelancerMyPageResult result) {
+        return new FreelancerMyPageResponse(
+                result.accountId(),
+                result.name(),
+                result.email(),
+                result.phone(),
+                result.birthDate(),
+                result.address(),
+                result.profileImageUrl(),
+                result.aiMatchingAgreed(),
+                result.grade(),
+                result.ratingAverage(),
+                result.reviewCount(),
+                result.resumeCompleted(),
+                result.withdrawable()
+        );
+    }
 }

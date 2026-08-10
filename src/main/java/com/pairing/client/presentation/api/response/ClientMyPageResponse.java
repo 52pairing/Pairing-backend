@@ -9,8 +9,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 /**
  * 클라이언트 마이페이지(기업정보). (요구사항 R31)
  *
- * <p>전화번호·기업 로고는 계정 공통 화면("기본 정보" 탭, 06번 계정 도메인)에서 다룬다.
- * 결제수단도 마이페이지 결제수단 탭이 {@code GET /api/v1/accounts/me/payment-methods} 를 따로 호출한다.
+ * <p>결제수단은 마이페이지 결제수단 탭이 {@code GET /api/v1/accounts/me/payment-methods} 를 따로 호출한다.
  */
 @Schema(description = "클라이언트 마이페이지 응답")
 public record ClientMyPageResponse(
@@ -22,6 +21,7 @@ public record ClientMyPageResponse(
         @Schema(description = "직원수 구간") EmployeeCount employeeCount,
         @Schema(description = "업무 이메일(수정 불가)", example = "owner@pairing.com") String email,
         @Schema(description = "담당자명(대표자명, 수정 불가)", example = "홍길동") String name,
+        @Schema(description = "전화번호", example = "01012345678") String phone,
         @Schema(description = "주소") String address,
         @Schema(description = "등급") ClientGrade grade,
         @Schema(description = "평균 별점", example = "4.2") Double ratingAverage,
@@ -38,6 +38,7 @@ public record ClientMyPageResponse(
                 result.employeeCount(),
                 result.email(),
                 result.name(),
+                result.phone(),
                 result.address(),
                 result.grade(),
                 result.ratingAverage(),
