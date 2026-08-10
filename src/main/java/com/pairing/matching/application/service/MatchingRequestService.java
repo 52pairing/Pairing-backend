@@ -30,15 +30,18 @@ import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
 import com.pairing.project.application.usecase.ProjectCommandUseCase;
 import com.pairing.project.domain.model.ProjectStatus;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MatchingRequestService implements MatchingRequestCommandUseCase, MatchingRequestQueryUseCase,
@@ -63,6 +66,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
     private final BudgetCapCalculator budgetCapCalculator;
     private final MatchingRequestResponseAssembler matchingRequestResponseAssembler;
     private final ObjectMapper objectMapper;
+    private final MatchingRequestExpirer matchingRequestExpirer;
 
     @Override
     @Transactional
@@ -107,6 +111,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
     @Transactional
     public MatchingRequestResponse accept(Long requestId, Long accountId) {
         MatchingRequest request = getOwnedByFreelancer(requestId, accountId);
+        expireIfOverdue(request);
         request.accept();
 
         FreelancerConditionResponse condition = freelancerDirectoryPort.findCondition(request.getFreelancerId());
@@ -179,10 +184,56 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
     @Transactional
     public MatchingRequestResponse reject(Long requestId, String reason, Long accountId) {
         MatchingRequest request = getOwnedByFreelancer(requestId, accountId);
+        expireIfOverdue(request);
         request.reject();
         matchingRequestRepository.save(request);
         syncProjectStage(request.getProjectId());
         return matchingRequestResponseAssembler.build(request, accountId);
+    }
+
+    /**
+     * 응답 기한(3일)이 이미 지났는데 스케줄러가 아직 안 돈 사이에 수락/거절 시도가 들어오면, 그 자리에서
+     * 만료로 정리하고 막는다(정책 P45). 스케줄러(10분 주기)만 믿으면 그 사이 창구가 뚫려 있다.
+     *
+     * <p>{@code MatchingRequestExpirer}를 거쳐 별도 트랜잭션(REQUIRES_NEW)으로 커밋한다 — 여기서
+     * 그냥 저장하면, 곧바로 던지는 {@link MatchingErrorCode#REQUEST_EXPIRED} 예외가 accept()/reject()
+     * 자신의 트랜잭션을 롤백시켜서 방금 저장한 만료 처리까지 같이 사라진다.
+     */
+    private void expireIfOverdue(MatchingRequest request) {
+        if (!request.isExpired()) {
+            return;
+        }
+        matchingRequestExpirer.expireNow(request);
+        throw new BusinessException(MatchingErrorCode.REQUEST_EXPIRED);
+    }
+
+    /**
+     * 응답 기한(3일)이 지난 요청을 거절(만료)로 일괄 전이한다(정책 P45, 스케줄러 전용).
+     *
+     * <p>건별로 {@code MatchingRequestExpirer}의 독립 트랜잭션(REQUIRES_NEW)에서 커밋한다 — 한 건이
+     * 실패해도 나머지는 이미 커밋된 채로 남는다. 전체를 하나의 트랜잭션으로 묶으면 한 건의 예외가
+     * 나머지 건의 커밋까지 위태롭게 할 수 있어서(JPA 예외는 세션을 rollback-only로 만들 수 있다), 그
+     * 위험을 여기서 없앤다.
+     */
+    @Override
+    public int expireOverdueRequests() {
+        List<MatchingRequest> overdue = matchingRequestRepository.findExpiredPending(LocalDateTime.now());
+        if (overdue.isEmpty()) {
+            return 0;
+        }
+
+        int expiredCount = 0;
+        for (MatchingRequest request : overdue) {
+            try {
+                matchingRequestExpirer.expireNow(request);
+                expiredCount++;
+            } catch (Exception e) {
+                log.error("[매칭 요청 자동 만료] requestId={} 처리 실패", request.getId(), e);
+            }
+        }
+
+        log.info("[매칭 요청 자동 만료] 대상 {}건 중 {}건 처리 완료", overdue.size(), expiredCount);
+        return expiredCount;
     }
 
     @Override

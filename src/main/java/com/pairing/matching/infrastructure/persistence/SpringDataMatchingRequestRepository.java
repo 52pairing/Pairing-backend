@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +24,8 @@ public interface SpringDataMatchingRequestRepository extends JpaRepository<Match
     boolean existsByProjectIdAndStatusNotIn(Long projectId, List<MatchingStatus> excludedStatuses);
 
     boolean existsByProjectIdAndStatusIn(Long projectId, List<MatchingStatus> statuses);
+
+    List<MatchingRequestJpaEntity> findByStatusAndExpiresAtBefore(MatchingStatus status, LocalDateTime now);
 
     @Query("select m from MatchingRequestJpaEntity m where m.projectId in :projectIds "
             + "and (:positionId is null or m.positionId = :positionId) "

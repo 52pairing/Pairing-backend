@@ -24,6 +24,7 @@ import com.pairing.global.ratelimit.RateLimitProvider;
 import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.RankedFreelancer;
+import com.pairing.matching.application.usecase.MatchingRequestCommandUseCase;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.domain.model.MatchingSnapshot;
@@ -66,6 +67,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -135,6 +137,8 @@ class MatchingIntegrationTest {
     private FreelancerConditionUseCase freelancerConditionUseCase;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    @Autowired
+    private MatchingRequestCommandUseCase matchingRequestCommandUseCase;
 
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
@@ -522,6 +526,70 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"reason":"일정이 맞지 않습니다."}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+    }
+
+    @Test
+    @DisplayName("응답 기한이 지난 요청은 스케줄러가 거절(만료) 처리하고, 그제서야 무료 재추천을 쓸 수 있다")
+    void expiredPendingRequestIsAutoExpiredAndUnblocksFreeRerecommend() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 응답 대기중인 요청이 남아있는 동안은 무료 재추천이 막힌다(P41).
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"FREE"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_008"));
+
+        jdbcTemplate.update("UPDATE matching_request SET expires_at = ? WHERE id = ?",
+                LocalDateTime.now().minusDays(1), requestId);
+
+        int expiredCount = matchingRequestCommandUseCase.expireOverdueRequests();
+        assertThat(expiredCount).isEqualTo(1);
+
+        mockMvc.perform(get("/api/v1/matchings/requests/" + requestId).cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("REJECTED"));
+
+        // 직접 거절과 구분되게 사유가 EXPIRED로 남아야 한다.
+        String rejectReason = jdbcTemplate.queryForObject(
+                "SELECT reject_reason FROM matching_request WHERE id = ?", String.class, requestId);
+        assertThat(rejectReason).isEqualTo("EXPIRED");
+
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));
+
+        // 만료 처리 후에는 "전원 거절"로 간주돼 무료 재추천을 쓸 수 있다.
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"FREE"}"""))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    @DisplayName("스케줄러가 아직 안 돈 사이에 기한 지난 요청을 수락하려 하면 그 자리에서 만료 처리하고 막는다")
+    void acceptOnOverdueRequestExpiresItOnTheSpotInsteadOfAccepting() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 스케줄러(expireOverdueRequests)를 부르지 않고, 기한만 지난 상태를 만든다.
+        jdbcTemplate.update("UPDATE matching_request SET expires_at = ? WHERE id = ?",
+                LocalDateTime.now().minusMinutes(1), requestId);
+
+        mockMvc.perform(post("/api/v1/matchings/requests/" + requestId + "/acceptance")
+                        .cookie(freelancerAccessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_016"));
+
+        mockMvc.perform(get("/api/v1/matchings/requests/" + requestId).cookie(clientAccessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("REJECTED"));
     }

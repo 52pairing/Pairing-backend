@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -80,5 +81,12 @@ public class MatchingRequestRepositoryAdapter implements MatchingRequestReposito
     @Override
     public boolean existsByProjectIdAndStatusIn(Long projectId, List<MatchingStatus> statuses) {
         return springDataRepository.existsByProjectIdAndStatusIn(projectId, statuses);
+    }
+
+    @Override
+    public List<MatchingRequest> findExpiredPending(LocalDateTime now) {
+        return springDataRepository.findByStatusAndExpiresAtBefore(MatchingStatus.REQUEST_PENDING, now).stream()
+                .map(matchingRequestMapper::toDomain)
+                .toList();
     }
 }

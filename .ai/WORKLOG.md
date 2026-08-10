@@ -118,7 +118,7 @@
 4. ~~budgetCap의 WEEK→개월 환산 규칙~~ — 4주=1개월로 확정, 반영 완료.
 5. ~~임베딩 텍스트에 `detailScope`/`extraNote`도 빠져있음(HANDOFF 22번)~~ — 완료.
 6. ~~`resolveFreelancerId`/`findCondition`(freelancerId 기준)~~ — 완료. 계정 승인은 이미 끝나 있었고 매칭 어댑터만 안 바꿔놓은 상태였음.
-7. `expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현 — 나중에 만들 때 `syncStage` 호출도 같이 넣을 것(HANDOFF 25번 참고).
+7. ~~`expire()`(응답기한 만료) 자동 처리 자체가 아직 미구현~~ — **2026-08-10 완료.** `MatchingRequestExpiryScheduler` 신규(10분 주기) + `accept()`/`reject()`에 `isExpired()` 선체크 추가(스케줄러 주기 사이 창구 방지, MT_016). 아래 "매칭 요청 응답기한 자동 만료" 참고.
 8. ~~`AI매칭_API_화면매핑_최신본.md`(MT_009/quantity 경고) 반영 확인~~ — 완료. 그 이후 코드가 또 바뀌어서(MT_012 실제 검증 추가, MT_013/MT_014/MT_015 신규) 문서가 다시 뒤처짐 — 사용자가 직접 갱신할 항목.
 9. ~~Pairing-python `search_similar_freelancers` 하드필터 추가(HANDOFF 10번)~~ — **2026-08-09 완료.**
     - **AI매칭 동의 + 직군/직무 일치**: `freelancer_embedding`→`freelancer_profile`→`freelancer_condition`/`account` 조인으로 벡터 검색 자체에서 필터링(`EmbeddingRepository.search_similar_freelancers`). `MatchingService.recommend()`가 포지션 조회를 먼저 하도록 순서 변경(job_category/job_role을 얻으려고). `GET /embeddings/positions/{id}/candidates`(Java에서 실제로 부르는 곳이 없는 죽은 엔드포인트)는 job_category/job_role이 없으면 필터 없이 그대로 동작하도록 옵셔널 처리해서 안 건드림.
