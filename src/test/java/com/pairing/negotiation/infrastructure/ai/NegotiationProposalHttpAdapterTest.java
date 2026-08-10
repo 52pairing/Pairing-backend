@@ -25,14 +25,19 @@ class NegotiationProposalHttpAdapterTest {
                 new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null),
                 new ConditionInput(402L, ConditionType.WORK_STYLE, "ONSITE", "REMOTE", null, null)));
 
-        List<NegotiationProposalPort.Proposal> proposals = adapter.propose(context);
+        NegotiationProposalPort.A2AResult result = adapter.propose(context);
 
-        assertThat(proposals).hasSize(2);
-        assertThat(proposals).extracting(NegotiationProposalPort.Proposal::conditionId)
+        // 모든 조건에 결과(outcome)가 채워진다 → 루프가 멈추지 않는다.
+        assertThat(result.outcomes()).hasSize(2);
+        assertThat(result.outcomes()).extracting(NegotiationProposalPort.ConditionOutcome::conditionId)
                 .containsExactlyInAnyOrder(401L, 402L);
         // AMOUNT 는 숫자라 중간값(stub)
-        assertThat(proposals.stream()
-                .filter(p -> p.conditionId().equals(401L)).findFirst().orElseThrow().proposedValue())
+        assertThat(result.outcomes().stream()
+                .filter(o -> o.conditionId().equals(401L)).findFirst().orElseThrow().proposedValue())
                 .isEqualTo("5000000");
+        // stub 폴백도 대리인 대화 로그(메시지)를 남긴다.
+        assertThat(result.messages()).isNotEmpty();
+        assertThat(result.messages())
+                .allMatch(m -> m.conditionId().equals(401L) || m.conditionId().equals(402L));
     }
 }

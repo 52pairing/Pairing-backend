@@ -18,6 +18,7 @@ public enum NegotiationErrorCode implements BaseErrorCode {
     CONDITION_ALREADY_LOCKED(HttpStatus.CONFLICT, "NG_006", "이미 합의된 조건입니다."),
     NO_PROPOSAL_TO_RESPOND(HttpStatus.BAD_REQUEST, "NG_007", "응답할 제안이 없는 조건입니다."),
     NOT_IN_PROGRESS(HttpStatus.CONFLICT, "NG_008", "진행 중인 협상이 아닙니다."),
+    NOT_AGREED(HttpStatus.CONFLICT, "NG_009", "타결된 협상이 아닙니다."),
     ROUND_LIMIT_REACHED(HttpStatus.BAD_REQUEST, "NG_010", "라운드 상한(15회)을 소진했습니다."),
     CHAT_INPUT_DISABLED(HttpStatus.FORBIDDEN, "NG_020", "아직 채팅 입력이 활성화되지 않았습니다.");
 

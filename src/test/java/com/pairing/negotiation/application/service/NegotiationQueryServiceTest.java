@@ -14,6 +14,7 @@ import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
+import com.pairing.negotiation.application.result.AgreedNegotiationView;
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.ConditionType;
@@ -162,6 +163,52 @@ class NegotiationQueryServiceTest {
         assertThat(view.waitingForMe()).isTrue();
         assertThat(view.lastProposalBy()).isEqualTo(SenderType.SYSTEM);
         assertThat(view.lastProposalAt()).isNotNull();
+    }
+
+    /** 계약용 조회 대상: AMOUNT 를 락하고 타결시킨다. */
+    private void settleNegotiation() {
+        Negotiation n = negotiationRepository.findById(negotiationId).orElseThrow();
+        n.getConditions().get(0).lock("3600000");
+        n.agree(3_600_000L);
+        negotiationRepository.save(n);
+    }
+
+    @Test
+    @DisplayName("계약용 조회: 뷰어 계정 없이 타결 스냅샷을 돌려주고, 합의값은 계약 표기 그대로다")
+    void agreedForContract() {
+        settleNegotiation();
+
+        AgreedNegotiationView view = queryUseCase.getAgreedForContract(negotiationId);
+
+        assertThat(view.negotiationId()).isEqualTo(negotiationId);
+        assertThat(view.requestId()).isEqualTo(100L);
+        assertThat(view.projectId()).isEqualTo(PROJECT_ID);
+        assertThat(view.positionId()).isEqualTo(10L);
+        assertThat(view.freelancerId()).isEqualTo(freelancerProfileId);
+        assertThat(view.agreedAmount()).isEqualTo(3_600_000L);
+        assertThat(view.conditions()).singleElement()
+                .satisfies(c -> {
+                    assertThat(c.conditionType()).isEqualTo(ConditionType.AMOUNT);
+                    assertThat(c.agreedValue()).isEqualTo("3600000");
+                });
+    }
+
+    @Test
+    @DisplayName("계약용 조회: 타결 전 협상이면 NG_009")
+    void agreedForContractBeforeSettlementThrows() {
+        assertThatThrownBy(() -> queryUseCase.getAgreedForContract(negotiationId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(NegotiationErrorCode.NOT_AGREED);
+    }
+
+    @Test
+    @DisplayName("계약용 조회: 없는 협상이면 NG_001")
+    void agreedForContractNotFoundThrows() {
+        assertThatThrownBy(() -> queryUseCase.getAgreedForContract(999_999L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(NegotiationErrorCode.NEGOTIATION_NOT_FOUND);
     }
 
     @Test

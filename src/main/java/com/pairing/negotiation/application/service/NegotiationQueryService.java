@@ -6,6 +6,7 @@ import com.pairing.negotiation.application.port.out.PartyNameReaderPort;
 import com.pairing.negotiation.application.port.out.PartyProfilePort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort.ProjectView;
+import com.pairing.negotiation.application.result.AgreedNegotiationView;
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.application.usecase.NegotiationQueryUseCase;
 import com.pairing.negotiation.domain.model.Negotiation;
@@ -67,6 +68,17 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
     public NegotiationLogVerifier.Result verifyLog(Long negotiationId, Long accountId) {
         assertParticipant(negotiationId, accountId);
         return NegotiationLogVerifier.verify(messageRepository.findByNegotiationId(negotiationId));
+    }
+
+    @Override
+    public AgreedNegotiationView getAgreedForContract(Long negotiationId) {
+        Negotiation negotiation = negotiationRepository.findById(negotiationId)
+                .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NEGOTIATION_NOT_FOUND));
+        // 서버간 호출이라 뷰어 검증이 없다. 대신 타결 상태를 확인해 확정 안 된 조건이 계약으로 새지 않게 한다.
+        if (negotiation.getStatus() != NegotiationStatus.AGREED) {
+            throw new BusinessException(NegotiationErrorCode.NOT_AGREED);
+        }
+        return AgreedNegotiationView.from(negotiation);
     }
 
     /** 협상 존재 + 당사자 검증(NG_001/NG_002). */
