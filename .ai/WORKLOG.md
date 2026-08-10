@@ -1,5 +1,8 @@
 # 작업 기록 — AI매칭(4번 파트)
 
+시간순 기록이라 중간 날짜의 "다음 할 일"/"미해결" 문장은 그 시점 기준이고 이후에 해결됐을 수 있다.
+**현재 상태는 이 파일 맨 아래(최신 날짜) 항목과 `.ai/STATE.md`/`HANDOFF.md`를 기준으로 판단할 것.**
+
 ## 2026-08-07
 
 - `Pairing-python` 레포 코드 리뷰 완료. 초기에 수업 자료 기준으로 세운 가정(로컬 임베딩, ChromaDB) 정정: 실제로는 Gemini `text-embedding-004` + pgvector.
@@ -114,7 +117,7 @@
 1-2. ~~`feature/project-updated-embedding-refresh` PR 머지~~ — PR #61 merge 완료.
 1-3. ~~`feature/matching-project-stage-sync` PR 리뷰/머지~~ — 매칭↔프로젝트 상태 연동 3건, merge 완료.
 2. ~~`MatchingNegotiationOutcomeUseCase`(협상 결렬/타결 통보) 구현~~ — 매칭+negotiation 양쪽 다 완료.
-3. `currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영(대기 중).
+3. ~~`currentSituation`/`mainTask` 노출 여부 팀 답변 오면 반영~~ — **2026-08-09 결정·구현 완료.** `mainTask`는 상세 조회에서만 노출, `currentSituation`은 노출 안 함으로 확정. `.ai/HANDOFF.md`/프론트 전달 문서 참고.
 4. ~~budgetCap의 WEEK→개월 환산 규칙~~ — 4주=1개월로 확정, 반영 완료.
 5. ~~임베딩 텍스트에 `detailScope`/`extraNote`도 빠져있음(HANDOFF 22번)~~ — 완료.
 6. ~~`resolveFreelancerId`/`findCondition`(freelancerId 기준)~~ — 완료. 계정 승인은 이미 끝나 있었고 매칭 어댑터만 안 바꿔놓은 상태였음.
