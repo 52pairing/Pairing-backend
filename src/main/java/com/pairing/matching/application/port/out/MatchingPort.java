@@ -16,9 +16,9 @@ public interface MatchingPort {
     CandidatePool searchCandidates(Long positionId, int limit);
 
     /**
-     * Stage B~E: 하드필터(AI매칭 동의+직군/직무 일치, AI 서버가 벡터 검색 전에 적용)로 좁힌 후보 풀을
-     * LLM에 넘겨 최종 순위·근거를 받는다. 일정/근무조건/단가는 필터 대상이 아니다 — LLM이 감점+사유로
-     * 반영한다(`.ai/STATE.md` "Stage B 조건필터 폐기" 참고).
+     * Stage B~E: 하드필터(AI매칭 동의+매칭 일시중지 아님+직군/직무 일치, AI 서버가 벡터 검색 전에 적용)로
+     * 좁힌 후보 풀을 LLM에 넘겨 최종 순위·근거를 받는다. 일정/근무조건/단가는 필터 대상이 아니다 — LLM이
+     * 감점+사유로 반영한다(`.ai/STATE.md` "Stage B 조건필터 폐기" 참고).
      *
      * @param excludedFreelancerIds 같은 프로젝트에서 이미 후보로 노출됐던 프리랜서(R02 예외조건 5).
      *                              AI 서버가 벡터 검색 전에 제외해서 풀 크기가 줄어들지 않는다.
