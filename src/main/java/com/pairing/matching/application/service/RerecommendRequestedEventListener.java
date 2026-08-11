@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -24,6 +26,11 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * <p>트랜잭션은 {@link RerecommendRoundFiller}(별도 빈, REQUIRES_NEW)가 잡는다 — 성공 경로와 실패
  * 처리가 서로 다른 트랜잭션이어야 실패 시 FAILED 저장이 같이 롤백되지 않는다.
  *
+ * <p><b>이 메서드 자체에도 REQUIRES_NEW가 필요하다.</b> AFTER_COMMIT 시점에는 원 트랜잭션이
+ * "커밋 완료" 상태로 아직 붙어 있어서, 기본 전파(REQUIRED)로 저장하면 그 끝난 트랜잭션에 합류해
+ * <b>예외도 없이 조용히 버려진다</b>. 알림이 실제로 안 남던 걸 테스트로 잡았다(2026-08-11).
+ * 새 AFTER_COMMIT 리스너에서 뭔가 저장한다면 같은 함정을 조심할 것.
+ *
  * <p><b>성공하든 실패하든 반드시 알림을 보낸다.</b> 안 보내면 클라이언트가 "추천 생성 중" 화면에서
  * 오지 않을 알림을 계속 기다린다.
  */
@@ -37,6 +44,11 @@ class RerecommendRequestedEventListener {
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    // AFTER_COMMIT 시점에는 원 트랜잭션이 "커밋 완료" 상태로 아직 붙어 있다. 여기서 알림 저장처럼
+    // 기본 전파(REQUIRED)로 쓰기를 하면 그 끝난 트랜잭션에 합류해 **조용히 버려진다**(예외도 안 난다).
+    // 그래서 이 메서드가 자기 트랜잭션을 새로 열어 알림이 커밋되게 한다.
+    // 회차 저장은 별도로 REQUIRES_NEW(RerecommendRoundFiller)라 실패해도 여기 트랜잭션과 분리된다.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onRerecommendRequested(RerecommendRequestedEvent event) {
         try {
             MatchingRound filled = rerecommendRoundFiller.fill(event.roundId());

@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -32,6 +33,8 @@ public class PythonMatchingAdapter implements MatchingPort {
 
     private static final String INTERNAL_API_KEY_HEADER = "X-Internal-Api-Key";
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
+    /** AI 서버(Pairing-python)의 "추천할 후보가 없습니다" 에러 코드. 장애가 아니라 정상 결과다. */
+    private static final String CANDIDATE_POOL_EMPTY_CODE = "AI_020";
 
     private final RestClient restClient;
     private final String internalApiKey;
@@ -79,13 +82,27 @@ public class PythonMatchingAdapter implements MatchingPort {
                 "excluded_freelancer_ids", excludedFreelancerIds
         );
 
-        PythonApiResponse<RecommendationData> response = restClient.post()
-                .uri("/api/v1/matchings/recommendations")
-                .headers(this::withCommonHeaders)
-                .body(requestBody)
-                .retrieve()
-                .body(new org.springframework.core.ParameterizedTypeReference<PythonApiResponse<RecommendationData>>() {
-                });
+        PythonApiResponse<RecommendationData> response;
+        try {
+            response = restClient.post()
+                    .uri("/api/v1/matchings/recommendations")
+                    .headers(this::withCommonHeaders)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(new org.springframework.core.ParameterizedTypeReference<PythonApiResponse<RecommendationData>>() {
+                    });
+        } catch (HttpClientErrorException.NotFound e) {
+            // "조건에 맞는 후보가 한 명도 없다"는 장애가 아니라 정상적인 결과다(AI 서버는 이걸
+            // AI_020으로 알린다). 여기서 예외로 두면 서킷브레이커가 실패로 세고, 호출부는
+            // MT_010("AI 서버 호출 실패")로 받아 "일시적 오류니 다시 시도하세요"라고 안내하게 된다.
+            // 아무리 다시 시도해도 후보는 안 생기므로, 빈 결과로 바꿔서 호출부가 회차를
+            // EXHAUSTED로 닫고 "추천할 후보가 더 없습니다"를 안내하게 한다.
+            if (isCandidatePoolEmpty(e)) {
+                log.info("[Pairing-python] 조건에 맞는 후보 없음 (positionId={})", positionId);
+                return new MatchingRecommendation(positionId, null, List.of());
+            }
+            throw e;
+        }
 
         RecommendationData data = requireData(response);
         List<RankedFreelancer> candidates = data.candidates().stream()
@@ -141,6 +158,14 @@ public class PythonMatchingAdapter implements MatchingPort {
     private CandidatePool searchCandidatesFallback(Long positionId, int limit, Throwable t) {
         log.error("[Pairing-python] 후보 조회 실패/서킷 오픈 (positionId={}, 원인: {})", positionId, t.getMessage());
         throw new BusinessException(MatchingErrorCode.AI_SERVER_CALL_FAILED);
+    }
+
+    /**
+     * AI 서버가 "추천할 후보가 없습니다"(AI_020)로 답했는지. 다른 404(포지션 없음 = AI_010 등)와
+     * 구분해야 한다 — 전자는 정상 결과, 후자는 진짜 오류다.
+     */
+    static boolean isCandidatePoolEmpty(HttpClientErrorException.NotFound e) {
+        return e.getResponseBodyAsString().contains(CANDIDATE_POOL_EMPTY_CODE);
     }
 
     private MatchingRecommendation recommendFallback(Long positionId, int recruitCount, int poolMultiplier,

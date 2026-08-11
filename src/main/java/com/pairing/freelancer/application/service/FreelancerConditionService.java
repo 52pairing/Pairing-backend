@@ -46,7 +46,13 @@ public class FreelancerConditionService implements FreelancerConditionUseCase {
                         command.availableFrom(), command.startNegotiable(), command.periodValue(),
                         command.periodUnit(), command.hasFreelanceExperience(), command.careerYears(), skills));
 
-        // TODO: ai-server 연동 준비되면 저장 후 이력서 임베딩 재생성 요청
+        // 임베딩 재생성 신호를 보내지 않는다(예전 TODO 삭제, 2026-08-11 확정).
+        // 프리랜서 임베딩 텍스트에는 문장(자기소개·경력사항)만 들어가고, 여기서 바꾸는
+        // 직군·직무·스킬·연차·단가·근무조건은 안 들어간다 — 다시 만들어도 같은 벡터다.
+        // 이 값들은 AI 서버가 매칭할 때 freelancer_condition 을 직접 읽어 DB 조건점수로
+        // 반영하므로 저장하는 즉시 다음 추천부터 적용된다.
+        // 문장을 고치는 쪽(이력서)은 ResumeService 가 ResumeUpdatedEvent 를 발행한다.
+        // 근거: `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)"
         return freelancerConditionRepository.save(condition);
     }
 }
