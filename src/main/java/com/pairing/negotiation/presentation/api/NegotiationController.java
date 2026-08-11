@@ -18,6 +18,7 @@ import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.presentation.api.support.NegotiationResponseFactory;
 import com.pairing.negotiation.presentation.api.request.NegotiationAnswerRequest;
 import com.pairing.negotiation.presentation.api.request.NegotiationGiveUpRequest;
+import com.pairing.negotiation.presentation.api.request.NegotiationFloorUpdateRequest;
 import com.pairing.negotiation.presentation.api.request.NegotiationStartRequest;
 import com.pairing.negotiation.presentation.api.response.AgentRawLogResponse;
 import com.pairing.negotiation.presentation.api.response.NegotiationAdminDetailResponse;
@@ -36,6 +37,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -140,6 +142,25 @@ public class NegotiationController {
                 .toList();
         negotiationLoopUseCase.start(negotiationId, accountId, floors);
         return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_STARTED", "협상을 시작했습니다.",
+                NegotiationResponseFactory.detail(negotiationQueryUseCase.getDetail(negotiationId, accountId))));
+    }
+
+    @PatchMapping("/{negotiationId}/floors")
+    @Operation(summary = "마지노선 재설정",
+            description = "협상 중에 내 마지노선만 다시 긋습니다. 라운드가 오르지 않고 대리인도 돌지 않습니다. "
+                    + "상대 제안이 내 선 밖이라 수락이 막혔을 때(NG_011) 선을 넓히는 용도입니다. "
+                    + "이미 합의된 쟁점은 고칠 수 없습니다.")
+    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "ACCESS_DENIED"})
+    public ResponseEntity<ApiResponse<NegotiationResponse>> updateFloors(
+            @PathVariable Long negotiationId,
+            @Valid @RequestBody NegotiationFloorUpdateRequest request,
+            @CurrentAccountId Long accountId
+    ) {
+        List<NegotiationLoopUseCase.FloorInput> floors = request.conditions().stream()
+                .map(c -> new NegotiationLoopUseCase.FloorInput(c.conditionType(), c.value()))
+                .toList();
+        negotiationLoopUseCase.updateFloors(negotiationId, accountId, floors);
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_FLOORS_UPDATED", "마지노선을 수정했습니다.",
                 NegotiationResponseFactory.detail(negotiationQueryUseCase.getDetail(negotiationId, accountId))));
     }
 

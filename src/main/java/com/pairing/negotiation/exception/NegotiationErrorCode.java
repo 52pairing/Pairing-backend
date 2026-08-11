@@ -20,6 +20,8 @@ public enum NegotiationErrorCode implements BaseErrorCode {
     NOT_IN_PROGRESS(HttpStatus.CONFLICT, "NG_008", "진행 중인 협상이 아닙니다."),
     NOT_AGREED(HttpStatus.CONFLICT, "NG_009", "타결된 협상이 아닙니다."),
     ROUND_LIMIT_REACHED(HttpStatus.BAD_REQUEST, "NG_010", "라운드 상한(15회)을 소진했습니다."),
+    ACCEPT_BREAKS_FLOOR(HttpStatus.BAD_REQUEST, "NG_011",
+            "내가 정한 마지노선을 벗어난 제안입니다. 수락하려면 마지노선을 먼저 조정하세요."),
     CHAT_INPUT_DISABLED(HttpStatus.FORBIDDEN, "NG_020", "아직 채팅 입력이 활성화되지 않았습니다.");
 
     private final HttpStatus status;

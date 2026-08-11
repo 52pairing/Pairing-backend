@@ -62,6 +62,9 @@ public class GlobalSecurityConfig {
                                 // 인증은 JwtHandshakeInterceptor가 핸드셰이크 시점에 한 번 수행한다.
                                 // 경로는 app.websocket.endpoint 와 맞춰야 한다.
                                 "/ws/**",
+                                // ALB 가 /api/* 만 백엔드로 보내서 /ws 는 백엔드에 닿지 못한다.
+                                // 같은 핸드셰이크를 /api/ws 로도 열어 둔다(app.websocket.endpoint 참고).
+                                "/api/ws/**",
                                 // 시큐리티가 ERROR 디스패치까지 인가 검사를 하므로(6.x 기본값),
                                 // 열어두지 않으면 실제 예외가 401로 덮여 원인 파악이 어려워진다.
                                 "/error"

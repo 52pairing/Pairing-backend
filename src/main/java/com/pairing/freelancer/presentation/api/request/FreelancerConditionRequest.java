@@ -53,14 +53,14 @@ public record FreelancerConditionRequest(
         @NotNull(message = "급여 단위는 필수입니다.")
         PayUnit payUnit,
 
-        @Schema(description = "희망 급여(원). 최소 1만원", example = "5000000")
+        @Schema(description = "희망 급여(원). 만원 단위로만 받는다. 최소 1만원", example = "5000000")
         @NotNull(message = "희망 급여는 필수입니다.")
         @Min(value = 10_000L, message = "최소 1만원 이상입니다.")
         Long payAmount,
 
         // 등록 화면에는 없는 항목이다. 실제 협상 하한선은 협상 시작 시 쟁점별로 따로 받는다.
         // (POST /api/v1/negotiations/{id}/start) 여기 값은 기본값 힌트로만 쓴다.
-        @Schema(description = "최저 수용 금액(원). 선택 항목이며 협상 하한선의 기본값 힌트로만 쓰인다.",
+        @Schema(description = "최저 수용 금액(원). 만원 단위. 선택 항목이며 협상 하한선의 기본값 힌트로만 쓰인다.",
                 example = "4000000")
         @Min(value = 10_000L, message = "최소 1만원 이상입니다.")
         Long minAcceptAmount,

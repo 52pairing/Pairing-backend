@@ -20,6 +20,17 @@ public interface NegotiationLoopUseCase {
 
     void answer(Long negotiationId, Long accountId, int roundNo, List<AnswerInput> answers);
 
+    /**
+     * 협상 중 <b>내 마지노선만</b> 다시 긋는다. 라운드를 올리지도, 대리인을 돌리지도 않는다.
+     *
+     * <p>상대 제안이 내가 그은 선 밖이면 수락이 막히는데({@code NG_011}), 선을 고칠 길이 없으면
+     * 그 안내가 막다른 길이 된다. 양보하려는 사람이 스스로 선을 넓힐 수 있어야 한다.
+     *
+     * <p>조정만으로는 협상이 한 발도 안 나간다 — 대리인은 상대가 재지시할 때 돈다. 그래서
+     * 라운드 상한(15회)을 우회하는 데 쓸 수 없다.
+     */
+    void updateFloors(Long negotiationId, Long accountId, List<FloorInput> floors);
+
     void giveUp(Long negotiationId, Long accountId, String reason);
 
     /**
