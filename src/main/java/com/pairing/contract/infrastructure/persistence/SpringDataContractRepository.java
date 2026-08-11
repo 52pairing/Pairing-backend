@@ -28,7 +28,10 @@ public interface SpringDataContractRepository extends JpaRepository<ContractJpaE
     long countByPositionIdAndStatusIn(Long positionId, List<ContractStatus> statuses);
 
     /**
-     * status 가 null 이면 그 조건을 건너뛴다.
+     * projectId / status 가 null 이면 그 조건을 건너뛴다.
+     *
+     * <p>{@code projectId} 는 프로젝트 상세의 계약 탭이 쓴다. 이 파라미터가 없으면 그 화면이
+     * 헤더의 "내 계약" 과 같은 목록을 받아 다른 프로젝트 계약까지 섞여 나온다.
      *
      * <p>최신순으로 고정한다. 정렬이 없으면 DB 가 임의 순서로 돌려주는데, 페이지를 넘길 때
      * 순서가 달라지면 같은 계약이 두 번 보이거나 빠진다. 방금 타결된 계약이 첫 화면에
@@ -42,10 +45,12 @@ public interface SpringDataContractRepository extends JpaRepository<ContractJpaE
             SELECT c FROM ContractJpaEntity c
              WHERE EXISTS (SELECT 1 FROM ContractSignatureJpaEntity s
                             WHERE s.contract = c AND s.accountId = :accountId)
+               AND (:projectId IS NULL OR c.projectId = :projectId)
                AND (:status IS NULL OR c.status = :status)
              ORDER BY c.id DESC
             """)
     Page<ContractJpaEntity> findByParty(@Param("accountId") Long accountId,
+                                        @Param("projectId") Long projectId,
                                         @Param("status") ContractStatus status,
                                         Pageable pageable);
 }

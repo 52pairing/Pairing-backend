@@ -26,8 +26,13 @@ public interface ContractQueryUseCase {
     /** 다운로드 파일명. {@code CT-2026-000001.pdf} 형식이다. */
     String pdfFileName(Long contractId, Long accountId);
 
-    /** 내 계약 목록. status 가 null 이면 전체 상태를 조회한다. */
-    Page<ContractSummary> findMine(Long accountId, ContractStatus status, Pageable pageable);
+    /**
+     * 내 계약 목록. projectId / status 가 null 이면 그 조건을 걸지 않는다.
+     *
+     * <p>{@code projectId} 를 주면 그 프로젝트의 내 계약만 나온다. 프로젝트 상세의 계약 탭이 쓴다.
+     */
+    Page<ContractSummary> findMine(Long accountId, Long projectId, ContractStatus status,
+                                   Pageable pageable);
 
     /** 상세 조회. 없으면 CT_001, 당사자가 아니면 CT_002. */
     ContractDetail getDetail(Long contractId, Long accountId);

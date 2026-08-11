@@ -60,8 +60,11 @@ public class SettlementController {
     private final ProjectQueryUseCase projectQueryUseCase;
 
     @GetMapping("/mine")
-    @Operation(summary = "내 정산 목록", description = "착수금·성공보수 수수료 내역입니다. 클라이언트와 프리랜서 모두 조회합니다.")
+    @Operation(summary = "내 정산 목록",
+            description = "착수금·성공보수 수수료 내역입니다. 클라이언트와 프리랜서 모두 조회합니다. "
+                    + "projectId 를 주면 그 프로젝트에서 낸 수수료만 나옵니다. 최신순입니다.")
     public ResponseEntity<ApiResponse<PageResponse<SettlementResponse>>> findMine(
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) SettlementPhase phase,
             @RequestParam(required = false) SettlementStatus status,
             @RequestParam(defaultValue = "0") int page,
@@ -72,7 +75,7 @@ public class SettlementController {
         Map<Long, String> titleCache = new HashMap<>();
 
         Page<SettlementResponse> data = settlementQueryUseCase
-                .findMine(accountId, phase, status, PageRequest.of(page, size))
+                .findMine(accountId, projectId, phase, status, PageRequest.of(page, size))
                 .map(result -> toResponse(result, titleCache));
 
         return ResponseEntity.ok(ApiResponse.success("SETTLEMENTS_FOUND", "조회에 성공했습니다.",

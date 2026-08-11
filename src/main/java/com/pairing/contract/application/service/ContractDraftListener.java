@@ -13,9 +13,11 @@ import com.pairing.notification.application.usecase.NotificationCreateUseCase;
 import com.pairing.notification.domain.model.NotificationType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.List;
@@ -23,8 +25,12 @@ import java.util.List;
 /**
  * DRAFT 계약서의 본문 자유 텍스트를 채우고 서명 대기로 넘긴다.
  *
- * <p>협상 타결 <b>커밋 후</b>에 돈다. 문구 정리가 AI 서버 호출이라 같은 트랜잭션에서 하면
- * 사용자가 협상 화면에서 그 응답을 기다리게 된다.
+ * <p>협상 타결 <b>커밋 후, 별도 스레드</b>에서 돈다. 문구 정리가 AI 서버 호출이라 사용자가
+ * 협상 화면에서 그 응답을 기다리면 안 된다. 커밋 후만으로는 부족하고 {@code @Async} 까지 있어야
+ * 실제로 응답이 먼저 나간다.
+ *
+ * <p>그래서 계약은 <b>DRAFT 로 먼저 보인다.</b> 화면은 그 상태를 "계약서 준비 중"으로 처리하고
+ * 서명 버튼을 막아야 한다. 문구가 채워지면 CONTRACT_CREATED 알림이 간다.
  *
  * <p>실패하면 계약은 DRAFT 로 남고 아무도 서명하지 못한다. 업무 범위가 비어 있는 계약서에
  * 서명이 들어가는 것보다 낫다.
@@ -44,9 +50,29 @@ public class ContractDraftListener {
     private final NotificationCreateUseCase notificationCreateUseCase;
     private final ObjectMapper objectMapper;
 
-    @TransactionalEventListener
+    /**
+     * <b>{@code @Async} 가 있어야 협상 타결 응답이 AI 를 기다리지 않는다.</b>
+     *
+     * <p>{@code @TransactionalEventListener} 는 커밋 <i>후</i>에 돌지만 <b>같은 스레드</b>에서
+     * 이어 실행된다. {@code REQUIRES_NEW} 는 트랜잭션만 분리할 뿐 스레드를 나누지 않는다.
+     * 그래서 이게 없으면 계약 생성 API 가 LLM 호출이 끝날 때까지(최대 20초) 응답하지 못한다.
+     *
+     * <p>비동기가 되면 예외가 호출한 쪽으로 가지 않는다. 조용히 사라지면 계약이 DRAFT 에 갇혀
+     * 아무도 서명하지 못하는데 원인을 알 수 없으므로, 여기서 직접 로그로 남긴다.
+     */
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void on(ContractCreatedEvent event) {
+        try {
+            fillDraft(event);
+        } catch (Exception e) {
+            log.error("계약서 문구 작성에 실패했다. 계약이 DRAFT 에 남아 서명할 수 없다. contractId={}",
+                    event.contractId(), e);
+        }
+    }
+
+    private void fillDraft(ContractCreatedEvent event) {
         Contract contract = contractRepository.findById(event.contractId()).orElse(null);
         if (contract == null) {
             return;

@@ -33,8 +33,12 @@ public interface ContractRepository {
     /** 협상 1건당 계약 1건이다. 중복 생성 방지에 쓴다. */
     Optional<Contract> findByNegotiationId(Long negotiationId);
 
-    /** 내 계약 목록. status 가 null 이면 전체 상태를 조회한다. */
-    Page<Contract> findByParty(Long accountId, ContractStatus status, Pageable pageable);
+    /**
+     * 내 계약 목록. projectId / status 가 null 이면 그 조건을 걸지 않는다.
+     *
+     * <p>{@code projectId} 는 프로젝트 상세의 계약 탭용이다. 헤더의 "내 계약" 은 null 로 부른다.
+     */
+    Page<Contract> findByParty(Long accountId, Long projectId, ContractStatus status, Pageable pageable);
 
     /** 프로젝트에 걸린 계약 전체. 진행중 전환 판정과 프로젝트 상세에 쓴다. */
     List<Contract> findByProjectId(Long projectId);

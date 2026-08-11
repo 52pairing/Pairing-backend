@@ -255,11 +255,44 @@ public class Contract {
         this.status = ContractStatus.REJECTED;
     }
 
-    /** 검수 완료. 성공보수 수수료 결제가 남아 있어 프로젝트는 아직 종료가 아니다. */
-    public void complete() {
-        requireStatus(ContractStatus.SIGNED);
+    /**
+     * 업무 시작. 전원 계약 + 전원 착수금 결제로 프로젝트가 진행중이 되면 따라 넘어간다(P47).
+     *
+     * <p>파기·거부된 계약은 건드리지 않는다. 프로젝트 이벤트는 그 프로젝트의 계약 전부에 오는데,
+     * 중도 파기된 사람까지 진행중으로 되돌리면 안 된다.
+     *
+     * @return 이번 호출로 실제 바뀌었으면 true
+     */
+    public boolean startProgress() {
+        if (this.status != ContractStatus.SIGNED) {
+            return false;
+        }
+        this.status = ContractStatus.IN_PROGRESS;
+        return true;
+    }
+
+    /**
+     * 클라이언트가 프로젝트를 완료 처리했다. 성공보수 수수료 결제가 남아 정산 대기다(P32).
+     *
+     * <p>착수금 미납으로 아직 SIGNED 에 머문 계약도 함께 넘긴다. 프로젝트가 완료 처리됐다는 것은
+     * 일이 끝났다는 뜻이고, 미납은 정산이 따로 쫓는다.
+     */
+    public boolean requestCompletion() {
+        if (this.status != ContractStatus.SIGNED && this.status != ContractStatus.IN_PROGRESS) {
+            return false;
+        }
+        this.status = ContractStatus.COMPLETION_PENDING;
+        return true;
+    }
+
+    /** 성공보수 결제까지 끝나 계약이 종료됐다. 리뷰는 이 시점부터 열린다(P51). */
+    public boolean complete() {
+        if (this.status != ContractStatus.COMPLETION_PENDING) {
+            return false;
+        }
         this.status = ContractStatus.COMPLETED;
         this.completedAt = LocalDateTime.now();
+        return true;
     }
 
     /**
@@ -268,7 +301,8 @@ public class Contract {
      * <p>위약금 계산과 정산 생성은 정산 도메인이 한다. 여기서는 사실만 기록한다.
      */
     public void terminate(PartyRole terminatedBy, LocalDate retentionUntil) {
-        if (this.status != ContractStatus.SIGNED && this.status != ContractStatus.COMPLETED) {
+        // 체결된 계약만 파기할 수 있다. 진행중·정산 대기도 체결 이후라 대상이다.
+        if (!this.status.isConcluded()) {
             throw new BusinessException(ContractErrorCode.INVALID_CONTRACT_STATUS);
         }
         if (terminatedBy == null) {
@@ -326,6 +360,17 @@ public class Contract {
                 .filter(s -> s.isOwnedBy(accountId))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ContractErrorCode.NOT_CONTRACT_PARTY));
+    }
+
+    /**
+     * 그 당사자가 서명을 마쳤는가.
+     *
+     * <p>목록 카드가 "클라이언트 서명 ○ / 프리랜서 서명 ✓" 를 그리는 데 쓴다. 상세와 달리 목록은
+     * 서명 전체를 내려주지 않으므로 역할별로 물어본다.
+     */
+    public boolean isSignedBy(PartyRole partyRole) {
+        return signatures.stream()
+                .anyMatch(s -> s.getPartyRole() == partyRole && s.isSigned());
     }
 
     /** 갑·을의 로그인 계정. 계약은 프로필 id 만 들고 있어 서명에서 꺼내 쓴다. */
