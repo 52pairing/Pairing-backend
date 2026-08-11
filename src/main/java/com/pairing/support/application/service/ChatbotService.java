@@ -6,6 +6,7 @@ import com.pairing.support.application.port.out.ChatbotAiPort;
 import com.pairing.support.application.result.ChatbotAnswerResult;
 import com.pairing.support.application.result.ChatbotQuotaResult;
 import com.pairing.support.application.usecase.ChatbotUseCase;
+import com.pairing.support.domain.model.ChatbotIntent;
 import com.pairing.support.domain.model.ChatbotMessage;
 import com.pairing.support.domain.model.ChatbotQuota;
 import com.pairing.support.domain.model.ChatbotSession;
@@ -38,15 +39,15 @@ public class ChatbotService implements ChatbotUseCase {
         quota.increment(); // 한도 초과면 AI 호출 전에 예외로 걸러진다.
 
         ChatbotSession session = resolveSession(command.accountId(), command.sessionId());
-        String answer = chatbotAiPort.ask(command.question());
+        ChatbotAiPort.Answer aiAnswer = chatbotAiPort.ask(command.question());
         ChatbotMessage saved = messageRepository.save(
-                ChatbotMessage.create(session.getId(), command.question(), answer));
+                ChatbotMessage.create(session.getId(), command.question(), aiAnswer.answer()));
 
         // AI 호출이 성공했을 때만 사용량을 반영한다.
         ChatbotQuota persistedQuota = saveQuotaSafely(command.accountId(), quota);
 
         return new ChatbotAnswerResult(session.getId(), saved.getQuestion(), saved.getAnswer(),
-                persistedQuota.remaining(), saved.getCreatedAt());
+                ChatbotIntent.from(aiAnswer.intent()), persistedQuota.remaining(), saved.getCreatedAt());
     }
 
     /**
@@ -78,8 +79,9 @@ public class ChatbotService implements ChatbotUseCase {
     public List<ChatbotAnswerResult> findTodayMessages(Long accountId) {
         int remaining = getQuota(accountId).remainingCount();
         return messageRepository.findByAccountIdAndDate(accountId, LocalDate.now()).stream()
+                // 지난 대화는 intent 를 저장하지 않아 버튼 없이 텍스트만 나간다.
                 .map(message -> new ChatbotAnswerResult(message.getSessionId(), message.getQuestion(),
-                        message.getAnswer(), remaining, message.getCreatedAt()))
+                        message.getAnswer(), ChatbotIntent.NONE, remaining, message.getCreatedAt()))
                 .toList();
     }
 
