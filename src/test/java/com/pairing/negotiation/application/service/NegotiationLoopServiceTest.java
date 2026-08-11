@@ -318,6 +318,67 @@ class NegotiationLoopServiceTest {
     }
 
     @Test
+    @DisplayName("마지노선 재설정: 값만 갱신되고 라운드는 오르지 않는다")
+    void updateFloorsDoesNotAdvanceRound() {
+        startBothSides();   // 프리 하한 4,800,000 / 라운드 1
+        int roundBefore = negotiationRepository.findById(negotiationId).orElseThrow().getTotalRound();
+
+        loopUseCase.updateFloors(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4,200,000")));
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getConditions().get(0).getFreelancerFloor()).isEqualTo("4200000");   // 정규화까지
+        // 조정만으로는 대리인이 돌지 않는다 — 라운드 상한 우회에 쓸 수 없다.
+        assertThat(reloaded.getTotalRound()).isEqualTo(roundBefore);
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .noneMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL
+                        && m.getRoundNo() > roundBefore);
+    }
+
+    @Test
+    @DisplayName("마지노선 재설정: 조정하면 막혔던 수락이 통과한다")
+    void updateFloorsUnblocksAccept() {
+        startBothSides();
+
+        // 프리랜서 하한(480만) 아래인 클라 제안(400만) → 지금은 수락이 막힌다.
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 1,
+                SenderType.CLIENT_AGENT, "400만원을 제안합니다.", "예산 상한", "4000000")));
+        assertThatThrownBy(() -> loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, true, null))))
+                .isInstanceOf(BusinessException.class);
+
+        // 선을 넓히면(480만 → 390만) 같은 제안이 수락된다. 오류 문구가 안내하는 그 경로다.
+        loopUseCase.updateFloors(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "3900000")));
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, true, null)));
+
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
+                .getConditions().get(0).getAgreedValue()).isEqualTo("4000000");
+    }
+
+    @Test
+    @DisplayName("마지노선 재설정: 이미 합의된 쟁점은 고칠 수 없다(NG_006)")
+    void updateFloorsRejectsAgreedCondition() {
+        agreeOnPropose = true;
+        startBothSides();   // 대리인 합의로 AMOUNT 가 락된다
+
+        assertThatThrownBy(() -> loopUseCase.updateFloors(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4200000"))))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("마지노선 재설정: 해석할 수 없는 값은 거부(NG_004)")
+    void updateFloorsRejectsUnparsableValue() {
+        startBothSides();
+
+        assertThatThrownBy(() -> loopUseCase.updateFloors(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "420만원"))))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     @DisplayName("answer 재지시: 해석할 수 없는 새 마지노선은 거부(NG_004)")
     void redirectRejectsUnparsableValue() {
         startBothSides();
