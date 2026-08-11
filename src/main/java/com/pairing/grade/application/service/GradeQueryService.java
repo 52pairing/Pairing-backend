@@ -79,7 +79,7 @@ public class GradeQueryService implements GradeQueryUseCase {
      * <p>계약 도메인에 "프로젝트 상태로 거르는 건수 포트"가 생기면 그걸로 갈아탄다.
      */
     private int countCompletedContracts(Long accountId) {
-        return (int) contractQueryUseCase.findMine(accountId, null, PageRequest.of(0, COUNT_LIMIT))
+        return (int) contractQueryUseCase.findMine(accountId, null, null, PageRequest.of(0, COUNT_LIMIT))
                 .getContent().stream()
                 .filter(summary -> isSettled(summary.contract()))
                 .count();

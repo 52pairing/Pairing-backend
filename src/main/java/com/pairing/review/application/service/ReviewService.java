@@ -123,7 +123,7 @@ public class ReviewService implements ReviewUseCase {
     public List<PendingReviewResult> findPending(Long accountId) {
         // 기준은 "대금 지급 완료"다(R22). 성공보수 수수료까지 결제되면 프로젝트가 CLOSED 가 된다.
         // 계약의 COMPLETED 는 검수 완료 시점이라 성공보수 결제 전이어서 여기서는 쓰지 않는다.
-        return contractQueryUseCase.findMine(accountId, null, PageRequest.of(0, PENDING_LIMIT))
+        return contractQueryUseCase.findMine(accountId, null, null, PageRequest.of(0, PENDING_LIMIT))
                 .getContent().stream()
                 .filter(summary -> isSettled(summary.contract()))
                 .filter(summary -> !reviewRepository.existsByContractIdAndReviewerAccountId(

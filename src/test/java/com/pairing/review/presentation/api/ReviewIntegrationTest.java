@@ -181,7 +181,7 @@ class ReviewIntegrationTest {
                 clientAccountId, "주식회사 페어링", freelancerAccountId, "이프리");
         given(contractQueryUseCase.getDetail(eq(CONTRACT_ID), any())).willReturn(contractDetail);
         // 스텁하지 않으면 mock 이 null 을 돌려줘 작성 대기 조회가 NPE 로 죽는다.
-        given(contractQueryUseCase.findMine(any(), any(), any())).willReturn(Page.empty());
+        given(contractQueryUseCase.findMine(any(), any(), any(), any())).willReturn(Page.empty());
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {
@@ -420,8 +420,10 @@ class ReviewIntegrationTest {
         given(completed.getId()).willReturn(CONTRACT_ID);
         given(completed.getProjectId()).willReturn(PROJECT_ID);
         given(completed.getStatus()).willReturn(ContractStatus.COMPLETED);
-        ContractSummary summary = new ContractSummary(completed, "페어링 웹 리뉴얼", "이프리", false);
-        given(contractQueryUseCase.findMine(eq(clientAccountId), isNull(), any()))
+        // 서명·정산 플래그는 작성 대기 판정과 무관해서 false 로 둔다.
+        ContractSummary summary = new ContractSummary(completed, "페어링 웹 리뉴얼", null, "이프리",
+                false, true, true, true);
+        given(contractQueryUseCase.findMine(eq(clientAccountId), isNull(), isNull(), any()))
                 .willReturn(new PageImpl<>(List.of(summary)));
 
         mockMvc.perform(get("/api/v1/reviews/pending").cookie(clientAccessToken))

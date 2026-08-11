@@ -150,7 +150,7 @@ class GradeIntegrationTest {
         given(verifiedMarkerPort.isVerified(anyString(), any())).willReturn(true);
         given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
         // 완료 계약이 없는 상태가 기본값이다. 스텁하지 않으면 mock 이 null 을 돌려줘 등급 조회가 NPE 로 죽는다.
-        given(contractQueryUseCase.findMine(any(), any(), any())).willReturn(Page.empty());
+        given(contractQueryUseCase.findMine(any(), any(), any(), any())).willReturn(Page.empty());
 
         signUpAndLoginClient();
         signUpAndLoginFreelancer();
