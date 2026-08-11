@@ -18,8 +18,11 @@ import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
+import com.pairing.negotiation.domain.service.NegotiationAgreedValueNormalizer;
+import com.pairing.negotiation.domain.service.NegotiationFloorGuard;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +33,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -61,9 +65,14 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
             throw new BusinessException(NegotiationErrorCode.FLOOR_ALREADY_SUBMITTED);
         }
 
-        // 요청자 본인 쪽 마지노선 저장(쟁점별).
+        // 요청자 본인 쪽 마지노선 저장(쟁점별). 저장 전에 계약 표기로 정규화한다 —
+        // 화면이 "4"(단위 없음)나 "재택"(코드 아닌 라벨)을 보내면 대리인이 비교조차 못 한다.
         for (FloorInput floor : floors) {
-            findByType(negotiation, floor.conditionType()).submitFloor(role, floor.value());
+            NegotiationCondition condition = findByType(negotiation, floor.conditionType());
+            String normalized = NegotiationAgreedValueNormalizer
+                    .normalize(floor.conditionType(), floor.value(), reference(condition))
+                    .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
+            condition.submitFloor(role, normalized);
         }
 
         // 상대가 아직 안 냈으면 여기서 멈춘다. 상대 화면에는 '내 응답 필요'로 뜬다.
@@ -216,9 +225,19 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                 .collect(Collectors.toMap(NegotiationCondition::getId, Function.identity(), (a, b) -> a));
         for (NegotiationProposalPort.ConditionOutcome o : result.outcomes()) {
             NegotiationCondition condition = pendingById.get(o.conditionId());
-            if (condition != null && o.agreed() && !condition.isAgreed()) {
-                condition.lock(o.proposedValue());
+            if (condition == null || !o.agreed() || condition.isAgreed()) {
+                continue;
             }
+            // 대리인이 사람이 그은 선을 넘겨 합의했으면 락하지 않는다. 미합의로 남겨 승인 패널로 넘긴다.
+            // (프롬프트로 유도하지만 LLM 이 지킨다는 보장이 없어 여기서 최종 확인한다)
+            if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), o.proposedValue(),
+                    condition.getClientFloor(), condition.getFreelancerFloor())) {
+                log.warn("마지노선을 넘은 합의라 락하지 않음(사람 승인으로 이관): negotiationId={}, conditionId={}, "
+                                + "type={}, value={}", negotiation.getId(), condition.getId(),
+                        condition.getConditionType(), o.proposedValue());
+                continue;
+            }
+            condition.lock(o.proposedValue());
         }
         return messages;
     }
@@ -254,6 +273,11 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                 .filter(c -> c.getConditionType() == type)
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
+    }
+
+    /** PERIOD 처럼 단위가 빠졌을 때 복원 기준이 되는 기존 값(희망값). */
+    private String reference(NegotiationCondition condition) {
+        return condition.getClientValue() != null ? condition.getClientValue() : condition.getFreelancerValue();
     }
 
     private PartyRole resolveRole(Negotiation negotiation, Long accountId) {
