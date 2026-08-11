@@ -55,9 +55,16 @@ public class StompWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
 
-    /** 핸드셰이크 경로. 바꾸면 GlobalSecurityConfig의 permitAll 경로도 함께 맞춰야 한다. */
+    /**
+     * 핸드셰이크 경로(쉼표로 여러 개). 바꾸면 GlobalSecurityConfig의 permitAll 경로도 함께 맞춰야 한다.
+     *
+     * <p>배포 환경의 ALB 리스너가 {@code /api/*} 만 백엔드로 보내고 나머지는 프론트로 보낸다.
+     * 그래서 {@code /ws} 로 온 핸드셰이크는 백엔드에 닿지도 못하고 프론트의 404 로 끝난다(실측).
+     * ALB 규칙 추가를 기다리는 대신 {@code /api/ws} 를 함께 열어 우리 쪽에서 해결한다.
+     * 둘 다 등록하므로 프론트 전환 시점과 무관하게 끊기는 구간이 없다.
+     */
     @Value("${app.websocket.endpoint}")
-    private String endpoint;
+    private String endpoints;
 
     /** REST와 동일한 허용 오리진 목록을 사용한다. */
     @Value("${app.cors.allowed-origins}")
@@ -73,9 +80,17 @@ public class StompWebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // SockJS 폴백은 켜지 않는다. 필요하면 .withSockJS() 를 붙이되, 프론트엔드도 SockJS 클라이언트를 써야 한다.
-        registry.addEndpoint(endpoint)
+        registry.addEndpoint(parseEndpoints())
                 .setAllowedOriginPatterns(parseOrigins())
                 .addInterceptors(jwtHandshakeInterceptor);
+    }
+
+    /** 쉼표로 구분된 핸드셰이크 경로들. 하나만 적어도 동작한다. */
+    private String[] parseEndpoints() {
+        return Arrays.stream(endpoints.split(","))
+                .map(String::trim)
+                .filter(path -> !path.isEmpty())
+                .toArray(String[]::new);
     }
 
     private String[] parseOrigins() {
