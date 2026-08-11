@@ -233,3 +233,45 @@ Pairing-python 담당 팀원이 임베딩 모델을 `text-embedding-004` → `ge
 화면이라 그냥 비동기로 던지면 보여줄 게 없다. (a) 현행 유지 + 프론트 로딩 UI, (b) 202 응답 후
 WebSocket 알림(이 프로젝트에 STOMP·알림 도메인이 이미 있음) 중 선택 필요 — 프론트 작업이 같이
 필요해서 사용자가 팀과 협의하기로 함.
+
+## 2026-08-10 (계속) — 재추천 비동기 전환 + 매칭 알림 5종
+
+강사 요구사항 2번(재추천도 비동기)과 알림 담당자의 `NotificationCreateUseCase` 연동 요청을 함께 처리.
+재추천 방식은 사용자가 팀과 협의해 **(b) 비동기 + 알림 푸시**로 결정.
+
+**재추천 비동기 전환**
+
+- `POST /positions/{id}/rerecommendations`가 `202` + 본문 없음으로 바뀐다(기존 `201` + 후보 목록).
+  후보는 AI 호출이 끝난 뒤 비동기로 채워지고, 완료되면 `MATCHING_RECOMMENDED` 알림이 간다.
+- **검증은 동기로 남겼다.** 한도 초과(MT_008)·모집 종료(MT_014)·quantity 누락(MT_012)은 버튼을 누른
+  즉시 알려줘야지 알림으로 실패를 통보하면 쓰기 나쁘다.
+- **회차 레코드 생성까지도 동기다.** `MatchingRoundCreationService.createRound`를
+  `openRound`(회차만)와 `fillCandidates`(AI 호출 + 후보 저장)로 쪼갰다. 회차가 저장돼야
+  `assertFreeAvailable`이 다음 요청을 막는데, LLM까지 기다렸다 저장하면 그 사이 같은 버튼을 두 번
+  누르면 회차가 두 개 생긴다(무료 1회 정책 구멍). `createRound`는 둘을 합친 형태로 남겨서 최초
+  추천(모집 시작, 이미 비동기 문맥)이 계속 쓴다.
+- `RerecommendRequestedEvent` + `RerecommendRequestedEventListener`(`@Async` + AFTER_COMMIT +
+  REQUIRES_NEW) 신규. AFTER_COMMIT이어야 비동기 스레드가 방금 만든 회차를 조회할 수 있다.
+- 후보가 0명이어도 알림을 보낸다 — 기다리는 쪽에서는 "아직 처리 중"과 구분이 안 되기 때문.
+
+**알림 5종**(`MatchingNotifier`로 모음 — 문구·링크가 흩어지면 같은 상황에 다른 말이 나간다)
+
+| 시점 | 받는 사람 | 타입 |
+| --- | --- | --- |
+| 매칭 요청 발송 | 프리랜서 | `MATCHING_REQUESTED` |
+| 요청 수락 | 클라이언트 | `MATCHING_ACCEPTED` |
+| 요청 거절 | 클라이언트 | `MATCHING_REJECTED` |
+| 응답기한 만료(자동) | 클라이언트 | `MATCHING_REJECTED` (문구로 구분) |
+| 재추천 완료 | 클라이언트 | `MATCHING_RECOMMENDED` |
+
+- 만료 알림은 `MatchingRequestExpirer.expireNow()`에 넣었다 — 스케줄러 경로와 수락/거절 중 발견되는
+  경로가 모두 여기를 지나므로 한 번만 보내진다.
+- 알림용으로 `FreelancerDirectoryPort.resolveAccountId(freelancerId)` 신규(기존 `resolveFreelancerId`의
+  반대 방향). 알림은 계정 단위인데 매칭이 들고 있는 건 freelancerId뿐이라 변환이 필요했다.
+- **알림 실패가 본 기능을 막지 않는다.** 매칭 요청은 정상 처리됐는데 알림 한 건 때문에 500이 나가면
+  안 되므로 `MatchingNotifier`에서 예외를 삼키고 로그만 남긴다.
+
+**테스트**: 재추천 통합테스트 4건을 새 흐름(202 → 후보 조회 API 재호출)으로 수정하고
+`MatchingIntegrationTest`에도 `SyncTaskExecutorTestConfig`를 `@Import`. `./gradlew clean build` 통과.
+(전체 빌드 1회차에서 `ChatServiceTest`가 실패했는데 단독 실행은 통과하고 2회차 전체 빌드도 통과 —
+이 레포에 이미 알려진 풀스위트 전용 flaky 이슈로 판단, 매칭 변경과 무관.)

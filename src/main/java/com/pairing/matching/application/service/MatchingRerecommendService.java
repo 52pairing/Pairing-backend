@@ -2,6 +2,7 @@ package com.pairing.matching.application.service;
 
 import com.pairing.global.exception.BusinessException;
 import com.pairing.global.exception.GlobalErrorCode;
+import com.pairing.matching.application.event.RerecommendRequestedEvent;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.matching.application.usecase.MatchingRerecommendUseCase;
@@ -10,9 +11,9 @@ import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import com.pairing.matching.exception.MatchingErrorCode;
-import com.pairing.matching.presentation.api.response.CandidateListResponse;
 import com.pairing.project.domain.model.ProjectStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,12 +28,18 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingRequestRepository matchingRequestRepository;
     private final MatchingRoundCreationService matchingRoundCreationService;
-    private final CandidateResponseAssembler candidateResponseAssembler;
+    private final ApplicationEventPublisher eventPublisher;
 
+    /**
+     * 검증과 회차 생성까지만 하고 바로 돌아온다. 후보 채우기(AI 호출)는
+     * {@link RerecommendRequestedEventListener}가 커밋 후 비동기로 처리하고, 완료되면 알림을 보낸다.
+     *
+     * <p>검증은 동기로 남겨둔다 — 한도 초과(MT_008)·모집 종료(MT_014) 같은 건 버튼을 누른 즉시
+     * 알려줘야지, 비동기로 넘겨서 알림으로 실패를 통보하면 쓰기 나쁘다.
+     */
     @Override
     @Transactional
-    public CandidateListResponse rerecommend(Long positionId, RecommendationType type, Integer quantity,
-                                             Long accountId) {
+    public void rerecommend(Long positionId, RecommendationType type, Integer quantity, Long accountId) {
         if (type != RecommendationType.FREE && type != RecommendationType.PAID) {
             throw new BusinessException(MatchingErrorCode.INVALID_RERECOMMEND_TYPE);
         }
@@ -61,9 +68,11 @@ public class MatchingRerecommendService implements MatchingRerecommendUseCase {
             // 결제 연동 전이라 costAmount는 회차에 기록만 한다. 실제 결제 처리는 payment 도메인이 붙으면 추가한다.
         }
 
-        MatchingRound round = matchingRoundCreationService.createRound(projectId, positionId, type, recruitCount,
+        // 회차 레코드까지만 동기로 만든다. 저장돼야 한도 검증(assertFreeAvailable/assertPaidAvailable)이
+        // 뒤이은 중복 요청을 막을 수 있다. 실제 후보 채우기(AI 호출)는 커밋 후 비동기로 넘긴다.
+        MatchingRound round = matchingRoundCreationService.openRound(projectId, positionId, type, recruitCount,
                 costAmount);
-        return candidateResponseAssembler.build(round, accountId);
+        eventPublisher.publishEvent(new RerecommendRequestedEvent(round.getId(), accountId));
     }
 
     /**

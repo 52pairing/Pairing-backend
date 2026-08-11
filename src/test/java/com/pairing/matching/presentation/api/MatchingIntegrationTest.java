@@ -59,6 +59,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.pairing.global.config.SyncTaskExecutorTestConfig;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -90,6 +92,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>ProjectDirectoryPort/NegotiationPort/FreelancerDirectoryPort 전부 실제 도메인을 그대로 타므로
  * 이 테스트가 통과하면 어댑터 교체가 실제로 맞물려 동작한다는 뜻이다(seedFreelancerProfile 참고).
  */
+@Import(SyncTaskExecutorTestConfig.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class MatchingIntegrationTest {
@@ -568,7 +571,7 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"type":"FREE"}"""))
-                .andExpect(status().isCreated());
+                .andExpect(status().isAccepted());
     }
 
     @Test
@@ -606,7 +609,12 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"type":"PAID","quantity":2}"""))
-                .andExpect(status().isCreated())
+                // 후보 목록은 이 응답에 없다 — AI 호출이 끝난 뒤 비동기로 채워지고 알림으로 알려준다.
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.candidates.length()").value(1))
                 .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
     }
@@ -625,8 +633,7 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"type":"PAID","quantity":2}"""))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.candidates.length()").value(0));
+                .andExpect(status().isAccepted());
 
         verify(matchingPort).recommend(POSITION_ID, 2, 3, List.of(freelancerAccountId));
     }
@@ -648,7 +655,11 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"type":"PAID","quantity":1}"""))
-                .andExpect(status().isCreated())
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.candidates.length()").value(1))
                 .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
     }

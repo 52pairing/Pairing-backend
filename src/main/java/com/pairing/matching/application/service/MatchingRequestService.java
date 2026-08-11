@@ -67,6 +67,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
     private final MatchingRequestResponseAssembler matchingRequestResponseAssembler;
     private final ObjectMapper objectMapper;
     private final MatchingRequestExpirer matchingRequestExpirer;
+    private final MatchingNotifier matchingNotifier;
 
     @Override
     @Transactional
@@ -104,7 +105,10 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         MatchingRequest request = MatchingRequest.create(projectId, positionId, candidateId,
                 candidate.getFreelancerId());
         request = matchingRequestRepository.save(request);
-        return matchingRequestResponseAssembler.build(request, accountId);
+
+        MatchingRequestResponse response = matchingRequestResponseAssembler.build(request, accountId);
+        matchingNotifier.notifyRequested(request, response.projectTitle());
+        return response;
     }
 
     @Override
@@ -131,6 +135,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         request.advanceStatus(MatchingStatus.NEGOTIATING);
         matchingRequestRepository.save(request);
         projectCommandUseCase.startNegotiating(request.getProjectId());
+        matchingNotifier.notifyAccepted(request);
         return matchingRequestResponseAssembler.build(request, accountId);
     }
 
@@ -188,6 +193,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         request.reject();
         matchingRequestRepository.save(request);
         syncProjectStage(request.getProjectId());
+        matchingNotifier.notifyRejected(request);
         return matchingRequestResponseAssembler.build(request, accountId);
     }
 

@@ -16,6 +16,12 @@ public interface FreelancerDirectoryPort {
     /** 로그인 계정(accountId) -&gt; freelancer_profile.id. 매칭 요청·스냅샷은 전부 이 값을 쓴다(account.id 아님). */
     Long resolveFreelancerId(Long accountId);
 
+    /**
+     * freelancer_profile.id -&gt; 로그인 계정(accountId). {@link #resolveFreelancerId}의 반대 방향이다.
+     * 알림은 계정 단위로 보내는데 매칭이 들고 있는 건 freelancerId뿐이라 변환이 필요하다.
+     */
+    Long resolveAccountId(Long freelancerId);
+
     /** 후보 카드 노출용 요약(이름/사진/등급/평점). */
     FreelancerCardSummary findCardSummary(Long freelancerId);
 

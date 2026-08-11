@@ -254,7 +254,7 @@
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
 | GET | `/api/v1/matchings/positions/{positionId}/candidates` | CLIENT | AI 추천 후보 목록 |
-| POST | `/api/v1/matchings/positions/{positionId}/rerecommendations` | CLIENT | body `{type, quantity}` 재추천 |
+| POST | `/api/v1/matchings/positions/{positionId}/rerecommendations` | CLIENT | body `{type, quantity}` 재추천. **비동기** — `202`로 즉시 응답(후보 목록 없음), 완료되면 `MATCHING_RECOMMENDED` 알림 후 후보 조회 API 재호출. 한도 초과 등 검증 실패는 즉시 응답 |
 | POST | `/api/v1/matchings/candidates/{candidateId}/rejection` | CLIENT | 추천 후보 거절 |
 | POST | `/api/v1/matchings/requests` | CLIENT | body `{positionId, candidateIds[]}` 매칭 요청 |
 | GET | `/api/v1/matchings/requests?projectId=&positionId=&status=&page=&size=` | CLIENT | 보낸 요청 |
