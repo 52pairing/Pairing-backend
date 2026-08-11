@@ -549,3 +549,47 @@ AI 서버는 `text`를 20000자로 제한하는데 Java는 자르지 않고 보�
 
 나머지 공유 3건(임베딩 시점=결제 완료 / `current_situation` 사용 / 사전검수 기준 유지)은
 전부 동의받았고, **정책 P03 문구는 3번이 코드에 맞춰 고쳐주기로 했다.**
+
+## 2026-08-11 (마무리) — 0단계 완료 + 세 브랜치 develop 동기화
+
+### 0단계 — 되돌리기 완료
+
+재설계 확정에 따라 같은 브랜치의 `0157334`를 되돌렸다(`e2e7ef3`).
+
+- `FreelancerEmbeddingTextBuilder`에서 조건 필드 제거, `buildText(summary)` 단일 인자로 복귀
+- `ConditionUpdatedEvent` / 리스너 / 테스트 삭제
+- `FreelancerEmbeddingRefresher`는 **유지** — 이력서 저장과 관리자 재색인이 같은 조립을 써야
+  어디서 저장했느냐에 따라 벡터가 갈리지 않는다
+- `PositionEmbeddingTextBuilder`의 `mainTask` 추가는 **유지** — 새 설계에도 담당업무가 대상이다
+
+**머지 전에 되돌린 이유**: 그대로 머지하면 `ConditionUpdatedEvent`가 develop에 들어갔다가
+하루 만에 삭제되고, 임베딩 규칙이 바뀌었다가 또 바뀌어서 **재색인을 두 번** 해야 한다.
+
+### develop 동기화 중 발견 — 임베딩 원본이 TEXT가 아니다
+
+`develop`에 자기소개·경력 담당업무 길이 제한이 들어왔다.
+
+| | 전 | 후 |
+|---|---|---|
+| 자기소개 | TEXT | `@Size(max=1500)`, 컬럼 `length=2000` |
+| 경력 담당업무 | TEXT | `@Size(max=2000)`, 컬럼 `length=2000` |
+| 경력 건수 | 무제한 | **여전히 무제한**(`@NotEmpty`만) |
+
+필드별 상한은 생겼지만 **건수 상한이 없어서** 경력 10건이면 2만 자를 그대로 넘긴다.
+20,000자 truncation은 계속 필요하다. 근거가 바뀌었으므로 주석만 사실에 맞게 고쳤다(`5f53ed2`).
+
+### 세 브랜치 전부 develop 최신 반영 (충돌 0건)
+
+| 레포 | 브랜치 | develop 대비 | 검증 |
+|---|---|---|---|
+| backend | `fix/matching-candidate-selection-guard` | ahead 14 / behind 0 | `build` 통과 |
+| backend | `fix/matching-settlement-response-and-policy-doc` | ahead 3 / behind 0 | `build` 통과 |
+| python | `feature/matching-llm-retry-and-pool-relax` | ahead 2 / behind 0 | `pytest` 51 / `ruff` 통과 |
+
+### 참고 — 로컬 기동 실패는 코드 문제가 아니었다
+
+`ChatEventStompAdapter`가 `SimpMessagingTemplate`을 못 찾는다는 기동 실패를 봤는데,
+같은 브랜치에서 `PairingApplicationTests`(`@SpringBootTest`, 전체 컨텍스트 기동)가 통과한다.
+로그의 `restartedMain`은 devtools 재시작이고, **빌드 중 클래스 파일이 반쯤 써진 상태에서
+재시작해서** 난 것이다. 앱을 다시 띄우면 사라진다. 브랜치를 바꿔가며 빌드할 때 앱을 켜두면
+이런 착시가 생기니 주의.
