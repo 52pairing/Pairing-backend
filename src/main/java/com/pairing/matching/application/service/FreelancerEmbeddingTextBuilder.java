@@ -21,9 +21,10 @@ final class FreelancerEmbeddingTextBuilder {
      * 임베딩 호출은 이벤트 리스너에서 예외를 잡아 로그만 남기므로 <b>아무도 모르게 실패</b>한다.
      * 그 프리랜서는 임베딩이 없어 매칭 후보에 영원히 안 잡힌다.
      *
-     * <p>포지션 쪽은 원본이 전부 {@code VARCHAR(1500)}이라 상한을 넘길 수 없지만, 여기 원본인
-     * {@code resume.self_introduction}과 {@code resume_career.job_description}은 {@code TEXT}라
-     * 길이 제한이 없다. 경력이 많으면 실제로 넘길 수 있어서 여기서 자른다.
+     * <p>포지션 쪽은 원본이 전부 {@code VARCHAR(1500)}이라 상한을 넘길 수 없다. 프리랜서 쪽은
+     * 필드별로는 제한이 있지만(자기소개 1500자, 경력 담당업무 2000자) <b>경력 건수에 상한이
+     * 없다</b>({@code ResumeRequest}는 {@code @NotEmpty}만 건다). 경력 10건이면 2만 자를
+     * 그대로 넘기므로 여기서 자른다.
      */
     private static final int MAX_TEXT_LENGTH = 20_000;
 
