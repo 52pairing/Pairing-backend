@@ -31,8 +31,8 @@ import java.util.List;
  * <p>역할에 따라 등급 코드가 다르다. 클라이언트는 SILVER/GOLD/DIAMOND, 프리랜서는 JUNIOR/SENIOR/MASTER.
  * 클라이언트 화면은 수수료를 숫자 표로, 프리랜서 화면은 문구로 보여줘서 두 형태를 모두 내려준다.
  *
- * <p>{@code GET /me} 의 완료 건수는 contract 도메인이 아직 없어 항상 0이고, 다음 등급 안내 문구도
- * 별점 조건 충족 여부만 알려준다(TODO: contract 도메인 구현되면 완료 건수까지 정확히 계산).
+ * <p>{@code GET /me} 의 완료 건수는 대금 지급까지 끝난 계약 수다. 성공보수 수수료가 결제되어
+ * 프로젝트가 종료된 건만 센다.
  */
 @RestController
 @RequestMapping("/api/v1/grades")

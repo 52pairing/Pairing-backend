@@ -1,6 +1,7 @@
 package com.pairing.review.application.usecase;
 
 import com.pairing.review.application.command.CreateReviewCommand;
+import com.pairing.review.application.result.PendingReviewResult;
 import com.pairing.review.application.result.ReviewResult;
 import com.pairing.review.application.result.ReviewSummaryResult;
 import org.springframework.data.domain.Page;
@@ -22,10 +23,9 @@ public interface ReviewUseCase {
     ReviewSummaryResult getSummary(Long accountId);
 
     /**
-     * 대금 지급이 끝났는데 미작성인 계약 목록.
+     * 대금 지급이 끝난 계약 중 내가 아직 리뷰를 쓰지 않은 것.
      *
-     * <p>TODO: contract/settlement 도메인이 구현되면 완료+지급 완료 계약을 조회해 채운다.
-     * 지금은 그 데이터 자체가 없어 항상 빈 리스트를 반환한다.
+     * <p>성공보수 수수료까지 결제되어 프로젝트가 종료된 건만 대상이다. 리뷰는 그 시점부터 열린다. (P51)
      */
-    List<ReviewResult> findPending(Long accountId);
+    List<PendingReviewResult> findPending(Long accountId);
 }

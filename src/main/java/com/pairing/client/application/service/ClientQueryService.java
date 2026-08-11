@@ -8,6 +8,7 @@ import com.pairing.client.application.usecase.ClientQueryUseCase;
 import com.pairing.client.domain.model.ClientGrade;
 import com.pairing.review.application.result.ReviewSummaryResult;
 import com.pairing.review.application.usecase.ReviewUseCase;
+import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ public class ClientQueryService implements ClientQueryUseCase {
 
     private final AccountQueryUseCase accountQueryUseCase;
     private final ReviewUseCase reviewUseCase;
+    private final SettlementQueryUseCase settlementQueryUseCase;
 
     @Override
     public ClientMyPageResult findMyPage(Long accountId) {
@@ -39,8 +41,8 @@ public class ClientQueryService implements ClientQueryUseCase {
                 ClientGrade.valueOf(profile.getGrade()),
                 reviewSummary.averageScore(),
                 reviewSummary.reviewCount(),
-                // TODO: project/settlement 도메인 구현 후 진행 중 프로젝트·미납 요금 확인
-                true
+                // 진행 중 프로젝트 확인은 project 도메인에 판정 포트가 생기면 함께 본다.
+                !settlementQueryUseCase.hasUnpaidSettlement(accountId)
         );
     }
 }
