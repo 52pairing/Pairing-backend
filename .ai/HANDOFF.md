@@ -117,3 +117,65 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 - `matchable` = `aiMatchingAgreed && !matchingPaused && 이력서 존재`, 사유 우선순위는 동의 미비 > 일시중지 > 이력서 미완성으로 확정.
 - `FreelancerController`의 두 엔드포인트(`GET`/`PUT /me/matching-settings`) 스텁 제거, 실구현으로 교체. `FreelancerMyPageIntegrationTest`에 H2 통합테스트 4개 추가.
 - `feature/freelancer-matching-settings` 브랜치, 코드+테스트+문서 같은 커밋으로 push.
+
+## 2026-08-11 신규 — 매칭 파이프라인 재설계 (팀 확정, 코드 미착수)
+
+**설계 확정본은 `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)" 절이다.**
+아래는 그걸 코드로 옮기는 작업 목록. 순서대로 하면 중간에 빌드가 깨지지 않는다.
+
+### 0단계 — 되돌리기 (오늘 커밋 `0157334` 취소)
+
+- [ ] `FreelancerEmbeddingTextBuilder`에서 조건 필드(직무·스킬·연차·근무조건·기간) 제거
+- [ ] `ConditionUpdatedEvent` / `ConditionUpdatedEventListener` / `FreelancerConditionService`의
+      발행 코드 삭제 — 조건이 임베딩에서 빠지므로 재생성이 불필요해짐
+- [ ] `ConditionUpdatedEventListenerTest` 삭제, `FreelancerEmbeddingTextBuilderTest` 정리
+- [ ] `FreelancerEmbeddingRefresher`는 **유지** — 이력서 저장/관리자 재색인이 같은 조립을 써야 한다
+      (경로마다 다르게 조립하면 어디서 저장했느냐에 따라 같은 사람의 벡터가 달라진다)
+
+### 1단계 — 임베딩 텍스트 확정 (Java)
+
+- [ ] 프리랜서: 자기소개 + **학과(`resume_education.major`)** + 경력 **`job_description`만**
+      (회사명·부서/직급 제거). `FreelancerResumeSummary`에 학과 추가 + `FreelancerDirectoryAdapter` 매핑
+- [ ] 포지션: 진행상황(`currentSituation`) + 담당업무 + 업무범위 + 우대사항 + **포지션 우대사항**
+      (`preferred_note`). 최소경력·근무조건·기간·요구스킬 **제거**
+- [ ] `ProjectPositionSummary`에 `currentSituation`/`preferredNote` 추가 + 어댑터 매핑
+      → **`preferred_note`가 project 도메인 응답에 있는지 3번 확인 필요**
+- [ ] U2 결정 반영: 프로젝트명(`title`) 포함 여부
+
+### 2단계 — budgetCap 전달 (Java → Python)
+
+- [ ] Java: `BudgetCapCalculator`로 계산한 월단가를 `/recommendations` 요청에 추가
+- [ ] Python: 요청 스키마에 `budget_cap` 추가
+
+### 3단계 — 조건 점수 SQL (Python, 본 작업)
+
+- [ ] `search_similar_freelancers` 확장: 하드필터에 **요구 스킬 1개 이상** 추가
+- [ ] 조건점수 70 계산(스킬 일치율·숙련도 / 연차 / 단가 / 근무방식 / 근무형태 / 시작일 / 기간)
+- [ ] 유사도 정규화 후 `유사도×30 + 조건점수×70`으로 정렬 → 상위 (인원×3)
+- [ ] 정규화 상수는 **재색인 후 실측**해서 결정(U3)
+
+### 4단계 — 가드 교체 (Java)
+
+- [ ] `evaluateGuard`에서 직무·스킬 재검증 제거
+- [ ] G3 예산 조합 검증 추가 — **U1(계산 범위) 먼저 결정해야 착수 가능**
+- [ ] G4 LLM 응답 이상 검증 추가(중복 ID / 인원 초과 / `reason` 누락)
+
+### 5단계 — 배포 후
+
+- [ ] **`POST /admin/embeddings/reindex` 1회 실행 필수.** 임베딩 텍스트 규칙이 바뀌므로 기존
+      벡터가 전부 낡는다. 옛 규칙 벡터와 새 규칙 벡터가 섞이면 비교 자체가 무의미해진다
+- [ ] 유사도 분포 측정 → 정규화 상수 확정 → 3단계에 반영
+
+### 착수 전 결정 필요
+
+| # | 내용 |
+|---|---|
+| U1 | **G3 예산 조합의 계산 범위.** 메모 §4는 "프로젝트 전체 포지션의 1순위 조합"인데 현재 추천은 포지션별로 따로 돈다(포지션 A가 끝날 때 B는 아직 추천 전) → ㉮ 포지션별 `budgetCap` 이내만 확인 ㉯ 전 포지션 추천 후 별도 조합 검증(구조 변경 큼) |
+| U2 | 프로젝트명(`title`)을 임베딩에 넣을지 |
+| U3 | 유사도 정규화 상수 (재색인 후 실측) |
+
+### 3번과 협의
+
+- [ ] `project_position.preferred_note`를 매칭까지 내려주기
+- [ ] 프로젝트 임베딩 시점을 **결제 완료**로 확정했음 공유 (정책 P03 문구는 "등록 시점")
+- 사전검수(P02) 기준은 **안 건드리기로 확정** — 협의 불필요
