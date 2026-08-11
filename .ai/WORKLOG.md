@@ -341,3 +341,28 @@ WebSocket 알림(이 프로젝트에 STOMP·알림 도메인이 이미 있음) �
 - 테스트: `NegotiationCommandServiceTest` 픽스처 2곳에 `matching_request` 행 추가(5번이 미리 알려줌 —
   이 테스트는 협상 단독 기준으로 짜여 있어 매칭 행이 없었다). 즉시 타결 후 요청이 실제로
   `CONTRACT_PENDING`이 되는지 검증하는 단언도 추가. `./gradlew clean build` 통과.
+
+## 2026-08-10 (계속) — 계약 이후 인원별 상태 전이 리스너 4개 (3번 요청 ①)
+
+`matching_request.status`를 CONTRACTED 이후로 옮기는 코드가 어디에도 없어서, 계약을 체결하고
+프로젝트가 끝나도 요청은 `CONTRACT_PENDING`에 그대로 남아 있었다. 3번이 계약 도메인을 붙이며
+발견하고 이벤트 4개를 발행해줬다(`feature/contract-sign`이 develop에 merge되면서 사용 가능해짐 —
+요청받은 시점엔 아직 develop에 없어서 대기했었다).
+
+- `ContractStageEventListener` 신규. ContractSigned→CONTRACTED, ProjectProgressStarted→IN_PROGRESS,
+  ProjectCompletionRequested→COMPLETION_PENDING, ProjectClosed→CLOSED.
+- **`@Async`를 안 붙였다.** 다른 매칭 리스너들과 반대인데, 이건 AI 호출 없이 UPDATE 몇 줄만 하는
+  작업이고 발행 도메인 트랜잭션과 원자적으로 묶이는 게 맞다 — "계약은 체결됐는데 매칭 상태만 안
+  따라오는" 상황을 막는 게 목적이라 실패하면 차라리 같이 롤백되는 편이 낫다. 같은 이유로 여기에
+  알림·외부 호출을 넣으면 안 된다(3번도 "상태 전이 외 무거운 작업은 커밋 뒤로"라고 요청).
+- **직접 발견한 위험 — 거절된 요청까지 옮기면 결제가 롤백된다.** 프로젝트 단위 이벤트 3개는 "그
+  프로젝트의 모든 요청"이 대상이지만 실제로는 거절·만료된 요청이 같이 있고, 그것까지
+  `advanceStatus`에 넣으면 종결 상태라 예외가 난다. 이벤트가 발행 도메인 트랜잭션 안에서
+  처리되므로 착수금 결제까지 통째로 롤백된다. 직전 단계인 요청만 골라 옮기도록
+  `findByProjectIdAndStatus`를 새로 추가해서 해결했고, 덕분에 이벤트가 중복 전달돼도 두 번
+  적용되지 않는다.
+- 테스트 `ContractStageEventListenerTest` 신규 4건(전 단계 전이 / 거절건 섞여도 안 터짐 / 중복
+  전달 멱등 / 계약 체결은 해당 프리랜서 1건만). 이 리스너는 `matching_request`만 건드리므로
+  계정·약관 시딩 없이 요청 행만 직접 넣어 가볍게 검증한다. **거절건을 일부러 포함시켜 돌려보니
+  해당 테스트만 실패하는 것까지 확인**했다.
+- 파킹해뒀던 문서 커밋 2개(Stage E 완료 반영, 점수 스케일 0~100 확정)도 이 브랜치에 같이 실었다.
