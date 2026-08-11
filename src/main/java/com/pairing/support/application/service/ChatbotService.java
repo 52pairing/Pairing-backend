@@ -75,11 +75,10 @@ public class ChatbotService implements ChatbotUseCase {
     }
 
     @Override
-    public List<ChatbotAnswerResult> findMessages(Long accountId, Long sessionId) {
-        ChatbotSession session = getOwnedSession(accountId, sessionId);
+    public List<ChatbotAnswerResult> findTodayMessages(Long accountId) {
         int remaining = getQuota(accountId).remainingCount();
-        return messageRepository.findBySessionId(session.getId()).stream()
-                .map(message -> new ChatbotAnswerResult(session.getId(), message.getQuestion(),
+        return messageRepository.findByAccountIdAndDate(accountId, LocalDate.now()).stream()
+                .map(message -> new ChatbotAnswerResult(message.getSessionId(), message.getQuestion(),
                         message.getAnswer(), remaining, message.getCreatedAt()))
                 .toList();
     }

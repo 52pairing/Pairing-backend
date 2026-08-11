@@ -20,16 +20,21 @@ public class ResumeCertificateEmbeddable {
     @Column(name = "name", nullable = false, length = 100)
     private String name;
 
-    @Column(name = "issuer_score", length = 100)
-    private String issuerScore;
+    @Column(name = "issuer", length = 100)
+    private String issuer;
+
+    @Column(name = "score", length = 50)
+    private String score;
 
     @Column(name = "note", length = 255)
     private String note;
 
-    public ResumeCertificateEmbeddable(LocalDate acquiredDate, String name, String issuerScore, String note) {
+    public ResumeCertificateEmbeddable(LocalDate acquiredDate, String name, String issuer, String score,
+                                       String note) {
         this.acquiredDate = acquiredDate;
         this.name = name;
-        this.issuerScore = issuerScore;
+        this.issuer = issuer;
+        this.score = score;
         this.note = note;
     }
 }

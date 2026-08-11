@@ -280,23 +280,48 @@ class ChatbotIntegrationTest {
     }
 
     @Test
-    @DisplayName("세션의 대화 이력이 시간순으로 조회되고, 본인이 아니면 볼 수 없다")
-    void findMessagesReturnsHistoryInOrderAndRestrictsOwnership() throws Exception {
+    @DisplayName("오늘 대화 이력이 시간순으로 조회되고, 남의 대화는 섞이지 않는다")
+    void findTodayMessagesReturnsHistoryInOrderAndOnlyMine() throws Exception {
         MvcResult created = ask(writerAccessToken, null, "첫 질문");
         Long sessionId = objectMapper.readTree(created.getResponse().getContentAsString())
                 .path("data").path("sessionId").asLong();
         ask(writerAccessToken, sessionId, "두번째 질문");
+        ask(otherAccessToken, null, "남의 질문");
 
-        mockMvc.perform(get("/api/v1/support/chatbot/sessions/" + sessionId + "/messages")
-                        .cookie(writerAccessToken))
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].question").value("첫 질문"))
                 .andExpect(jsonPath("$.data[1].question").value("두번째 질문"));
 
-        mockMvc.perform(get("/api/v1/support/chatbot/sessions/" + sessionId + "/messages")
-                        .cookie(otherAccessToken))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("CB_002"));
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(otherAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].question").value("남의 질문"));
+    }
+
+    @Test
+    @DisplayName("세션이 여러 개로 나뉘어도 오늘 대화는 한 흐름으로 모아서 조회된다")
+    void findTodayMessagesMergesSeparateSessions() throws Exception {
+        // sessionId 없이 물으면 세션이 새로 생긴다. 화면을 새로 열어 다시 묻는 상황이다.
+        ask(writerAccessToken, null, "첫 세션 질문");
+        ask(writerAccessToken, null, "새 세션 질문");
+
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].question").value("첫 세션 질문"))
+                .andExpect(jsonPath("$.data[1].question").value("새 세션 질문"))
+                // 이어서 물을 때 쓰라고 sessionId 를 항목마다 같이 준다.
+                .andExpect(jsonPath("$.data[0].sessionId").isNumber())
+                .andExpect(jsonPath("$.data[1].sessionId").isNumber());
+    }
+
+    @Test
+    @DisplayName("대화한 적이 없으면 빈 목록이다")
+    void findTodayMessagesReturnsEmptyWhenNothingAsked() throws Exception {
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 }

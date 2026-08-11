@@ -95,14 +95,14 @@ public class SupportController {
         return ResponseEntity.ok(ApiResponse.success("CHATBOT_QUOTA_FOUND", "조회에 성공했습니다.", data));
     }
 
-    @GetMapping("/chatbot/sessions/{sessionId}/messages")
-    @Operation(summary = "챗봇 대화 이력", description = "한 세션의 질문·답변을 시간순으로 반환합니다.")
-    @ApiErrorCodeExample(domain = ChatbotErrorCode.class, value = {"SESSION_NOT_FOUND", "SESSION_FORBIDDEN"})
-    public ResponseEntity<ApiResponse<List<ChatbotAnswerResponse>>> findChatbotMessages(
-            @PathVariable Long sessionId,
+    @GetMapping("/chatbot/messages")
+    @Operation(summary = "챗봇 오늘 대화 이력",
+            description = "오늘 주고받은 질문·답변을 시간순으로 반환합니다. 채팅 화면 진입 시 한 번 호출하면 됩니다. "
+                    + "이어서 물을 때 쓸 sessionId 는 마지막 항목에서 꺼내 쓰세요.")
+    public ResponseEntity<ApiResponse<List<ChatbotAnswerResponse>>> findTodayChatbotMessages(
             @CurrentAccountId Long accountId
     ) {
-        List<ChatbotAnswerResponse> data = chatbotUseCase.findMessages(accountId, sessionId).stream()
+        List<ChatbotAnswerResponse> data = chatbotUseCase.findTodayMessages(accountId).stream()
                 .map(ChatbotAnswerResponse::from)
                 .toList();
         return ResponseEntity.ok(ApiResponse.success("CHATBOT_MESSAGES_FOUND", "조회에 성공했습니다.", data));

@@ -21,6 +21,7 @@ import com.pairing.file.domain.model.FilePurpose;
 import com.pairing.file.infrastructure.persistence.FileJpaEntity;
 import com.pairing.file.infrastructure.persistence.SpringDataFileRepository;
 import com.pairing.freelancer.infrastructure.persistence.SpringDataFreelancerConditionRepository;
+import com.pairing.freelancer.infrastructure.persistence.SpringDataResumeDraftRepository;
 import com.pairing.freelancer.infrastructure.persistence.SpringDataResumeRepository;
 import com.pairing.terms.domain.model.TermsCode;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsAgreementRepository;
@@ -91,6 +92,8 @@ class FreelancerMyPageIntegrationTest {
     @Autowired
     private SpringDataResumeRepository resumeRepository;
     @Autowired
+    private SpringDataResumeDraftRepository resumeDraftRepository;
+    @Autowired
     private SpringDataFileRepository fileRepository;
 
     @MockitoBean
@@ -123,6 +126,7 @@ class FreelancerMyPageIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        resumeDraftRepository.deleteAll();
         resumeRepository.deleteAll();
         freelancerConditionRepository.deleteAll();
         termsAgreementRepository.deleteAll();
@@ -258,7 +262,9 @@ class FreelancerMyPageIntegrationTest {
         body.put("profileFileId", profileImageFileId);
         body.put("contactPhone", contactPhone);
         body.put("contactEmail", "");
-        body.put("address", "서울 강남구");
+        body.put("zipCode", "06234");
+        body.put("address", "서울특별시 강남구 테헤란로 123");
+        body.put("addressDetail", "2층");
         body.put("selfIntroduction", "백엔드 5년차입니다.");
         body.put("portfolioFileId", portfolioFileId);
         body.put("educations", List.of(Map.of(
@@ -270,7 +276,8 @@ class FreelancerMyPageIntegrationTest {
                 "companyName", "주식회사 예시", "departmentRank", "서버개발팀 대리",
                 "jobDescription", "결제 시스템 개발")));
         body.put("certificates", List.of(Map.of(
-                "acquiredDate", "2020-05-01", "name", "정보처리기사", "issuerScore", "한국산업인력공단")));
+                "acquiredDate", "2020-05-01", "name", "정보처리기사",
+                "issuer", "한국산업인력공단", "score", "850")));
         body.put("links", List.of(Map.of("url", "https://github.com/pairing")));
         body.put("agreements", Map.of(
                 "profileCollectionAgreed", true, "profileProvisionAgreed", true,
@@ -292,6 +299,9 @@ class FreelancerMyPageIntegrationTest {
                 .andExpect(jsonPath("$.data.educations[0].schoolName").value("페어링대학교"))
                 .andExpect(jsonPath("$.data.careers[0].companyName").value("주식회사 예시"))
                 .andExpect(jsonPath("$.data.certificates[0].name").value("정보처리기사"))
+                // 발급기관·점수도 화면 입력칸대로 따로 돌려준다.
+                .andExpect(jsonPath("$.data.certificates[0].issuer").value("한국산업인력공단"))
+                .andExpect(jsonPath("$.data.certificates[0].score").value("850"))
                 .andExpect(jsonPath("$.data.links[0]").value("https://github.com/pairing"))
                 .andExpect(jsonPath("$.data.profileImageUrl", org.hamcrest.Matchers.endsWith(
                         "profile_image/test-photo.png")))
@@ -302,7 +312,10 @@ class FreelancerMyPageIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.condition").doesNotExist())
-                .andExpect(jsonPath("$.data.resume.address").value("서울 강남구"))
+                // 주소는 세 칸으로 나눠 저장돼서 수정 화면에서 그대로 되돌릴 수 있어야 한다.
+                .andExpect(jsonPath("$.data.resume.zipCode").value("06234"))
+                .andExpect(jsonPath("$.data.resume.address").value("서울특별시 강남구 테헤란로 123"))
+                .andExpect(jsonPath("$.data.resume.addressDetail").value("2층"))
                 .andExpect(jsonPath("$.data.resume.educations[0].major").value("컴퓨터공학"))
                 .andExpect(jsonPath("$.data.resume.careers[0].jobDescription").value("결제 시스템 개발"))
                 .andExpect(jsonPath("$.data.resume.profileImageUrl", org.hamcrest.Matchers.endsWith(
@@ -423,6 +436,92 @@ class FreelancerMyPageIntegrationTest {
                 .andExpect(jsonPath("$.data.aiMatchingAgreed").value(true))
                 .andExpect(jsonPath("$.data.grade").value("JUNIOR"))
                 .andExpect(jsonPath("$.data.resumeCompleted").value(false));
+    }
+
+    @Test
+    @DisplayName("필수 항목을 안 채워도 임시 저장되고, 저장한 JSON 그대로 다시 불러온다")
+    void resumeDraftSavesWithoutRequiredFields() throws Exception {
+        // 정식 등록이었다면 학력·경력·약관이 없어서 400이 날 내용이다.
+        String halfWritten = """
+                {"condition":{"jobCategory":"DEVELOPMENT"},
+                 "resume":{"selfIntroduction":"작성 중...","educations":[]}}""";
+
+        mockMvc.perform(put("/api/v1/freelancers/me/resume/draft")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"payload\":" + halfWritten + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.savedAt").exists());
+
+        mockMvc.perform(get("/api/v1/freelancers/me/resume/draft").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.payload.condition.jobCategory").value("DEVELOPMENT"))
+                .andExpect(jsonPath("$.data.payload.resume.selfIntroduction").value("작성 중..."))
+                .andExpect(jsonPath("$.data.payload.resume.educations.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("임시 저장을 다시 하면 덮어쓴다. 초안이 여러 벌 쌓이지 않는다")
+    void resumeDraftIsOverwrittenNotAccumulated() throws Exception {
+        saveDraft("""
+                {"resume":{"selfIntroduction":"첫 번째"}}""");
+        saveDraft("""
+                {"resume":{"selfIntroduction":"두 번째"}}""");
+
+        mockMvc.perform(get("/api/v1/freelancers/me/resume/draft").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.payload.resume.selfIntroduction").value("두 번째"));
+
+        org.assertj.core.api.Assertions.assertThat(resumeDraftRepository.findAll()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("임시 저장한 적이 없으면 data 가 null 이다")
+    void resumeDraftIsNullWhenNeverSaved() throws Exception {
+        mockMvc.perform(get("/api/v1/freelancers/me/resume/draft").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("이력서를 정식 등록하면 초안은 지워진다. 다음 진입 때 옛 입력값이 되살아나면 안 된다")
+    void resumeDraftIsRemovedAfterRegistration() throws Exception {
+        saveDraft("""
+                {"resume":{"selfIntroduction":"작성 중..."}}""");
+
+        mockMvc.perform(put("/api/v1/freelancers/me/resume")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(resumeBody("010-9999-8888"))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/freelancers/me/resume/draft").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("임시 저장은 이력서 상태를 바꾸지 않는다. 초안만으로는 매칭 대상이 되지 않는다")
+    void resumeDraftDoesNotMakeFreelancerMatchable() throws Exception {
+        saveDraft("""
+                {"resume":{"selfIntroduction":"작성 중..."}}""");
+
+        mockMvc.perform(get("/api/v1/freelancers/me/matching-settings").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchable").value(false))
+                .andExpect(jsonPath("$.data.unmatchableReason").value("이력서를 완성해야 추천 대상에 포함됩니다."));
+
+        mockMvc.perform(get("/api/v1/freelancers/me").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.resumeCompleted").value(false));
+    }
+
+    private void saveDraft(String payloadJson) throws Exception {
+        mockMvc.perform(put("/api/v1/freelancers/me/resume/draft")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"payload\":" + payloadJson + "}"))
+                .andExpect(status().isOk());
     }
 
     @Test

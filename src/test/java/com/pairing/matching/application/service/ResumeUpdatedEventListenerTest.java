@@ -70,7 +70,7 @@ class ResumeUpdatedEventListenerTest {
 
     private UpsertResumeCommand resumeCommand() {
         return new UpsertResumeCommand(
-                ACCOUNT_ID, 1L, null, null, "서울 강남구", "백엔드 6년차입니다.", 1L,
+                ACCOUNT_ID, 1L, null, null, "06234", "서울 강남구", null, "백엔드 6년차입니다.", 1L,
                 List.of(new UpsertResumeCommand.Education(LocalDate.of(2014, 3, 1), LocalDate.of(2018, 2, 1),
                         "페어링대학교", "컴퓨터공학과", GraduationStatus.GRADUATED, null)),
                 List.of(new UpsertResumeCommand.Career(LocalDate.of(2018, 3, 1), null, "A사",

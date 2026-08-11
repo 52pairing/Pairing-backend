@@ -20,7 +20,9 @@ public record ResumeResponse(
         @Schema(description = "생년월일(수정 불가)") LocalDate birthDate,
         @Schema(description = "연락처", example = "01012345678") String contactPhone,
         @Schema(description = "연락 이메일", example = "user@pairing.com") String contactEmail,
-        @Schema(description = "주소", example = "서울 강남구") String address,
+        @Schema(description = "우편번호. 옛 이력서에는 없어 null 일 수 있다.", example = "06234") String zipCode,
+        @Schema(description = "기본 주소", example = "서울특별시 강남구 테헤란로 123") String address,
+        @Schema(description = "상세 주소", example = "2층") String addressDetail,
         @Schema(description = "프로필 사진 URL") String profileImageUrl,
         @Schema(description = "간단 자기소개") String selfIntroduction,
         @Schema(description = "포트폴리오 URL") String portfolioUrl,
@@ -39,7 +41,9 @@ public record ResumeResponse(
                 result.birthDate(),
                 result.contactPhone(),
                 result.contactEmail(),
+                result.zipCode(),
                 result.address(),
+                result.addressDetail(),
                 result.profileImageUrl(),
                 result.selfIntroduction(),
                 result.portfolioUrl(),
@@ -52,7 +56,8 @@ public record ResumeResponse(
                                 c.getDepartmentRank(), c.getJobDescription()))
                         .toList(),
                 result.certificates().stream()
-                        .map(c -> new Certificate(c.getAcquiredDate(), c.getName(), c.getIssuerScore(), c.getNote()))
+                        .map(c -> new Certificate(c.getAcquiredDate(), c.getName(), c.getIssuer(), c.getScore(),
+                                c.getNote()))
                         .toList(),
                 result.links().stream().map(link -> link.getUrl()).toList(),
                 new Agreements(result.agreements().isProfileCollectionAgreed(),
@@ -87,7 +92,8 @@ public record ResumeResponse(
     public record Certificate(
             @Schema(description = "취득일자") LocalDate acquiredDate,
             @Schema(description = "시험명") String name,
-            @Schema(description = "발급기관/점수") String issuerScore,
+            @Schema(description = "발급기관", example = "한국산업인력공단") String issuer,
+            @Schema(description = "점수", example = "850") String score,
             @Schema(description = "비고") String note
     ) {
     }

@@ -315,6 +315,18 @@ class ReviewIntegrationTest {
     }
 
     @Test
+    @DisplayName("없는 계정을 리뷰 대상으로 넣으면 저장 전에 404로 막는다")
+    void createReviewWithUnknownRevieweeIsRejected() throws Exception {
+        // 검증이 없으면 저장 단계에서야 터져 500(GLOBAL_001)이 나간다.
+        mockMvc.perform(post("/api/v1/reviews")
+                        .cookie(freelancerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reviewCreateBody(999_999L))))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("AC_001"));
+    }
+
+    @Test
     @DisplayName("같은 계약을 같은 사람이 두 번 리뷰하면 막힌다")
     void duplicateReviewIsRejected() throws Exception {
         mockMvc.perform(post("/api/v1/reviews")
