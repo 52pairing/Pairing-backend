@@ -48,8 +48,6 @@ import java.util.Map;
 // 여기서 같이 구현하면 negotiation 도메인과 빈 생성이 순환한다(그 클래스 주석 참고).
 public class MatchingRequestService implements MatchingRequestCommandUseCase, MatchingRequestQueryUseCase {
 
-    private static final List<MatchingStatus> NON_ACTIVE_STATUSES =
-            List.of(MatchingStatus.REJECTED, MatchingStatus.NEGOTIATION_FAILED, MatchingStatus.TERMINATED);
     private static final List<MatchingStatus> NEGOTIATING_STATUSES =
             List.of(MatchingStatus.ACCEPTED, MatchingStatus.NEGOTIATING);
     private static final List<MatchingStatus> CONTRACT_PENDING_STATUSES =
@@ -74,7 +72,8 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
     @Transactional
     public List<MatchingRequestResponse> sendRequests(Long positionId, List<Long> candidateIds, Long accountId) {
         int headcount = projectDirectoryPort.findHeadcount(positionId);
-        long activeCount = matchingRequestRepository.countByPositionIdAndStatusNotIn(positionId, NON_ACTIVE_STATUSES);
+        long activeCount = matchingRequestRepository.countByPositionIdAndStatusNotIn(positionId,
+                MatchingStatus.SLOT_RELEASED);
         if (activeCount + candidateIds.size() > headcount) {
             throw new BusinessException(MatchingErrorCode.HEADCOUNT_EXCEEDED);
         }
@@ -89,6 +88,11 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.CANDIDATE_NOT_FOUND));
         if (!candidate.getPositionId().equals(positionId)) {
             throw new BusinessException(MatchingErrorCode.INVALID_MATCHING_STATE);
+        }
+        // 노출된 후보만 고를 수 있다(P07). candidateId를 직접 넣으면 가드 탈락자·대기 순번·이미 내린
+        // 후보에게도 요청이 나가서 Stage F 가드가 무력화된다(MatchingCandidate.isSelectable 주석 참고).
+        if (!candidate.isSelectable()) {
+            throw new BusinessException(MatchingErrorCode.CANDIDATE_NOT_SELECTABLE);
         }
 
         MatchingRound round = matchingRoundRepository.findById(candidate.getRoundId())

@@ -157,6 +157,73 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
 - **버그 발견·수정**: 이번에 처음으로 `GET /requests/{requestId}`에 실제 테스트를 붙이다가 발견 — `findRequest()`가 `resolveFreelancerId(accountId)`를 클라이언트 소유 여부 확인보다 먼저 무조건 불러서, **클라이언트가 자기가 보낸 요청의 상세를 조회할 때마다 항상 404(FREELANCER_NOT_FOUND)가 나던 버그**였다. 이 엔드포인트를 실제로 검증하는 테스트가 지금까지 하나도 없어서 안 드러났음. 클라이언트 소유 여부를 먼저 확인하고, 아닐 때만 `resolveFreelancerId`를 부르도록 순서 변경.
 - `docs/api-dto.csv`/`.ai/API.md` 동기화. `MatchingIntegrationTest`에 "상세에서만 보이고 목록/받은요청에서는 안 보인다" 검증 테스트 추가.
 
+## 2026-08-11 갱신 — 코드 리뷰 6건 검증 (내 파트만) + 유효 3건 수정
+
+리뷰로 받은 6건을 명세/정책/STATE.md와 대조해 판정했다. **3건 유효(수정 완료), 3건 오탐.**
+
+### 유효 ② — 노출 안 된/거절된/가드 탈락 후보에게 매칭 요청이 나갔다 (가장 심각)
+
+`MatchingRequestService.sendOneRequest()`가 `positionId` 일치·소유·모집중·중복만 보고
+`exposed`/`rejected`/`guardPassed`를 전혀 안 봤다. 요청 API는 `candidateId`를 그대로 받으므로
+화면을 안 거치면 **Stage F 가드(직무·스킬 재검증)에 떨어뜨린 후보에게도 요청이 나간다** —
+가드가 통째로 무력화된다. 정책 P07("노출된 최종 후보 중 선택")과 정면으로 어긋남.
+
+- `MatchingCandidate.isSelectable()` 신규(도메인 규칙): `exposed && !rejected && guardPassed`.
+  `exposed`만 봐도 지금은 충분하지만 `guardPassed`를 같이 두는 건 의도적이다 — 노출 로직이
+  바뀌어도 가드가 뚫리지 않게 한다.
+- 새 에러코드 `MT_017 CANDIDATE_NOT_SELECTABLE`(400). **프론트 에러표 갱신 필요.**
+- 테스트 3건(가드 탈락 / 대기 순번 / 이미 내린 후보).
+
+### 유효 ⑥ — 자리가 다 찬 포지션에도 유료 재추천이 결제됐다
+
+`MatchingRerecommendService.assertRecruiting()`이 CANCELED/CLOSED만 막아서, 인원이 다 찬
+포지션도 재추천 회차가 열렸다. 추천은 나오지만 정작 요청을 보낼 때 `sendRequests`의 인원 초과
+검증(MT_005)에 막혀 **돈만 나가고 아무것도 못 하는** 상태가 된다.
+
+**리뷰어 제안(프로젝트 상태 IN_PROGRESS/COMPLETION_PENDING이면 차단)은 안 썼다.** 중도 종료로
+자리가 다시 비면 진행중이어도 다시 뽑아야 하기 때문이다(명세의 "2/3명 진행 중 · 1명 계약 종료"
+화면). 상태가 아니라 **남은 자리** 기준으로 막는 게 맞다.
+
+- `countVacancy(positionId, headcount)` 신규. 자리 0이면 `MT_018 POSITION_ALREADY_FILLED`(400).
+- 유료 재추천은 `quantity > 남은 자리`도 막는다(MT_005) — 초과분은 그대로 낭비되는 결제다.
+- 인원 계산 기준을 `MatchingStatus.SLOT_RELEASED`(REJECTED/NEGOTIATION_FAILED/TERMINATED)로
+  도메인에 올려 `MatchingRequestService`와 공유. 정상 완료(CLOSED)는 자리를 안 비운다.
+- 테스트 3건(자리 참 / quantity 초과 / 중도 종료로 자리가 비면 진행중이어도 허용).
+
+### 유효 ① — `FreelancerConditionService`의 임베딩 재생성 TODO는 **삭제가 정답**
+
+TODO(`// ai-server 연동 준비되면 저장 후 이력서 임베딩 재생성 요청`)는 남아 있었지만, 실제로
+할 일이 없다는 걸 확인해서 지우고 그 근거를 주석으로 남겼다.
+
+- 임베딩 대상 텍스트는 **자기소개+경력사항뿐**이다(위 "확정된 설계 결정 1"). 조건 화면에서
+  바꾸는 직군·직무·스킬·단가·연차는 그 텍스트에 안 들어가므로 다시 만들어도 **같은 벡터**다.
+- 이 값들은 AI 서버가 매칭할 때 `freelancer_condition`을 **직접 조인해서 읽는다**
+  (`embedding/repository.py` 하드필터, `matching/repository.py` Stage E 프롬프트) — 저장 즉시 반영.
+- 자기소개·경력을 고치는 쪽은 `ResumeService`가 `ResumeUpdatedEvent`를 발행해서
+  `matching.ResumeUpdatedEventListener`가 임베딩을 다시 만든다(이미 동작 중).
+
+**리뷰어가 같이 제안한 "임베딩 텍스트에 시작희망일·예산·스킬·연차를 넣자"는 반영 안 했다** —
+결정 1과 정면 충돌한다. 그 항목들은 일부러 뺀 것이고(스킬·직무는 하드필터, 단가·일정은 Stage E
+감점), 텍스트 유사도에 숫자를 섞으면 노이즈만 늘어난다.
+
+### 오탐 ③ — 정렬 기준을 `fitScore`로 바꿔도 순서가 안 바뀐다
+
+`ClientGradeResolver.resolveMatchingWeightPercent(projectId)`는 **프로젝트당 값 하나**라 그 회차
+모든 후보에 똑같이 곱해진다. `baseScore` 정렬과 `fitScore` 정렬 결과가 항상 동일하다.
+클라이언트 간 자원배분은 위 4-1에서 R02.6 충돌로 이미 폐기했다.
+
+### 오탐 ⑤ — 계약관리/진행중 탭 분리
+
+요구사항이 `내 프로젝트 → [요청받은 프로젝트, 진행중인 프로젝트]`와 별도 계약관리를 정의하고,
+`/api/v1/contracts`는 역할 제한이 없어 프리랜서도 조회 가능하다. 리뷰어 전제("별도 진행중
+화면이 없다면")가 성립하지 않는다. 2026-08-10에 이미 확인한 건이다.
+
+### 판단 대기 ④ — `lowScoreWarned`를 노출 후보에도 켤지
+
+`persistCandidates()`는 **대기 순번(노출 인원 밖)** 후보가 50점 미만일 때만 경고를 켠다. 위
+결정 2("최초 추천화면에서 미리 보여줌")와는 맞지만, **노출된 후보가 이미 50점 미만인데도 경고가
+안 뜨는** 구멍이 있다. P09 문구("이후 재추천 결과 화면에서")가 양쪽으로 읽혀서 팀 판단 대기.
+
 ## 아직 팀 확인 대기 중인 것
 
 | 항목 | 상태 |
