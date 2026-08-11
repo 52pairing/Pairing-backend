@@ -147,8 +147,14 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
 
         // 프로젝트 상태는 전진만 하므로(이미 계약 대기면 아무 일도 안 함) 즉시 타결 뒤에 불러도 안전하다.
         projectCommandUseCase.startNegotiating(request.getProjectId());
-        matchingNotifier.notifyAccepted(request);
-        return matchingRequestResponseAssembler.build(request, accountId);
+
+        // 응답은 다시 읽어서 만든다. 즉시 타결이면 위 createNegotiation 안에서 이 요청이
+        // CONTRACT_PENDING까지 올라가는데, 그건 별도 조회·저장이라 여기 있는 request 객체에는
+        // 반영되지 않는다. 그대로 쓰면 DB는 CONTRACT_PENDING인데 응답만 NEGOTIATING으로 나간다.
+        MatchingRequest latest = matchingRequestRepository.findById(request.getId())
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
+        matchingNotifier.notifyAccepted(latest);
+        return matchingRequestResponseAssembler.build(latest, accountId);
     }
 
     private MatchingSnapshot buildFreelancerSnapshot(MatchingRequest request, FreelancerConditionResponse condition) {
