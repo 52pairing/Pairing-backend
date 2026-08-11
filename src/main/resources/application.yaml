@@ -156,7 +156,9 @@ app:
     # 파이썬과 공유하는 내부 호출 키(X-Internal-Api-Key). 값은 환경변수로만 주입한다.
     internal-api-key: ${AI_INTERNAL_API_KEY:}
     # 호출 타임아웃(ms). 초과·실패 시 협상 루프는 stub 제안으로 폴백한다.
-    timeout-ms: ${AI_TIMEOUT_MS:20000}
+    # 20초였을 때 조건 5개짜리 협상 한 라운드(33초)가 정확히 20초에 잘려 전량 stub 이 됐다.
+    # 파이썬은 정상 응답을 만들었고 기다리는 쪽이 먼저 끊은 것이다. 실측 최대의 2배 이상으로 둔다.
+    timeout-ms: ${AI_TIMEOUT_MS:60000}
 
 ai:
   pairing-python:
