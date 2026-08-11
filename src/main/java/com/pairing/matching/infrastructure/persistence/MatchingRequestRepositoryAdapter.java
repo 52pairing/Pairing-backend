@@ -17,8 +17,13 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class MatchingRequestRepositoryAdapter implements MatchingRequestRepository {
 
+    /**
+     * "더 이상 진행 중이 아닌" 상태. {@code MatchingRequest.isTerminal()}과 같은 목록이어야 한다 —
+     * 한쪽만 늘어나면 종결된 요청이 무료 재추천을 계속 막는다(P41은 전원 거절·만료됐을 때 허용).
+     */
     private static final List<MatchingStatus> NON_ACTIVE_STATUSES =
-            List.of(MatchingStatus.REJECTED, MatchingStatus.NEGOTIATION_FAILED);
+            List.of(MatchingStatus.REJECTED, MatchingStatus.NEGOTIATION_FAILED,
+                    MatchingStatus.TERMINATED, MatchingStatus.CLOSED);
 
     private final SpringDataMatchingRequestRepository springDataRepository;
     private final MatchingRequestMapper matchingRequestMapper;

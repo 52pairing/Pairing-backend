@@ -275,3 +275,33 @@ WebSocket 알림(이 프로젝트에 STOMP·알림 도메인이 이미 있음) �
 `MatchingIntegrationTest`에도 `SyncTaskExecutorTestConfig`를 `@Import`. `./gradlew clean build` 통과.
 (전체 빌드 1회차에서 `ChatServiceTest`가 실패했는데 단독 실행은 통과하고 2회차 전체 빌드도 통과 —
 이 레포에 이미 알려진 풀스위트 전용 flaky 이슈로 판단, 매칭 변경과 무관.)
+
+## 2026-08-10 (계속) — 재추천 비동기 리뷰 지적 3건 처리
+
+**① 실패한 회차가 RUNNING으로 방치됨 (유효, 지적보다 결과가 더 나빴음)**
+
+`fillCandidates()` 실패 시 로그만 찍고 끝나서 회차가 `RUNNING`으로 영원히 남았다. 추적해보니
+그것보다 심각한 게 있었는데, `assertFreeAvailable`이 `countByProjectIdAndRoundType(FREE) > 0`으로만
+보기 때문에 **AI 서버가 잠깐 죽으면 무료 재추천 1회가 영영 사라진다**(후보는 한 명도 못 받았는데).
+
+- 실패 시 `round.fail()` + 실패 알림 발송 추가. 성공하든 실패하든 알림이 가야 클라이언트가
+  "추천 생성 중" 화면에서 안 오는 알림을 기다리지 않는다.
+- `countByProjectIdAndRoundType`이 `FAILED` 회차를 세지 않도록 변경(`...AndStatusNot`). 무료/유료
+  한도 계산과 화면의 `paidRerecommendRemaining` 양쪽에 같이 적용된다.
+- **트랜잭션 문제를 하나 더 찾았다**: 실패 처리를 리스너의 같은 트랜잭션에서 하면, 이미
+  rollback-only로 오염된 트랜잭션이라 FAILED 저장이 같이 롤백된다. `RerecommendRoundFiller`(별도 빈,
+  성공/실패 각각 REQUIRES_NEW)로 분리해서 해결 — `MatchingRequestExpirer`와 같은 패턴.
+- 회귀 테스트 추가: AI 호출이 터지면 회차가 FAILED로 닫히고, 이어서 재추천을 다시 걸면 성공하며
+  `paidRerecommendRemaining`이 4(5회 중 성공한 1회만 차감)로 나오는지 검증.
+
+**② 알림/Swagger 한글 깨짐 — 오탐**
+
+소스 파일은 UTF-8이고(`file` 확인), `build.gradle`에 `options.encoding = 'UTF-8'`이 이미 있으며,
+컴파일된 `.class`에서 한글 문자열 9개를 추출해 전부 정상인 것까지 확인했다. 리뷰 도구가 cp949로
+읽어서 깨져 보인 것으로 보인다(이 환경의 콘솔 출력도 같은 이유로 깨진다). 코드 변경 없음.
+
+**③ 무료 재추천 판정에서 종결 상태가 active로 잡힘 (유효, 지적보다 1개 더 있었음)**
+
+`NON_ACTIVE_STATUSES`가 `REJECTED`/`NEGOTIATION_FAILED` 2개뿐인데 도메인의
+`MatchingRequest.isTerminal()`은 4개(`TERMINATED`/`CLOSED` 포함)를 종결로 본다. 지적된 `TERMINATED`
+외에 `CLOSED`도 빠져 있어서 둘 다 추가하고, 두 목록이 어긋나면 안 된다는 주석을 달았다.

@@ -683,6 +683,47 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("AI 호출이 실패하면 회차를 FAILED로 닫고, 그 회차는 재추천 한도를 쓴 걸로 치지 않는다")
+    void rerecommendMarksRoundFailedAndDoesNotConsumeQuotaWhenAiFails() throws Exception {
+        seedRound(2);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+                .willThrow(new IllegalStateException("AI 서버 응답 없음"));
+
+        // 재추천 요청 자체는 접수된다(실패는 비동기 처리 뒤에 알림으로 알려준다).
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isAccepted());
+
+        // 회차가 RUNNING으로 방치되지 않고 FAILED로 닫혀야 한다.
+        Integer failedCount = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM matching_round WHERE position_id = ? AND status = 'FAILED'",
+                Integer.class, POSITION_ID);
+        assertThat(failedCount).isEqualTo(1);
+
+        // 실패한 회차는 한도를 쓴 게 아니므로 유료 재추천을 다시 시도할 수 있어야 한다.
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash",
+                        List.of(new RankedFreelancer(freelancerAccountId, 91.0, "경력 조건 충족"))));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates.length()").value(1))
+                // 유료 5회 중 성공한 1회만 차감돼야 한다(실패한 회차는 안 셈).
+                .andExpect(jsonPath("$.data.paidRerecommendRemaining").value(4));
+    }
+
+    @Test
     @DisplayName("유료 재추천인데 quantity가 없으면 500이 아니라 400으로 응답한다")
     void rerecommendPaidWithoutQuantityReturnsBadRequest() throws Exception {
         seedRound(2);

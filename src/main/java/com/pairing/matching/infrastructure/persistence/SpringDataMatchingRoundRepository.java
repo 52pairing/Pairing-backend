@@ -1,5 +1,6 @@
 package com.pairing.matching.infrastructure.persistence;
 
+import com.pairing.matching.domain.model.MatchingRoundStatus;
 import com.pairing.matching.domain.model.RecommendationType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,5 +12,6 @@ public interface SpringDataMatchingRoundRepository extends JpaRepository<Matchin
 
     long countByPositionId(Long positionId);
 
-    long countByProjectIdAndRoundType(Long projectId, RecommendationType roundType);
+    long countByProjectIdAndRoundTypeAndStatusNot(Long projectId, RecommendationType roundType,
+                                                  MatchingRoundStatus excludedStatus);
 }

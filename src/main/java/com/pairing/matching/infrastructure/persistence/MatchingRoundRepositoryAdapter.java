@@ -1,6 +1,7 @@
 package com.pairing.matching.infrastructure.persistence;
 
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingRoundStatus;
 import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import com.pairing.matching.infrastructure.mapper.MatchingRoundMapper;
@@ -40,6 +41,8 @@ public class MatchingRoundRepositoryAdapter implements MatchingRoundRepository {
 
     @Override
     public long countByProjectIdAndRoundType(Long projectId, RecommendationType roundType) {
-        return springDataRepository.countByProjectIdAndRoundType(projectId, roundType);
+        // FAILED 회차는 후보를 한 명도 못 만든 회차라 한도를 쓴 걸로 치지 않는다(포트 주석 참고).
+        return springDataRepository.countByProjectIdAndRoundTypeAndStatusNot(projectId, roundType,
+                MatchingRoundStatus.FAILED);
     }
 }
