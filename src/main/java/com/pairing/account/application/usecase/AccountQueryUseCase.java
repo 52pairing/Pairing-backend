@@ -22,6 +22,15 @@ public interface AccountQueryUseCase {
 
     Account getById(Long accountId);
 
+    /**
+     * 계정 조회. 없으면 empty.
+     *
+     * <p>계정이 사라져도 화면이 열려야 하는 쪽이 쓴다. 계약서는 5년 보관이라 계정보다 오래 남는데,
+     * 이름 한 칸이 비었다고 계약서 조회가 통째로 막히면 안 된다. 없는 것이 정상 흐름인 경우만
+     * 이걸 쓰고, 계정이 반드시 있어야 하는 곳은 {@link #getById} 를 그대로 쓴다.
+     */
+    Optional<Account> findById(Long accountId);
+
     Optional<Account> findByEmailAndRole(String email, Role role);
 
     /** 아이디 찾기. 두 역할로 가입했다면 계정이 둘 다 나온다. */
