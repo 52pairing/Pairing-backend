@@ -32,14 +32,16 @@ public class ContractProjectReaderAdapter implements ContractProjectReaderPort {
                 project.getWorkLocation(),
                 project.getStartDesiredDate(),
                 project.getPeriodValue(),
-                project.getPeriodUnit());
+                project.getPeriodUnit(),
+                project.getMainTask(),
+                project.getDetailScope());
     }
 
     @Override
     public ProjectView findByPositionId(Long positionId) {
         try {
             ProjectPositionSummary summary = projectQueryUseCase.findProjectPositionSummary(positionId);
-            return new ProjectView(summary.title(), summary.jobRole());
+            return new ProjectView(summary.title(), summary.jobRole(), summary.skills());
         } catch (BusinessException e) {
             if (e.getErrorCode() == ProjectErrorCode.PROJECT_NOT_FOUND
                     || e.getErrorCode() == ProjectErrorCode.POSITION_NOT_FOUND) {

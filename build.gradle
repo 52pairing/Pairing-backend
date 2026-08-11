@@ -62,6 +62,11 @@ dependencies {
     implementation 'org.mapstruct:mapstruct:1.5.5.Final'
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
 
+    // 계약서 PDF. 템플릿으로 HTML 을 만들고 그걸 PDF 로 굽는다.
+    // 외부 전자서명 서비스를 쓰지 않기로 해서 문서 생성도 직접 한다.
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10'
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'

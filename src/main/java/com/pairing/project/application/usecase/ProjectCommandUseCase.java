@@ -93,6 +93,15 @@ public interface ProjectCommandUseCase {
     void confirmPosition(Long positionId);
 
     /**
+     * 진행중 전환. 프리랜서 착수금 수수료가 결제되면 정산 도메인이 호출한다. (P27)
+     *
+     * <p>인원이 다 차지 않았으면 아무 일도 하지 않는다. 서명만으로는 진행중이 되지 않는다.
+     *
+     * @return 이번 호출로 실제 넘어갔으면 true. 인원별 상태를 함께 옮길지 판단하는 데 쓴다
+     */
+    boolean startProgress(Long projectId);
+
+    /**
      * 종료. 성공보수 결제가 끝나면 정산 도메인이 호출한다. (정책 P30)
      *
      * <p>COMPLETION_PENDING 이 아니면 PJ_006. 권한 확인은 결제 쪽에서 이미 끝났다.

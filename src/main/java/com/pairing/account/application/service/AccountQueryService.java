@@ -42,6 +42,11 @@ public class AccountQueryService implements AccountQueryUseCase {
     }
 
     @Override
+    public Optional<Account> findById(Long accountId) {
+        return accountRepository.findById(accountId);
+    }
+
+    @Override
     public Optional<Account> findByEmailAndRole(String email, Role role) {
         return accountRepository.findByEmailAndRole(email, role);
     }

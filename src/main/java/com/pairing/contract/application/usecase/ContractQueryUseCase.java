@@ -13,6 +13,19 @@ import org.springframework.data.domain.Pageable;
  */
 public interface ContractQueryUseCase {
 
+    /**
+     * 계약서 PDF. 당사자만 받을 수 있다.
+     *
+     * <p>파일로 저장하지 않고 요청할 때마다 다시 굽는다. 조항 스냅샷({@code content_json})이
+     * 계약에 남아 있어 언제 그려도 같은 문서가 나오기 때문이다.
+     *
+     * @throws com.pairing.global.exception.BusinessException 없으면 CT_001, 당사자가 아니면 CT_002
+     */
+    byte[] renderPdf(Long contractId, Long accountId);
+
+    /** 다운로드 파일명. {@code CT-2026-000001.pdf} 형식이다. */
+    String pdfFileName(Long contractId, Long accountId);
+
     /** 내 계약 목록. status 가 null 이면 전체 상태를 조회한다. */
     Page<ContractSummary> findMine(Long accountId, ContractStatus status, Pageable pageable);
 

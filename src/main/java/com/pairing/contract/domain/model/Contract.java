@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 표준계약서. 서명(ContractSignature)을 포함하는 애그리거트 루트다.
@@ -43,6 +44,14 @@ public class Contract {
 
     private static final int MAX_SPECIAL_TERMS = 5000;
     private static final int PARTY_COUNT = 2;
+
+    /**
+     * 저장 전 임시 계약번호. 최종 번호가 id 를 포함하는데 INSERT 전에는 id 가 없다.
+     *
+     * <p>{@code contract_no} 가 NOT NULL + UNIQUE 라 null 로는 저장 자체가 안 된다. 정산번호와
+     * 같은 방식으로 겹치지 않는 임시값을 넣고 {@link #assignContractNo} 로 덮어쓴다.
+     */
+    private static final String TEMP_NO_PREFIX = "TMP-";
 
     private Long id;
     private String contractNo;
@@ -139,7 +148,11 @@ public class Contract {
     // ==========================================
 
     /**
-     * 협상 타결 직후 계약서를 만든다. 상태는 SIGN_PENDING 으로 시작하고 갑·을 서명 2건이 함께 생긴다.
+     * 협상 타결 직후 계약서를 만든다. 상태는 DRAFT 로 시작하고 갑·을 서명 2건이 함께 생긴다.
+     *
+     * <p>DRAFT 인 이유는 본문의 자유 텍스트(담당 업무·업무 범위·특약사항)가 아직 안 채워졌기
+     * 때문이다. 그 작업은 AI 서버를 부르므로 협상 타결을 붙잡지 않도록 커밋 뒤로 미룬다.
+     * 읽을 내용이 없는 계약서에 서명이 들어가면 안 되므로 {@link #completeDraft} 전까지 막는다.
      *
      * <p>계약 번호는 id 가 있어야 만들 수 있어 저장 후 {@link #assignContractNo} 로 채운다.
      * 검수·지급 기한과 위약금율은 정책 고정값이라 인자로 받지 않는다.
@@ -161,13 +174,14 @@ public class Contract {
         signatures.add(ContractSignature.create(clientAccountId, PartyRole.CLIENT));
         signatures.add(ContractSignature.create(freelancerAccountId, PartyRole.FREELANCER));
 
-        return new Contract(null, null, negotiationId, projectId, positionId, clientId, freelancerId,
+        return new Contract(null, TEMP_NO_PREFIX + UUID.randomUUID(),
+                negotiationId, projectId, positionId, clientId, freelancerId,
                 salaryAmount, salaryAmount * months, NO_SPLIT, NO_SPLIT,
                 startDate, endDate, workStyle, workForm,
                 workStyle == WorkStyle.ONSITE ? workLocation : null,
                 DEFAULT_INSPECTION_DAYS, DEFAULT_PAYMENT_DAYS, DEFAULT_CONFIDENTIAL_YEARS,
                 DEFAULT_PENALTY_RATE, specialTerms, null, null, null, null,
-                ContractStatus.SIGN_PENDING, null, null, null, null, null,
+                ContractStatus.DRAFT, null, null, null, null, null,
                 LocalDateTime.now(), signatures);
     }
 
@@ -197,7 +211,11 @@ public class Contract {
      * <p>정산번호와 같은 방식이다. 저장 직후 같은 트랜잭션에서 덮어쓴다.
      */
     public void assignContractNo(int year) {
-        if (this.id == null || this.contractNo != null) {
+        if (this.id == null) {
+            return;
+        }
+        // 이미 확정된 번호는 건드리지 않는다. 임시번호일 때만 덮어쓴다.
+        if (this.contractNo != null && !this.contractNo.startsWith(TEMP_NO_PREFIX)) {
             return;
         }
         this.contractNo = "CT-%d-%06d".formatted(year, this.id);
@@ -267,9 +285,27 @@ public class Contract {
         this.pdfFileId = pdfFileId;
     }
 
-    /** 렌더링용 조항 스냅샷. 계약서를 다시 그릴 때 이 값만 있으면 된다. */
-    public void applyContent(String contentJson) {
+    /**
+     * 본문 자유 텍스트를 채우고 서명 대기로 넘긴다. 이 시점부터 서명할 수 있다.
+     *
+     * <p>{@code specialTerms} 는 <b>비어 있으면 덮지 않는다</b>. 협상에서 합의된 특약 원문이
+     * 이미 들어 있는데, AI 가 실패했을 때 그것을 "없음"으로 지우면 합의 내용이 사라진다.
+     *
+     * @param contentJson  렌더링용 조항 스냅샷. 계약서를 다시 그릴 때 이 값만 있으면 된다
+     * @param specialTerms 다듬어진 특약사항. null·공백이면 기존 원문을 유지한다
+     * @return 이번 호출로 실제 넘어갔으면 true. 이미 넘어갔으면 false(비동기 재시도 방어)
+     */
+    public boolean completeDraft(String contentJson, String specialTerms) {
+        if (this.status != ContractStatus.DRAFT) {
+            return false;
+        }
         this.contentJson = contentJson;
+
+        if (specialTerms != null && !specialTerms.isBlank()) {
+            this.specialTerms = specialTerms;
+        }
+        this.status = ContractStatus.SIGN_PENDING;
+        return true;
     }
 
     // ==========================================
@@ -290,6 +326,15 @@ public class Contract {
                 .filter(s -> s.isOwnedBy(accountId))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ContractErrorCode.NOT_CONTRACT_PARTY));
+    }
+
+    /** 갑·을의 로그인 계정. 계약은 프로필 id 만 들고 있어 서명에서 꺼내 쓴다. */
+    public Long accountIdOf(PartyRole partyRole) {
+        return signatures.stream()
+                .filter(s -> s.getPartyRole() == partyRole)
+                .map(ContractSignature::getAccountId)
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(ContractErrorCode.SIGNATURE_NOT_FOUND));
     }
 
     // ==========================================

@@ -2,7 +2,9 @@ package com.pairing.contract.domain.service;
 
 import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractClause;
+import com.pairing.contract.domain.model.ContractDraftText;
 import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.SkillCode;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 import org.junit.jupiter.api.DisplayName;
@@ -27,17 +29,69 @@ class ContractClauseRendererTest {
                 workStyle, WorkForm.FULL_TIME, workLocation, specialTerms);
     }
 
-    private Map<Integer, String> byNo(List<ContractClause> clauses) {
-        return clauses.stream().collect(Collectors.toMap(ContractClause::no, ContractClause::content));
+    private Contract basic() {
+        return contract(5_000_000L, 4, WorkStyle.REMOTE, null, null);
+    }
+
+    private Map<Integer, String> render(Contract contract, String title, JobRole jobRole,
+                                        ContractDraftText draft) {
+        return render(contract, title, jobRole, draft, null);
+    }
+
+    private Map<Integer, String> render(Contract contract, String title, JobRole jobRole,
+                                        ContractDraftText draft, String settlementAccount) {
+        return render(contract, context(title, jobRole, List.of(), draft, settlementAccount));
+    }
+
+    private Map<Integer, String> render(Contract contract, ContractClauseRenderer.ClauseContext context) {
+        return ContractClauseRenderer.render(contract, context).stream()
+                .collect(Collectors.toMap(ContractClause::no, ContractClause::content));
+    }
+
+    private ContractClauseRenderer.ClauseContext context(String title, JobRole jobRole,
+                                                         List<SkillCode> skills, ContractDraftText draft,
+                                                         String settlementAccount) {
+        return new ContractClauseRenderer.ClauseContext(title, jobRole, skills, draft, settlementAccount);
+    }
+
+    @Test
+    @DisplayName("저장 전에도 계약번호가 비어 있지 않다")
+    void contractNoIsNeverNullBeforeSave() {
+        // contract_no 는 NOT NULL + UNIQUE 다. 최종 번호가 id 를 포함해 INSERT 전에는 만들 수 없으니
+        // 임시번호를 넣어 둔다. null 로 두면 저장 자체가 막힌다.
+        Contract contract = basic();
+
+        assertThat(contract.getContractNo()).isNotBlank().startsWith("TMP-");
+
+        // 저장 후 채번. 임시번호일 때만 덮어쓴다.
+        Contract saved = reconstituteWithId(contract, 7L);
+        saved.assignContractNo(2026);
+        assertThat(saved.getContractNo()).isEqualTo("CT-2026-000007");
+
+        // 이미 확정된 번호는 다시 불러도 안 바뀐다.
+        saved.assignContractNo(2027);
+        assertThat(saved.getContractNo()).isEqualTo("CT-2026-000007");
+    }
+
+    /** 저장으로 id 가 붙은 상태를 흉내 낸다. */
+    private Contract reconstituteWithId(Contract source, Long id) {
+        return Contract.reconstitute(id, source.getContractNo(), source.getNegotiationId(),
+                source.getProjectId(), source.getPositionId(), source.getClientId(),
+                source.getFreelancerId(), source.getSalaryAmount(), source.getTotalAmount(),
+                source.getDownAmount(), source.getFinalAmount(), source.getStartDate(),
+                source.getEndDate(), source.getWorkStyle(), source.getWorkForm(),
+                source.getWorkLocation(), source.getInspectionDays(), source.getPaymentDays(),
+                source.getConfidentialYears(), source.getPenaltyRate(), source.getSpecialTerms(),
+                source.getContentJson(), source.getPdfFileId(), source.getEsignProvider(),
+                source.getEsignDocId(), source.getStatus(), source.getSignedAt(),
+                source.getCompletedAt(), source.getTerminatedAt(), source.getTerminatedBy(),
+                source.getRetentionUntil(), source.getCreatedAt(), source.getSignatures());
     }
 
     @Test
     @DisplayName("제4조 금액과 제3조 기간의 개월 수가 서로 맞는다")
     void amountAndPeriodAgree() {
-        List<ContractClause> clauses = ContractClauseRenderer.render(
-                contract(5_000_000L, 4, WorkStyle.REMOTE, null, null), "페어링 웹 리뉴얼", JobRole.BACKEND);
-
-        Map<Integer, String> content = byNo(clauses);
+        Map<Integer, String> content = render(basic(), "페어링 웹 리뉴얼", JobRole.BACKEND, null);
 
         assertThat(content.get(3))
                 .contains("2026년 9월 1일")
@@ -52,23 +106,65 @@ class ContractClauseRendererTest {
     @Test
     @DisplayName("직무가 정해지면 산출물 목록이 직군 표준으로 채워진다")
     void deliverablesFollowJobCategory() {
-        String development = byNo(ContractClauseRenderer.render(
-                contract(5_000_000L, 4, WorkStyle.REMOTE, null, null), "A", JobRole.BACKEND)).get(2);
-        String design = byNo(ContractClauseRenderer.render(
-                contract(5_000_000L, 4, WorkStyle.REMOTE, null, null), "A", JobRole.UX_UI_DESIGNER)).get(2);
+        String development = render(basic(), "A", JobRole.BACKEND, null).get(2);
+        String design = render(basic(), "A", JobRole.UX_UI_DESIGNER, null).get(2);
 
         assertThat(development).contains("백엔드 개발자").contains("소스코드").contains("API 명세서");
         assertThat(design).contains("UX·UI 디자이너").contains("디자인 시안").contains("스타일 가이드");
     }
 
     @Test
+    @DisplayName("AI 문구도 요구 기술도 없으면 제2조는 4항이다")
+    void scopeWithoutDraft() {
+        String clause = render(basic(), "A", JobRole.BACKEND, null).get(2);
+
+        assertThat(clause)
+                .contains("① 본 계약의 대상 프로젝트는 「A」이다.")
+                .contains("② 을이 수행할 직무는")
+                .contains("③ 을이 제출할 산출물은")
+                .contains("④ 세부 업무 범위는 갑이 제공한 과업 내용")
+                .doesNotContain("⑤");
+    }
+
+    @Test
+    @DisplayName("AI 문구와 요구 기술이 있으면 항이 늘고 번호가 밀린다")
+    void scopeWithDraftAndSkills() {
+        ContractDraftText draft = new ContractDraftText(
+                "모바일 앱용 RESTful API 설계 및 개발",
+                "Node.js 기반 API 구현, 데이터베이스 스키마 설계",
+                "별도의 특약사항 없음");
+
+        String clause = render(basic(), context("페어링 웹 리뉴얼", JobRole.BACKEND,
+                List.of(SkillCode.JAVA, SkillCode.SPRING_BOOT), draft, null)).get(2);
+
+        assertThat(clause)
+                .contains("① 본 계약의 대상 프로젝트는 「페어링 웹 리뉴얼」이다.")
+                .contains("② 을이 수행할 직무는")
+                .contains("③ 을이 수행할 주요 업무는 다음과 같다. 모바일 앱용 RESTful API 설계 및 개발")
+                .contains("④ 을이 제출할 산출물은")
+                .contains("⑤ 세부 업무 범위는 Node.js 기반 API 구현")
+                // enum 이름(SPRING_BOOT)이 아니라 화면 표기가 나가야 한다.
+                .contains("⑥ 요구 기술은 다음과 같다. Java, Spring Boot");
+    }
+
+    @Test
+    @DisplayName("세부 업무 범위 원문이 없어 AI 가 빈 값을 주면 일반 문구로 되돌아간다")
+    void scopeFallsBackWhenDetailScopeIsEmpty() {
+        // 파이썬은 원문이 없으면 요약도 빈 문자열로 준다. 없는 업무를 지어내지 않기 위해서다.
+        ContractDraftText draft = new ContractDraftText("API 설계 및 개발", "", "별도의 특약사항 없음");
+
+        String clause = render(basic(), "A", JobRole.BACKEND, draft).get(2);
+
+        assertThat(clause)
+                .contains("③ 을이 수행할 주요 업무는")
+                .contains("⑤ 세부 업무 범위는 갑이 제공한 과업 내용");
+    }
+
+    @Test
     @DisplayName("프로젝트가 지워져 이름·직무가 없어도 계약서가 만들어진다")
     void rendersWithoutProject() {
         // 계약은 5년 보관이라 원본보다 오래 남는다. 열람이 막히면 안 된다.
-        List<ContractClause> clauses = ContractClauseRenderer.render(
-                contract(5_000_000L, 4, WorkStyle.REMOTE, null, null), null, null);
-
-        Map<Integer, String> content = byNo(clauses);
+        Map<Integer, String> content = render(basic(), null, null, null);
 
         assertThat(content.get(1)).contains("(프로젝트명 미상)");
         assertThat(content.get(2)).contains("협의된 직무").contains("산출물 일체");
@@ -77,12 +173,11 @@ class ContractClauseRendererTest {
     @Test
     @DisplayName("상주 계약은 근무 장소가 찍히고, 재택은 별도 문구로 대체된다")
     void workLocationDependsOnWorkStyle() {
-        String onsite = byNo(ContractClauseRenderer.render(
-                contract(5_000_000L, 4, WorkStyle.ONSITE, "서울특별시 강남구 테헤란로 123", null),
-                "A", JobRole.BACKEND)).get(7);
-        String remote = byNo(ContractClauseRenderer.render(
-                contract(5_000_000L, 4, WorkStyle.REMOTE, "서울특별시 강남구 테헤란로 123", null),
-                "A", JobRole.BACKEND)).get(7);
+        String address = "서울특별시 강남구 테헤란로 123";
+        String onsite = render(contract(5_000_000L, 4, WorkStyle.ONSITE, address, null),
+                "A", JobRole.BACKEND, null).get(7);
+        String remote = render(contract(5_000_000L, 4, WorkStyle.REMOTE, address, null),
+                "A", JobRole.BACKEND, null).get(7);
 
         assertThat(onsite).contains("상주").contains("테헤란로 123");
         // Contract.create 가 재택이면 근무지를 버린다. 조항도 그에 맞는 문구로 나가야 한다.
@@ -92,33 +187,67 @@ class ContractClauseRendererTest {
     @Test
     @DisplayName("특약사항이 없으면 빈칸이 아니라 없음으로 적는다")
     void specialTermsFallback() {
-        String none = byNo(ContractClauseRenderer.render(
-                contract(5_000_000L, 4, WorkStyle.REMOTE, null, null), "A", JobRole.BACKEND)).get(15);
-        String some = byNo(ContractClauseRenderer.render(
-                contract(5_000_000L, 4, WorkStyle.REMOTE, null, "산출물은 매주 금요일에 공유한다."),
-                "A", JobRole.BACKEND)).get(15);
+        String none = render(basic(), "A", JobRole.BACKEND, null).get(15);
+        String some = render(contract(5_000_000L, 4, WorkStyle.REMOTE, null,
+                "산출물은 매주 금요일에 공유한다."), "A", JobRole.BACKEND, null).get(15);
 
         assertThat(none).isEqualTo("별도의 특약사항 없음");
         assertThat(some).isEqualTo("산출물은 매주 금요일에 공유한다.");
     }
 
     @Test
-    @DisplayName("조 번호가 중복되지 않고 오름차순이다")
-    void clauseNumbersAreOrdered() {
-        List<Integer> numbers = ContractClauseRenderer.render(
-                        contract(5_000_000L, 4, WorkStyle.REMOTE, null, null), "A", JobRole.BACKEND)
+    @DisplayName("제1조부터 제15조까지 빠짐없이 오름차순으로 나온다")
+    void clauseNumbersAreComplete() {
+        List<Integer> numbers = ContractClauseRenderer.render(basic(),
+                        context("A", JobRole.BACKEND, List.of(), null, null))
                 .stream().map(ContractClause::no).toList();
 
-        assertThat(numbers).doesNotHaveDuplicates().isSorted();
+        assertThat(numbers).containsExactly(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
     }
 
     @Test
-    @DisplayName("본문 미리보기")
-    void print() {
-        ContractClauseRenderer.render(
-                        contract(5_000_000L, 4, WorkStyle.ONSITE, "서울특별시 강남구 테헤란로 123",
-                                "산출물은 매주 금요일에 공유한다."),
-                        "페어링 웹 리뉴얼", JobRole.BACKEND)
-                .forEach(c -> System.out.printf("제%d조 (%s)%n%s%n%n", c.no(), c.title(), c.content()));
+    @DisplayName("정산 계좌가 있으면 제5조에 찍고, 없으면 일반 문구로 둔다")
+    void paymentAccount() {
+        String withAccount = render(basic(), "A", JobRole.BACKEND, null,
+                "카카오뱅크 3333012345678 (예금주: 김민준)").get(5);
+        String without = render(basic(), "A", JobRole.BACKEND, null).get(5);
+
+        assertThat(withAccount).contains("지급 계좌는 카카오뱅크 3333012345678 (예금주: 김민준) 로 한다.");
+        assertThat(without).contains("을이 플랫폼에 등록한 정산 계좌로 한다.");
+    }
+
+    @Test
+    @DisplayName("검수 조항에 하자 보완 요청 항이 들어간다")
+    void inspectionCoversDefects() {
+        String clause = render(basic(), "A", JobRole.BACKEND, null).get(8);
+
+        assertThat(clause)
+                .contains("③ 검수를 통과하면")
+                .contains("④ 하자가 발생한 경우 갑은 7일 이내에 서면으로 보완을 요청할 수 있다.");
+    }
+
+    @Test
+    @DisplayName("비밀유지 기간과 위약금율은 계약이 들고 있는 값으로 찍는다")
+    void fixedClausesUseContractValues() {
+        Map<Integer, String> content = render(basic(), "A", JobRole.BACKEND, null);
+
+        // 기본값 confidential_years = 3, penalty_rate = 10.00
+        assertThat(content.get(10)).contains("계약 종료 후 3년간");
+        // numeric(5,2) 라 10.00 으로 들어오는데 계약서에는 "10%" 로 나가야 한다.
+        assertThat(content.get(12)).contains("10%").doesNotContain("10.00");
+    }
+
+    @Test
+    @DisplayName("파기 위약금은 상대방과 플랫폼 양쪽을 모두 적는다")
+    void terminationCoversBothPayees() {
+        // 정책 P32: 파기 주체가 상대방 10% + 플랫폼 10% 를 부담한다.
+        String clause = render(basic(), "A", JobRole.BACKEND, null).get(12);
+
+        assertThat(clause)
+                .contains("14일 이내에 시정하지 않는 경우")
+                .contains("② 을이 파기하는 경우")
+                .contains("③ 갑이 파기하는 경우")
+                .contains("상대방에게")
+                .contains("플랫폼에");
     }
 }

@@ -2,13 +2,17 @@ package com.pairing.contract.domain.service;
 
 import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractClause;
+import com.pairing.contract.domain.model.ContractDraftText;
 import com.pairing.contract.domain.model.Deliverables;
 import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.SkillCode;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 계약서 본문 조항을 만든다. 상세 조회와 PDF 가 같은 문장을 쓴다.
@@ -28,34 +32,58 @@ public final class ContractClauseRenderer {
     /** 제6조 요율이 갈리는 계약 금액. 정책 P29·P30 의 1억원 경계. */
     private static final long HIGH_AMOUNT_THRESHOLD = 100_000_000L;
 
+    /** 제12조 시정 기간. 계약 테이블에 없는 양식 고정값이다. */
+    private static final int CURE_PERIOD_DAYS = 14;
+
     private static final String NO_SPECIAL_TERMS = "별도의 특약사항 없음";
     private static final String UNKNOWN_PROJECT = "(프로젝트명 미상)";
     private static final String UNKNOWN_JOB_ROLE = "협의된 직무";
     private static final String REMOTE_LOCATION = "을이 지정하는 장소로 하며, 갑은 별도의 근무 장소를 제공하지 않는다";
+
+    /** 제2조 항 번호. 담당 업무·요구 기술 항이 빠질 수 있어 자리를 고정하지 않는다. */
+    private static final String[] MARKS = {"①", "②", "③", "④", "⑤", "⑥"};
+    private static final String MARKS_CHARS = String.join("", MARKS);
 
     private ContractClauseRenderer() {
         throw new IllegalStateException("Utility class");
     }
 
     /**
-     * 계약서 본문을 만든다.
+     * 계약 밖에서 가져와야 하는 값들.
      *
-     * @param projectTitle 프로젝트명. 원본이 지워졌으면 null 이 올 수 있다(계약은 5년 보관)
-     * @param jobRole      계약 대상 직무. 위와 같은 이유로 null 을 허용한다
+     * @param projectTitle      프로젝트명. 원본이 지워졌으면 null (계약은 5년 보관이라 더 오래 남는다)
+     * @param jobRole           계약 대상 직무. 위와 같은 이유로 null 을 허용한다
+     * @param skills            포지션 요구 기술. 없거나 원본이 지워졌으면 빈 목록
+     * @param draft             AI 가 다듬은 자유 텍스트. 아직 안 채워졌으면(DRAFT) null
+     * @param settlementAccount 을의 정산 계좌 한 줄. 미등록이면 null
      */
-    public static List<ContractClause> render(Contract contract, String projectTitle, JobRole jobRole) {
+    public record ClauseContext(String projectTitle, JobRole jobRole, List<SkillCode> skills,
+                                ContractDraftText draft, String settlementAccount) {
+    }
+
+    /**
+     * 계약서 본문을 만든다. 계약이 들고 있지 않은 값만 {@link ClauseContext} 로 받는다.
+     *
+     * @param context 프로젝트명·직무·AI 문구·정산 계좌. 어느 것이든 없으면 해당 칸이 기본 문구로 채워진다
+     */
+    public static List<ContractClause> render(Contract contract, ClauseContext context) {
         List<ContractClause> clauses = new ArrayList<>();
         int months = months(contract);
 
-        clauses.add(purpose(projectTitle));
-        clauses.add(scope(jobRole));
+        clauses.add(purpose(context.projectTitle()));
+        clauses.add(scope(context));
         clauses.add(period(contract, months));
         clauses.add(amount(contract, months));
-        clauses.add(payment());
+        clauses.add(payment(context.settlementAccount()));
         clauses.add(platformFee());
         clauses.add(workCondition(contract));
         clauses.add(inspection(contract));
-        // TODO: 제9~14조. 양식의 고정 문구를 그대로 옮긴다.
+        clauses.add(intellectualProperty());
+        clauses.add(confidentiality(contract));
+        clauses.add(amendment());
+        clauses.add(termination(contract));
+        clauses.add(damages());
+        clauses.add(disputeResolution());
         clauses.add(specialTerms(contract));
 
         return clauses;
@@ -75,17 +103,56 @@ public final class ContractClauseRenderer {
     /**
      * 산출물은 직군별 표준 목록을 쓴다. 프로젝트 등록에도 협상에도 입력란이 없고, 클라이언트가
      * 정하는 값이 아니라 직군이 정해지면 따라오는 관례적 목록이라 상수로 둔다.
+     *
+     * <p>담당 업무와 세부 업무 범위는 AI 가 줄인 문장이다. 원문이 없으면 AI 도 빈 문자열을
+     * 돌려주므로(없는 업무를 지어내지 않는다) 그때는 해당 항을 빼거나 일반 문구로 대체한다.
      */
-    private static ContractClause scope(JobRole jobRole) {
+    private static ContractClause scope(ClauseContext context) {
+        JobRole jobRole = context.jobRole();
+        ContractDraftText draft = context.draft();
+
         String label = jobRole == null ? UNKNOWN_JOB_ROLE : jobRole.getLabel();
         List<String> deliverables = jobRole == null
                 ? Deliverables.of(null) : Deliverables.of(jobRole.getCategory());
 
-        return new ContractClause(2, "계약 대상 및 업무 범위",
-                "① 을이 수행할 직무는 %s이다.".formatted(label)
-                        + line("② 을이 제출할 산출물은 다음과 같다. " + String.join(", ", deliverables))
-                        + line("③ 세부 업무 범위는 갑이 제공한 과업 내용과 양 당사자가 협상 과정에서 "
-                        + "합의한 사항에 따른다."));
+        StringBuilder content = new StringBuilder("① 본 계약의 대상 프로젝트는 「%s」이다."
+                .formatted(orDefault(context.projectTitle(), UNKNOWN_PROJECT)));
+
+        content.append(line("%s 을이 수행할 직무는 %s이다.".formatted(mark(content), label)));
+
+        String mainTask = draft == null ? null : draft.mainTaskSummary();
+        if (mainTask != null && !mainTask.isBlank()) {
+            content.append(line("%s 을이 수행할 주요 업무는 다음과 같다. ".formatted(mark(content)) + mainTask));
+        }
+
+        content.append(line("%s 을이 제출할 산출물은 다음과 같다. ".formatted(mark(content))
+                + String.join(", ", deliverables)));
+
+        String detailScope = draft == null ? null : draft.detailScopeSummary();
+        content.append(line("%s 세부 업무 범위는 ".formatted(mark(content))
+                + (detailScope == null || detailScope.isBlank()
+                ? "갑이 제공한 과업 내용과 양 당사자가 협상 과정에서 합의한 사항에 따른다."
+                : detailScope + "로 한다.")));
+
+        String skills = skillLabels(context.skills());
+        if (!skills.isBlank()) {
+            content.append(line("%s 요구 기술은 다음과 같다. ".formatted(mark(content)) + skills));
+        }
+
+        return new ContractClause(2, "계약 대상 및 업무 범위", content.toString());
+    }
+
+    /** 화면에 쓰는 표기 그대로 적는다. enum 이름(SPRING_BOOT)이 계약서에 나가면 안 된다. */
+    private static String skillLabels(List<SkillCode> skills) {
+        if (skills == null || skills.isEmpty()) {
+            return "";
+        }
+        return skills.stream().map(SkillCode::getLabel).collect(Collectors.joining(", "));
+    }
+
+    /** 항 번호. 담당 업무·요구 기술 항이 빠질 수 있어 고정하지 않고 지금까지 쓴 개수로 매긴다. */
+    private static String mark(StringBuilder content) {
+        return MARKS[(int) content.chars().filter(c -> MARKS_CHARS.indexOf(c) >= 0).count()];
     }
 
     private static ContractClause period(Contract contract, int months) {
@@ -112,11 +179,15 @@ public final class ContractClauseRenderer {
      * 지급 주기는 정하지 않는다. 용역비가 플랫폼을 거치지 않아(P29) 플랫폼이 시기를 강제할 근거가
      * 없고, 월 단가 계약이라 나눌 착수금·잔금도 없다.
      */
-    private static ContractClause payment() {
+    private static ContractClause payment(String settlementAccount) {
+        String account = settlementAccount == null || settlementAccount.isBlank()
+                ? "을이 플랫폼에 등록한 정산 계좌로 한다."
+                : settlementAccount + " 로 한다.";
+
         return new ContractClause(5, "대금 지급",
                 "① 용역대금은 갑이 을에게 직접 지급하며, 플랫폼은 그 지급에 관여하지 않는다."
                         + line("② 지급 시기와 방법은 양 당사자가 협의하여 정한다.")
-                        + line("③ 지급 계좌는 을이 플랫폼에 등록한 정산 계좌로 한다."));
+                        + line("③ 지급 계좌는 " + account));
     }
 
     /** 정책 P29·P30 의 표를 그대로 옮긴다. 실제 부과액은 정산 도메인이 계산한다. */
@@ -153,8 +224,55 @@ public final class ContractClauseRenderer {
         return new ContractClause(8, "검수 및 완료",
                 "① 을은 계약 기간이 종료되면 지체 없이 산출물을 갑에게 제출한다."
                         + line("② 갑은 산출물을 수령한 날부터 %d일 이내에 검수를 완료한다.".formatted(days))
-                        + line("③ 갑이 제②항의 기간 내에 서면으로 이의를 제기하지 않으면 검수가 "
-                        + "완료된 것으로 본다."));
+                        + line("③ 검수를 통과하면 용역의 완료가 확정된다.")
+                        + line("④ 하자가 발생한 경우 갑은 %d일 이내에 서면으로 보완을 요청할 수 있다."
+                        .formatted(days)));
+    }
+
+    private static ContractClause intellectualProperty() {
+        return new ContractClause(9, "지식재산권",
+                "① 산출물의 지식재산권은 대금 완납 시 갑에게 귀속된다."
+                        + line("② 을은 산출물이 제3자의 권리를 침해하지 않음을 보증한다."));
+    }
+
+    private static ContractClause confidentiality(Contract contract) {
+        return new ContractClause(10, "비밀유지",
+                "① 양 당사자는 계약 수행 중 알게 된 상대방의 비밀정보를 제3자에게 누설하지 않는다."
+                        + line("② 비밀유지 의무는 계약 종료 후 %d년간 유효하다."
+                        .formatted(contract.getConfidentialYears())));
+    }
+
+    private static ContractClause amendment() {
+        return new ContractClause(11, "계약 변경",
+                "계약 변경은 양 당사자의 서면(전자) 합의로만 가능하다.");
+    }
+
+    /**
+     * 파기 위약금은 파기 주체가 상대방과 플랫폼에 각각 {@code penaltyRate}%씩 부담한다(정책 P32).
+     * 수행분 정산은 이 위약금과 별개다.
+     */
+    private static ContractClause termination(Contract contract) {
+        String rate = rate(contract.getPenaltyRate());
+
+        return new ContractClause(12, "계약 해지 및 위약금",
+                "① 일방이 계약을 위반하고 %d일 이내에 시정하지 않는 경우 상대방은 계약을 해지할 수 있다."
+                        .formatted(CURE_PERIOD_DAYS)
+                        + line("② 을이 파기하는 경우: 수행분을 정산한 뒤 총 계약 금액의 %s%%를 상대방에게, "
+                        .formatted(rate) + "%s%%를 플랫폼에 위약금으로 지급한다.".formatted(rate))
+                        + line("③ 갑이 파기하는 경우: 수행분을 지급한 뒤 총 계약 금액의 %s%%를 상대방에게, "
+                        .formatted(rate) + "%s%%를 플랫폼에 위약금으로 지급한다.".formatted(rate)));
+    }
+
+    private static ContractClause damages() {
+        return new ContractClause(13, "손해배상",
+                "계약 위반으로 손해가 발생한 경우 귀책 당사자가 배상한다.");
+    }
+
+    private static ContractClause disputeResolution() {
+        return new ContractClause(14, "분쟁 해결",
+                "① 준거법: 대한민국 법률을 적용한다."
+                        + line("② 관할: 민사소송법상의 관할 법원으로 한다.")
+                        + line("③ 플랫폼의 분쟁 조정 절차를 우선 적용한다."));
     }
 
     private static ContractClause specialTerms(Contract contract) {
@@ -189,6 +307,11 @@ public final class ContractClauseRenderer {
 
     private static String comma(long amount) {
         return String.format("%,d", amount);
+    }
+
+    /** 위약금율. {@code numeric(5,2)} 라 10.00 으로 오는데 계약서에는 "10%" 로 찍는다. */
+    private static String rate(BigDecimal value) {
+        return value == null ? "-" : value.stripTrailingZeros().toPlainString();
     }
 
     private static String date(LocalDate value) {
