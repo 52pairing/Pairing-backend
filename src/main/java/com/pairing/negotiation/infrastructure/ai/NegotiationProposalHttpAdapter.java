@@ -99,6 +99,10 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
                     .header(INTERNAL_KEY_HEADER, internalApiKey)
                     .headers(headers -> traceId().ifPresent(id -> headers.add(TRACE_ID_HEADER, id)))
                     .contentType(MediaType.APPLICATION_JSON)
+                    // Accept 를 안 보내면 상대가 application/octet-stream 으로 내려줄 수 있고,
+                    // 그러면 이 응답을 읽을 컨버터가 없어 예외 → 전량 stub 폴백이 된다(2026-08-11 실측).
+                    // 대화가 통째로 가짜가 되는 실패라 요청 쪽에서 JSON 을 명시한다.
+                    .accept(MediaType.APPLICATION_JSON)
                     .body(toRequest(context))
                     .retrieve()
                     .body(ProposeApiResponse.class);
