@@ -5,6 +5,7 @@ import com.pairing.negotiation.domain.model.SenderType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,6 +15,12 @@ public interface SpringDataNegotiationMessageRepository extends JpaRepository<Ne
 
     Optional<NegotiationMessageJpaEntity> findFirstByNegotiationIdAndConditionIdAndMessageTypeOrderByRoundNoDescIdDesc(
             Long negotiationId, Long conditionId, NegotiationMessageType messageType);
+
+    /** 내 편(발신자) 제안을 뺀 최신 제안. 수락 대상은 상대가 낸 값이어야 하므로 그걸 고르는 데 쓴다. */
+    Optional<NegotiationMessageJpaEntity>
+    findFirstByNegotiationIdAndConditionIdAndMessageTypeAndSenderTypeNotInOrderByRoundNoDescIdDesc(
+            Long negotiationId, Long conditionId, NegotiationMessageType messageType,
+            Collection<SenderType> senderTypes);
 
     /** 체인 머리(가장 최근 로그). id 순으로 append 되므로 최대 id 가 머리다. */
     Optional<NegotiationMessageJpaEntity> findFirstByNegotiationIdOrderByIdDesc(Long negotiationId);

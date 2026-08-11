@@ -18,6 +18,7 @@ import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationMessageType;
+import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
@@ -56,8 +57,10 @@ class NegotiationLoopServiceTest {
                         .map(c -> {
                             NegotiationProposalStub.Proposal p =
                                     NegotiationProposalStub.propose(c.clientValue(), c.freelancerValue());
+                            // 실제 A2A·stub 과 같이 '클라 대리인'이 낸 제안으로 둔다. 수락 대상은
+                            // 상대가 낸 값이므로, 프리랜서 시점 테스트가 성립하려면 이쪽이어야 한다.
                             return new NegotiationProposalPort.AgentMessage(
-                                    "FREELANCER_AGENT", c.conditionId(), "PROPOSAL",
+                                    "CLIENT_AGENT", c.conditionId(), "PROPOSAL",
                                     p.value(), p.content(), p.reason());
                         })
                         .toList();
@@ -135,10 +138,12 @@ class NegotiationLoopServiceTest {
      * 라운드 1 이후를 검증하는 테스트는 전부 이걸 거쳐야 한다.
      */
     private void startBothSides() {
+        // 중간값 제안(500만)이 양측 마지노선 안에 들어오도록 잡는다. 밖이면 수락이 NG_011 로 막히므로
+        // '수락이 정상 동작하는' 경로를 검증할 수 없다.
         loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
-                List.of(new FloorInput(ConditionType.AMOUNT, "5500000")));
+                List.of(new FloorInput(ConditionType.AMOUNT, "4800000")));
         loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
-                List.of(new FloorInput(ConditionType.AMOUNT, "4500000")));
+                List.of(new FloorInput(ConditionType.AMOUNT, "5200000")));
     }
 
     @Test
@@ -255,6 +260,41 @@ class NegotiationLoopServiceTest {
         // 재지시 값도 /start 와 같은 규칙으로 정규화된다.
         assertThat(reloaded.getConditions().get(0).getFreelancerFloor()).isEqualTo("5800000");
         assertThat(reloaded.getTotalRound()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("answer 수락: 내 마지노선을 벗어난 값은 수락할 수 없다(NG_011)")
+    void acceptCannotBreakOwnFloor() {
+        startBothSides();   // 프리 하한 5,500,000 / 클라 상한 4,500,000
+
+        // 프리랜서 하한(550만) 아래인 클라 대리인 제안(400만)이 마지막 제안인 상태를 만든다.
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 1,
+                SenderType.CLIENT_AGENT, "400만원을 제안합니다.", "예산 상한", "4000000")));
+
+        // 사람이 눌렀다고 자기가 그은 선이 무너지면 마지노선을 받은 의미가 없다.
+        assertThatThrownBy(() -> loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, true, null))))
+                .isInstanceOf(BusinessException.class);
+
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
+                .getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("answer 수락: 내 편 대리인이 낸 제안은 수락 대상이 아니다(상대 미동의 확정 방지)")
+    void acceptIgnoresOwnSideProposal() {
+        startBothSides();
+
+        // 프리랜서 대리인이 마지막으로 제안한 상태 — 프리랜서가 자기 요구를 자기가 수락할 수는 없다.
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 1,
+                SenderType.FREELANCER_AGENT, "600만원을 요청합니다.", "공수 반영", "6000000")));
+
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, true, null)));
+
+        // 락된 값은 프리 제안(600만)이 아니라 상대(클라) 대리인이 낸 값이어야 한다.
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
+                .getConditions().get(0).getAgreedValue()).isNotEqualTo("6000000");
     }
 
     @Test

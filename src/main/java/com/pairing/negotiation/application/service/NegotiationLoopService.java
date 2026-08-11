@@ -100,9 +100,18 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         for (AnswerInput answer : answers) {
             NegotiationCondition condition = negotiation.findCondition(answer.conditionId());
             if (answer.accepted()) {
-                String lockValue = messageRepository.findLatestProposal(negotiationId, condition.getId())
+                // 수락 대상은 '상대가 낸 제안'이다. 내 편 대리인이 부른 값을 내가 수락하면 상대는
+                // 동의한 적 없는 조건이 확정된다(먼저 누른 쪽이 이기는 협상).
+                String lockValue = messageRepository
+                        .findLatestProposalExcluding(negotiationId, condition.getId(), role.ownSenders())
                         .map(NegotiationMessage::getProposedValue)
-                        .orElse(answer.proposedValue());
+                        .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NO_PROPOSAL_TO_RESPOND));
+                // 사람도 클릭 한 번으로 자기가 그은 선을 넘지 못한다. 대리인에게 적용하는 기준과 같다.
+                // 양보하려면 [거절] → 재지시로 마지노선을 다시 그어야 한다(그 경로가 이미 있다).
+                if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), lockValue,
+                        condition.getClientFloor(), condition.getFreelancerFloor())) {
+                    throw new BusinessException(NegotiationErrorCode.ACCEPT_BREAKS_FLOOR);
+                }
                 condition.lock(lockValue);
                 messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
                         negotiation.getTotalRound(), sender, "제안을 수락했습니다.", "YES", accountId));
