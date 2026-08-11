@@ -36,7 +36,14 @@ class ResumeUpdatedEventListener {
         try {
             Long freelancerId = freelancerDirectoryPort.resolveFreelancerId(event.accountId());
             FreelancerResumeSummary summary = freelancerDirectoryPort.findResumeSummary(freelancerId);
-            matchingPort.upsertFreelancerEmbedding(freelancerId, FreelancerEmbeddingTextBuilder.buildText(summary));
+            String text = FreelancerEmbeddingTextBuilder.buildText(summary);
+            if (text.isBlank()) {
+                // AI 서버가 빈 문자열을 422로 거절한다. 여기서 걸러 "왜 실패했는지 모르는 422" 대신
+                // 원인이 분명한 로그를 남긴다(자기소개·경력이 비면 임베딩할 내용 자체가 없다).
+                log.warn("[이력서 저장 → 임베딩 생략] 임베딩할 텍스트가 비어 있음. accountId={}", event.accountId());
+                return;
+            }
+            matchingPort.upsertFreelancerEmbedding(freelancerId, text);
         } catch (Exception e) {
             log.error("[이력서 저장 → 임베딩 재생성 실패] accountId={}", event.accountId(), e);
         }
