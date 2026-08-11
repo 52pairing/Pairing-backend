@@ -49,6 +49,11 @@ public class ReviewService implements ReviewUseCase {
         }
 
         Account reviewer = accountQueryUseCase.getById(command.reviewerAccountId());
+
+        // 없는 계정을 리뷰 대상으로 넣으면 저장 단계에서야 터져 500 이 나간다. 여기서 404(AC_001)로 끊는다.
+        // 계약 존재 확인은 contract 도메인이 갖춰지면 함께 넣는다.
+        accountQueryUseCase.getById(command.revieweeAccountId());
+
         PartyRole reviewerRole = toPartyRole(reviewer.getRole());
         PartyRole revieweeRole = reviewerRole == PartyRole.CLIENT ? PartyRole.FREELANCER : PartyRole.CLIENT;
 

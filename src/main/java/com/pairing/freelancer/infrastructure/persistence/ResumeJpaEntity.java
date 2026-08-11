@@ -49,8 +49,15 @@ public class ResumeJpaEntity {
     @Column(name = "contact_email", length = 100)
     private String contactEmail;
 
+    // 주소 찾기로 채워지는 값이라 기존 이력서에는 없다. 그래서 nullable 이다.
+    @Column(name = "zip_code", length = 10)
+    private String zipCode;
+
     @Column(name = "address", nullable = false, length = 255)
     private String address;
+
+    @Column(name = "address_detail", length = 255)
+    private String addressDetail;
 
     @Column(name = "self_introduction", nullable = false, length = 2000)
     private String selfIntroduction;
@@ -96,7 +103,8 @@ public class ResumeJpaEntity {
     private List<String> links = new ArrayList<>();
 
     public ResumeJpaEntity(Long id, Long accountId, ResumeStatus status, Long profileFileId, String contactPhone,
-                           String contactEmail, String address, String selfIntroduction, Long portfolioFileId,
+                           String contactEmail, String zipCode, String address, String addressDetail,
+                           String selfIntroduction, Long portfolioFileId,
                            boolean profileCollectionAgreed, boolean profileProvisionAgreed,
                            boolean aiAnalysisAgreed, boolean careerPortfolioUsageAgreed, LocalDateTime updatedAt,
                            List<ResumeEducationEmbeddable> educations, List<ResumeCareerEmbeddable> careers,
@@ -107,7 +115,9 @@ public class ResumeJpaEntity {
         this.profileFileId = profileFileId;
         this.contactPhone = contactPhone;
         this.contactEmail = contactEmail;
+        this.zipCode = zipCode;
         this.address = address;
+        this.addressDetail = addressDetail;
         this.selfIntroduction = selfIntroduction;
         this.portfolioFileId = portfolioFileId;
         this.profileCollectionAgreed = profileCollectionAgreed;

@@ -1,5 +1,8 @@
 package com.pairing.freelancer.presentation.api;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.FreelancerProfile;
@@ -8,16 +11,20 @@ import com.pairing.auth.exception.AuthErrorCode;
 import com.pairing.freelancer.application.usecase.FreelancerCommandUseCase;
 import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.freelancer.application.usecase.FreelancerQueryUseCase;
+import com.pairing.freelancer.application.result.ResumeDraftResult;
 import com.pairing.freelancer.application.usecase.ResumeUseCase;
 import com.pairing.freelancer.domain.model.ResumeStatus;
+import com.pairing.freelancer.exception.FreelancerErrorCode;
 import com.pairing.freelancer.presentation.api.request.FreelancerConditionRequest;
 import com.pairing.freelancer.presentation.api.request.FreelancerProfileUpdateRequest;
 import com.pairing.freelancer.presentation.api.request.MatchingSettingsRequest;
+import com.pairing.freelancer.presentation.api.request.ResumeDraftRequest;
 import com.pairing.freelancer.presentation.api.request.ResumeRequest;
 import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
 import com.pairing.freelancer.presentation.api.response.FreelancerMyPageResponse;
 import com.pairing.freelancer.presentation.api.response.FreelancerResumePageResponse;
 import com.pairing.freelancer.presentation.api.response.MatchingSettingsResponse;
+import com.pairing.freelancer.presentation.api.response.ResumeDraftResponse;
 import com.pairing.freelancer.presentation.api.response.ResumeResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
@@ -61,6 +68,7 @@ public class FreelancerController {
     private final AccountCommandUseCase accountCommandUseCase;
     private final FreelancerQueryUseCase freelancerQueryUseCase;
     private final FreelancerCommandUseCase freelancerCommandUseCase;
+    private final ObjectMapper objectMapper;
 
     @GetMapping("/me")
     @PreAuthorize("hasRole('FREELANCER')")
@@ -150,6 +158,42 @@ public class FreelancerController {
     ) {
         ResumeResponse response = ResumeResponse.from(resumeUseCase.upsert(request.toCommand(accountId)));
         return ResponseEntity.ok(ApiResponse.success("RESUME_SAVED", "저장되었습니다.", response));
+    }
+
+    @PutMapping("/me/resume/draft")
+    @PreAuthorize("hasRole('FREELANCER')")
+    @Operation(summary = "이력서 임시 저장",
+            description = "작성 중인 내용을 검증 없이 통째로 보관합니다. 필수 항목을 안 채워도 저장됩니다. "
+                    + "계정당 1건이라 저장할 때마다 덮어쓰고, 정식 등록(PUT /me/resume)에 성공하면 지워집니다. "
+                    + "여기에 저장한 내용은 매칭에 쓰이지 않습니다.")
+    @ApiErrorCodeExample(domain = FreelancerErrorCode.class, value = {"DRAFT_TOO_LARGE"})
+    public ResponseEntity<ApiResponse<ResumeDraftResponse>> saveMyResumeDraft(
+            @Valid @RequestBody ResumeDraftRequest request,
+            @CurrentAccountId Long accountId
+    ) {
+        ResumeDraftResult result = resumeUseCase.saveDraft(accountId, request.payload().toString());
+        ResumeDraftResponse response = new ResumeDraftResponse(request.payload(), result.savedAt());
+        return ResponseEntity.ok(ApiResponse.success("RESUME_DRAFT_SAVED", "임시 저장되었습니다.", response));
+    }
+
+    @GetMapping("/me/resume/draft")
+    @PreAuthorize("hasRole('FREELANCER')")
+    @Operation(summary = "이력서 임시 저장 불러오기",
+            description = "임시 저장한 내용이 없으면 data 가 null 입니다. 저장할 때 보낸 JSON 을 그대로 돌려줍니다.")
+    public ResponseEntity<ApiResponse<ResumeDraftResponse>> findMyResumeDraft(@CurrentAccountId Long accountId) {
+        ResumeDraftResponse response = resumeUseCase.findMyDraft(accountId)
+                .map(draft -> new ResumeDraftResponse(readPayload(draft.payload()), draft.savedAt()))
+                .orElse(null);
+        return ResponseEntity.ok(ApiResponse.success("RESUME_DRAFT_FOUND", "조회에 성공했습니다.", response));
+    }
+
+    /** 저장할 때 JsonNode 를 직렬화한 값이라 되읽기에 실패할 일은 없다. 그래도 500으로 새지 않게 막는다. */
+    private JsonNode readPayload(String payload) {
+        try {
+            return objectMapper.readTree(payload);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(FreelancerErrorCode.INVALID_RESUME_FIELD);
+        }
     }
 
     // ==========================================
