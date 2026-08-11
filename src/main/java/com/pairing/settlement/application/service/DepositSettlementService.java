@@ -49,7 +49,9 @@ public class DepositSettlementService implements DepositSettlementUseCase {
     @Override
     public Long createFreelancerDeposit(CreateFreelancerDepositCommand command) {
         // 계약 1건당 1건. 서명 처리가 재시도되어도 두 번 청구되지 않는다.
-        Optional<Settlement> existing = settlementRepository.findByContractId(command.contractId());
+        // 같은 계약에 성공보수도 붙으므로 단계를 함께 걸어야 한다.
+        Optional<Settlement> existing = settlementRepository
+                .findByContractIdAndPhase(command.contractId(), SettlementPhase.DEPOSIT);
         if (existing.isPresent()) {
             return existing.get().getId();
         }

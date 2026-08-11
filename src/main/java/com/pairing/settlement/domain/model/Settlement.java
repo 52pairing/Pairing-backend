@@ -132,6 +132,38 @@ public class Settlement {
     }
 
     /**
+     * 프리랜서 성공보수. 프로젝트가 완료 대기로 넘어간 시점에 만들어진다. (P30)
+     *
+     * <p>기준 금액은 착수금과 같은 <b>그 계약의 총액</b>이다. 클라이언트 성공보수가 프로젝트 예산을
+     * 쓰는 것과 다르다. 요율도 금액 구간과 무관한 6% 단일이다.
+     *
+     * <p>계약 1건당 착수금·성공보수 두 건이 붙으므로 {@code contractId} 만으로는 찾을 수 없다.
+     * 조회는 {@code phase} 를 함께 걸어야 한다.
+     */
+    public static Settlement createFreelancerSuccessFee(Long projectId, Long contractId,
+                                                        Long payerAccountId, long contractAmount,
+                                                        BigDecimal feeRate, BigDecimal gradeDiscount,
+                                                        long feeAmount) {
+        return new Settlement(
+                null,
+                TEMP_NO_PREFIX + UUID.randomUUID(),
+                projectId,
+                contractId,
+                payerAccountId,
+                PartyRole.FREELANCER,
+                SettlementPhase.SUCCESS_FEE,
+                contractAmount,
+                feeRate,
+                gradeDiscount,
+                feeAmount,
+                SettlementStatus.PENDING,
+                null, null, null, null,
+                null,
+                null,
+                LocalDateTime.now());
+    }
+
+    /**
      * 클라이언트 성공보수. 프로젝트가 완료 대기로 넘어간 시점에 만들어진다. (P30)
      *
      * <p>계약 도메인이 붙기 전까지 기준 금액은 프로젝트 예산이다. contractId 도 아직 없다.

@@ -132,7 +132,8 @@ class ChatbotIntegrationTest {
 
         given(verifiedMarkerPort.isVerified(anyString(), any())).willReturn(true);
         given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
-        given(chatbotAiPort.ask(anyString())).willReturn(FAKE_ANSWER);
+        given(chatbotAiPort.ask(anyString()))
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "RESUME_EDIT"));
 
         writerAccessToken = signUpAndLoginFreelancer(WRITER_EMAIL, "이프리", "010-3333-4444", "110-123-456789");
         otherAccessToken = signUpAndLoginFreelancer(OTHER_EMAIL, "김다른", "010-5555-6666", "110-987-654321");
@@ -208,7 +209,39 @@ class ChatbotIntegrationTest {
                 .andExpect(jsonPath("$.data.sessionId").isNumber())
                 .andExpect(jsonPath("$.data.question").value("착수금 수수료는 언제 결제하나요?"))
                 .andExpect(jsonPath("$.data.answer").value(FAKE_ANSWER))
+                // AI 가 고른 코드를 서버가 경로로 바꿔 내려준다. 프론트는 answer 를 파싱하지 않는다.
+                .andExpect(jsonPath("$.data.actions.length()").value(1))
+                .andExpect(jsonPath("$.data.actions[0].code").value("RESUME_EDIT"))
+                .andExpect(jsonPath("$.data.actions[0].label").value("이력서 작성하러 가기"))
+                .andExpect(jsonPath("$.data.actions[0].url").value("/mypage/resume"))
                 .andExpect(jsonPath("$.data.remainingQuota").value(9));
+    }
+
+    @Test
+    @DisplayName("AI 가 모르는 화면 코드를 주면 버튼만 빠지고 답변은 그대로 나간다")
+    void unknownIntentFallsBackToNoAction() throws Exception {
+        // 프롬프트로 목록을 닫아 두지만 모델이 어길 수 있다. 그때 답변까지 막히면 안 된다.
+        given(chatbotAiPort.ask(anyString()))
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "GO_TO_MARS"));
+
+        mockMvc.perform(post("/api/v1/support/chatbot/questions")
+                        .cookie(writerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(askBody(null, "질문"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.answer").value(FAKE_ANSWER))
+                .andExpect(jsonPath("$.data.actions.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("지난 대화를 다시 불러오면 버튼 없이 텍스트만 나온다")
+    void historyHasNoActions() throws Exception {
+        ask(writerAccessToken, null, "착수금 수수료는 언제 결제하나요?");
+
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].answer").value(FAKE_ANSWER))
+                .andExpect(jsonPath("$.data[0].actions.length()").value(0));
     }
 
     @Test

@@ -1,8 +1,12 @@
 package com.pairing.contract.application.service;
 
+import com.pairing.contract.application.port.FreelancerGradeReaderPort;
 import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.contract.domain.repository.ContractRepository;
+import com.pairing.freelancer.domain.model.FreelancerGrade;
+import com.pairing.settlement.application.command.CreateFreelancerSuccessFeeCommand;
+import com.pairing.settlement.application.usecase.SuccessFeeSettlementUseCase;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
@@ -13,6 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -41,15 +46,21 @@ class ContractLifecycleListenerTest {
 
     @Mock
     private ContractRepository contractRepository;
+    @Mock
+    private FreelancerGradeReaderPort freelancerGradeReaderPort;
+    @Mock
+    private SuccessFeeSettlementUseCase successFeeSettlementUseCase;
 
     private ContractLifecycleListener listener;
     private Contract contract;
 
     @BeforeEach
     void setUp() {
-        listener = new ContractLifecycleListener(contractRepository);
+        listener = new ContractLifecycleListener(contractRepository, freelancerGradeReaderPort,
+                successFeeSettlementUseCase);
         contract = signedContract();
         given(contractRepository.findByProjectId(PROJECT_ID)).willReturn(List.of(contract));
+        given(freelancerGradeReaderPort.findGrade(any())).willReturn(FreelancerGrade.JUNIOR);
     }
 
     private Contract signedContract() {
@@ -89,6 +100,40 @@ class ContractLifecycleListenerTest {
         listener.on(new ProjectCompletionRequestedEvent(PROJECT_ID));
 
         assertThat(contract.getStatus()).isEqualTo(ContractStatus.COMPLETION_PENDING);
+    }
+
+    @Test
+    @DisplayName("완료 처리 시 프리랜서 성공보수 정산이 계약 총액 기준으로 만들어진다")
+    void createsFreelancerSuccessFee() {
+        // 클라이언트 분은 프로젝트가 예산 기준으로 만든다. 프리랜서는 각자 계약 금액이 달라
+        // 그 계약의 총액을 기준으로 삼아야 한다.
+        listener.on(new ProjectCompletionRequestedEvent(PROJECT_ID));
+
+        ArgumentCaptor<CreateFreelancerSuccessFeeCommand> captor =
+                ArgumentCaptor.forClass(CreateFreelancerSuccessFeeCommand.class);
+        verify(successFeeSettlementUseCase).createFreelancerSuccessFee(captor.capture());
+
+        CreateFreelancerSuccessFeeCommand command = captor.getValue();
+        assertThat(command.projectId()).isEqualTo(PROJECT_ID);
+        assertThat(command.payerAccountId()).isEqualTo(FREELANCER_ACCOUNT_ID);
+        assertThat(command.contractAmount()).isEqualTo(contract.getTotalAmount());
+        assertThat(command.freelancerGrade()).isEqualTo(FreelancerGrade.JUNIOR);
+    }
+
+    @Test
+    @DisplayName("서명이 안 끝난 계약에는 성공보수를 청구하지 않는다")
+    void skipsSuccessFeeForUnsignedContract() {
+        // 일을 하지 않은 사람에게 수수료를 물릴 수 없다.
+        Contract pending = Contract.create(302L, PROJECT_ID, 12L, 100L, 202L,
+                CLIENT_ACCOUNT_ID, 2002L, 5_000_000L, 4,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31),
+                WorkStyle.REMOTE, WorkForm.FULL_TIME, null, null);
+        pending.completeDraft("{}", null);
+        given(contractRepository.findByProjectId(PROJECT_ID)).willReturn(List.of(pending));
+
+        listener.on(new ProjectCompletionRequestedEvent(PROJECT_ID));
+
+        verify(successFeeSettlementUseCase, never()).createFreelancerSuccessFee(any());
     }
 
     @Test
