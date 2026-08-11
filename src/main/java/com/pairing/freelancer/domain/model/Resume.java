@@ -22,6 +22,9 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Resume {
 
+    /** 자기소개 최대 길이. 화면 카운터(n/1,500자)와 같은 값이어야 한다. */
+    private static final int MAX_SELF_INTRODUCTION_LENGTH = 1_500;
+
     private Long id;
     private Long accountId;
     private ResumeStatus status;
@@ -116,6 +119,9 @@ public class Resume {
         if (accountId == null || profileFileId == null || address == null || address.isBlank()
                 || selfIntroduction == null || selfIntroduction.isBlank() || portfolioFileId == null
                 || educations == null || educations.isEmpty() || careers == null || careers.isEmpty()) {
+            throw new BusinessException(FreelancerErrorCode.INVALID_RESUME_FIELD);
+        }
+        if (selfIntroduction.length() > MAX_SELF_INTRODUCTION_LENGTH) {
             throw new BusinessException(FreelancerErrorCode.INVALID_RESUME_FIELD);
         }
     }

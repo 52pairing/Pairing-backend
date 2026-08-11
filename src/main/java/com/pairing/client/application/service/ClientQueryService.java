@@ -6,6 +6,7 @@ import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.client.application.result.ClientMyPageResult;
 import com.pairing.client.application.usecase.ClientQueryUseCase;
 import com.pairing.client.domain.model.ClientGrade;
+import com.pairing.file.application.usecase.FileQueryUseCase;
 import com.pairing.review.application.result.ReviewSummaryResult;
 import com.pairing.review.application.usecase.ReviewUseCase;
 import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ClientQueryService implements ClientQueryUseCase {
 
     private final AccountQueryUseCase accountQueryUseCase;
+    private final FileQueryUseCase fileQueryUseCase;
     private final ReviewUseCase reviewUseCase;
     private final SettlementQueryUseCase settlementQueryUseCase;
 
@@ -30,6 +32,7 @@ public class ClientQueryService implements ClientQueryUseCase {
 
         return new ClientMyPageResult(
                 account.getId(),
+                fileQueryUseCase.findObjectKey(profile.getLogoFileId()).orElse(null),
                 profile.getCompanyName(),
                 profile.getBusinessNo(),
                 profile.getBusinessField(),

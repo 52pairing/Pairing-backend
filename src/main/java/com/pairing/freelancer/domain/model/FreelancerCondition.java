@@ -24,6 +24,9 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class FreelancerCondition {
 
+    /** 희망 급여·최저 수용 금액의 입력 단위. 만원. */
+    private static final long AMOUNT_UNIT = 10_000L;
+
     private Long id;
     private Long accountId;
     private JobCategory jobCategory;
@@ -47,7 +50,8 @@ public class FreelancerCondition {
                                 Long payAmount, Long minAcceptAmount, LocalDate availableFrom,
                                 boolean startNegotiable, Integer periodValue, PeriodUnit periodUnit,
                                 boolean hasFreelanceExperience, int careerYears, List<ConditionSkill> skills) {
-        validate(accountId, jobCategory, jobRole, workStyle, workForm, payUnit, payAmount, periodUnit, skills);
+        validate(accountId, jobCategory, jobRole, workStyle, workForm, payUnit, payAmount, minAcceptAmount,
+                periodUnit, skills);
         this.id = id;
         this.accountId = accountId;
         this.jobCategory = jobCategory;
@@ -97,7 +101,8 @@ public class FreelancerCondition {
                             LocalDate availableFrom, boolean startNegotiable, Integer periodValue,
                             PeriodUnit periodUnit, boolean hasFreelanceExperience, int careerYears,
                             List<ConditionSkill> skills) {
-        validate(this.accountId, jobCategory, jobRole, workStyle, workForm, payUnit, payAmount, periodUnit, skills);
+        validate(this.accountId, jobCategory, jobRole, workStyle, workForm, payUnit, payAmount, minAcceptAmount,
+                periodUnit, skills);
         this.jobCategory = jobCategory;
         this.jobRole = jobRole;
         this.affiliation = affiliation;
@@ -116,11 +121,27 @@ public class FreelancerCondition {
     }
 
     private static void validate(Long accountId, JobCategory jobCategory, JobRole jobRole, WorkStyle workStyle,
-                                 WorkForm workForm, PayUnit payUnit, Long payAmount, PeriodUnit periodUnit,
-                                 List<ConditionSkill> skills) {
+                                 WorkForm workForm, PayUnit payUnit, Long payAmount, Long minAcceptAmount,
+                                 PeriodUnit periodUnit, List<ConditionSkill> skills) {
         if (accountId == null || jobCategory == null || jobRole == null || workStyle == null || workForm == null
                 || payUnit == null || payAmount == null || periodUnit == null
                 || skills == null || skills.isEmpty()) {
+            throw new BusinessException(FreelancerErrorCode.INVALID_CONDITION_FIELD);
+        }
+        requireInTenThousandUnit(payAmount);
+        if (minAcceptAmount != null) {
+            requireInTenThousandUnit(minAcceptAmount);
+        }
+    }
+
+    /**
+     * 금액은 만원 단위로만 받는다. 최소 1만원. (요구사항 명세)
+     *
+     * <p>저장은 원 단위 그대로다. 화면이 만원으로 보여주고 서버는 만원 배수인지만 본다.
+     * 여기서 나누어 담으면 협상·계약·정산이 쓰는 금액 단위와 어긋난다.
+     */
+    private static void requireInTenThousandUnit(long amount) {
+        if (amount < AMOUNT_UNIT || amount % AMOUNT_UNIT != 0) {
             throw new BusinessException(FreelancerErrorCode.INVALID_CONDITION_FIELD);
         }
     }

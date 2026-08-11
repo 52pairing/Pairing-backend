@@ -4,6 +4,7 @@ import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.client.application.result.ClientMyPageResult;
 import com.pairing.client.domain.model.ClientGrade;
+import com.pairing.global.infrastructure.s3.CdnMappable;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
@@ -15,6 +16,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record ClientMyPageResponse(
 
         @Schema(description = "계정 ID", example = "3") Long accountId,
+        @Schema(description = "기업 로고 URL. 없으면 null(화면은 이니셜 원으로 대체)") String logoUrl,
         @Schema(description = "기업명", example = "주식회사 페어링") String companyName,
         @Schema(description = "사업자등록번호(수정 불가)", example = "1234567890") String businessNo,
         @Schema(description = "사업 분야(수정 불가)") BusinessField businessField,
@@ -27,11 +29,12 @@ public record ClientMyPageResponse(
         @Schema(description = "평균 별점", example = "4.2") Double ratingAverage,
         @Schema(description = "리뷰 건수", example = "8") int reviewCount,
         @Schema(description = "탈퇴 가능 여부", example = "true") boolean withdrawable
-) {
+) implements CdnMappable {
 
     public static ClientMyPageResponse from(ClientMyPageResult result) {
         return new ClientMyPageResponse(
                 result.accountId(),
+                result.logoUrl(),
                 result.companyName(),
                 result.businessNo(),
                 result.businessField(),

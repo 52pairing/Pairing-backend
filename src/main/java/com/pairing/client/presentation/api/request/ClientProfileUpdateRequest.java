@@ -29,12 +29,16 @@ public record ClientProfileUpdateRequest(
         @Pattern(regexp = "^01[016789]-?\\d{3,4}-?\\d{4}$", message = "전화번호 형식이 올바르지 않습니다.")
         String phone,
 
-        @Schema(description = "주소", example = "서울 강남구")
+        @Schema(description = "회사 주소", example = "서울특별시 강남구 테헤란로 123 10층")
         @Size(max = 255)
-        String address
+        String address,
+
+        @Schema(description = "기업 로고 fileId. POST /api/v1/files?purpose=COMPANY_LOGO 로 먼저 올린다. "
+                + "보내지 않으면 기존 로고를 그대로 둔다.", example = "7")
+        Long logoFileId
 ) {
 
     public ClientProfileUpdateCommand toCommand(Long accountId) {
-        return new ClientProfileUpdateCommand(accountId, companyName, employeeCount, phone, address);
+        return new ClientProfileUpdateCommand(accountId, companyName, employeeCount, phone, address, logoFileId);
     }
 }
