@@ -122,6 +122,24 @@ public class MatchingCandidate {
         this.rejected = true;
     }
 
+    /**
+     * 클라이언트가 매칭 요청을 보낼 수 있는 후보인지(정책 P07 "노출된 최종 후보 중 선택").
+     *
+     * <p>화면에는 노출된 후보만 그려지므로 정상 흐름에서는 늘 true지만, 요청 API는 candidateId를
+     * 그대로 받기 때문에 화면을 거치지 않으면 <b>가드에 떨어진 후보(직무·스킬 불일치)나 대기 순번
+     * 후보에게도 요청이 나간다</b>. 그러면 Stage F 가드가 사실상 무력화되므로 서버에서 막는다.
+     *
+     * <ul>
+     *   <li>{@code exposed} — 노출 인원 밖(대기 순번)은 아직 고를 수 있는 후보가 아니다.
+     *   <li>{@code guardPassed} — 가드 탈락자는 노출도 안 되지만, 두 조건을 같이 둬야
+     *       노출 로직이 바뀌어도 가드가 뚫리지 않는다.
+     *   <li>{@code rejected} — 클라이언트가 스스로 내린 후보다. 다시 고르려면 후보 거절을 취소해야 한다.
+     * </ul>
+     */
+    public boolean isSelectable() {
+        return exposed && !rejected && Boolean.TRUE.equals(guardPassed);
+    }
+
     /** 품질 경고 판단 기준(P09). 클라이언트 화면에는 이 값 자체가 아니라 임계값 이하 여부만 노출한다. */
     public boolean isBelowQualityThreshold(double threshold) {
         return this.fitScore != null && this.fitScore < threshold;

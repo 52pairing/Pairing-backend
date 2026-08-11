@@ -117,3 +117,204 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 - `matchable` = `aiMatchingAgreed && !matchingPaused && 이력서 존재`, 사유 우선순위는 동의 미비 > 일시중지 > 이력서 미완성으로 확정.
 - `FreelancerController`의 두 엔드포인트(`GET`/`PUT /me/matching-settings`) 스텁 제거, 실구현으로 교체. `FreelancerMyPageIntegrationTest`에 H2 통합테스트 4개 추가.
 - `feature/freelancer-matching-settings` 브랜치, 코드+테스트+문서 같은 커밋으로 push.
+
+## 2026-08-11 신규 — 매칭 파이프라인 재설계 (팀 확정, 코드 미착수)
+
+**설계 확정본은 `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)" 절이다.**
+아래는 그걸 코드로 옮기는 작업 목록. 순서대로 하면 중간에 빌드가 깨지지 않는다.
+
+### 0단계 — 되돌리기 (오늘 커밋 `0157334` 취소)
+
+- [ ] `FreelancerEmbeddingTextBuilder`에서 조건 필드(직무·스킬·연차·근무조건·기간) 제거
+- [ ] `ConditionUpdatedEvent` / `ConditionUpdatedEventListener` / `FreelancerConditionService`의
+      발행 코드 삭제 — 조건이 임베딩에서 빠지므로 재생성이 불필요해짐
+- [ ] `ConditionUpdatedEventListenerTest` 삭제, `FreelancerEmbeddingTextBuilderTest` 정리
+- [ ] `FreelancerEmbeddingRefresher`는 **유지** — 이력서 저장/관리자 재색인이 같은 조립을 써야 한다
+      (경로마다 다르게 조립하면 어디서 저장했느냐에 따라 같은 사람의 벡터가 달라진다)
+
+### 1단계 — 임베딩 텍스트 확정 (Java)
+
+- [ ] 프리랜서: 자기소개 + **학과 전부(`resume_education.major`, 학력 여러 개면 다)** +
+      경력 **`job_description`만**(회사명·부서/직급 제거).
+      `FreelancerResumeSummary`에 학과 목록 추가 + `FreelancerDirectoryAdapter` 매핑
+- [ ] 포지션: **프로젝트명** + 진행상황(`currentSituation`) + 담당업무 + 업무범위 +
+      우대사항(`extraNote`). 최소경력·근무조건·기간·요구스킬 **제거**
+- [ ] `ProjectPositionSummary`에 `currentSituation` 추가 + 어댑터 매핑
+- [x] ~~`preferred_note`~~ — **쓸 수 없음 확정(3번).** 우대사항이 프로젝트 단위로 통일되며
+      폐기됐다(매핑·DTO·컬럼 전부 없음). `extra_note`만 쓴다
+
+### 2단계 — budgetCap 전달 (Java → Python)
+
+- [ ] Java: `BudgetCapCalculator`로 계산한 월단가를 `/recommendations` 요청에 추가
+- [ ] Python: 요청 스키마에 `budget_cap` 추가
+
+### 3단계 — 조건 점수 SQL (Python, 본 작업)
+
+- [ ] `search_similar_freelancers` 확장: 하드필터에 **요구 스킬 1개 이상** 추가
+- [ ] 조건점수 70 계산 — 채점식은 `.ai/STATE.md` [3] 표 그대로
+- [ ] **유사도 컷을 없앤다.** 하드필터 통과자 전원에 대해 유사도를 계산하고
+      `PERCENT_RANK`로 0~30 정규화 → `+ 조건점수×70` → **그 합계로** 상위 (인원×3)
+      - 유사도로 먼저 자르면 조건 좋고 유사도 낮은 사람이 잘려 처음 문제로 돌아간다
+      - 수만 명 규모가 되면 성능 재검토 필요(지금은 문제없음)
+
+### 4단계 — 가드 교체 (Java)
+
+- [ ] `evaluateGuard`에서 직무·스킬 재검증 제거
+- [ ] G3 추가 — **포지션 단위 조합 합계**로 판정:
+      `Σ(노출 후보 희망 월단가) ≤ budgetCap × 노출 인원 × 1.2`
+      - 분모는 모집 인원이 아니라 **노출 인원**(후보 부족 시 2명이면 2명 몫으로 재야 한다)
+      - **개인별로 재지 말 것** — [3] 조건점수 단가 15점이 이미 개인을 본다. 중복이고,
+        시니어1+주니어2 같은 정상 구성을 오탐한다
+      - **탈락시키지 말 것** — `guardPassed=true` 유지하고 `guardReason`에 사유만 남긴다.
+        배제하면 Stage B 폐기 사유(단가로 거르면 사전검수 후보수와 어긋남)가 되살아난다
+- [ ] G4 LLM 응답 이상 검증 추가(중복 ID / 인원 초과 / `reason` 누락) — **여기만 실제로 거른다**
+
+### 5단계 — 배포 후
+
+- [ ] **`POST /admin/embeddings/reindex` 1회 실행 필수.** 임베딩 텍스트 규칙이 바뀌므로 기존
+      벡터가 전부 낡는다. 옛 규칙 벡터와 새 규칙 벡터가 섞이면 비교 자체가 무의미해진다
+- [ ] 유사도 분포 측정 → 정규화 상수 확정 → 3단계에 반영
+
+### 착수 전 결정 필요
+
+**2026-08-11 전부 확정됨.** 근거는 `.ai/STATE.md` "착수 전 결정" 표 참고.
+
+| # | 결정 |
+|---|---|
+| U1 | 포지션 단위 조합 합계, 탈락 없이 경고만 |
+| U2 | 프로젝트명 임베딩에 **포함** |
+| U3 | **순위 기반 정규화**(PERCENT_RANK), 하드필터 통과자 전원 대상. 실측 단계 불필요 |
+| U4 | 예산 경고 화면에 **안 띄움**. `guardReason` 기록만 |
+| U5 | 학력 여러 개면 학과 **전부** |
+| U6 | 조건점수 채점식 확정 (STATE.md [3] 표) |
+| U7 | `preferred_note`는 **폐기된 필드라 쓸 수 없음**(3번 확인). `extra_note`만 쓴다 |
+
+### 3번과 협의 — 2026-08-11 완료, 남은 액션 없음
+
+- [x] ~~`preferred_note`를 매칭까지 내려주기~~ — **불가.** 우대사항이 프로젝트 단위로 통일되며
+      폐기됨(엔티티 매핑·DTO·공용 DB 컬럼 전부 없음). 되살리려면 등록 위저드+프론트까지
+      열어야 해서 기획 결정 사안. **`extra_note`만 쓴다**
+- [x] 프로젝트 임베딩 시점 = 결제 완료 — 동의. **3번이 정책 P03 문구를 코드에 맞춰 고쳐주기로 함**
+- [x] `current_situation` 임베딩 사용 — 동의, project 도메인 정책 변경 없음
+- [x] 사전검수(P02) 기준 유지 — 동의
+
+> ⚠️ **`db/init/02-create-schema.sql`을 실제 스키마로 믿지 말 것.** 공용 DB는 `ddl-auto`라
+> JPA 엔티티에서 생성된다. 그 SQL 파일에만 남고 실제로는 없는 컬럼이 있다
+> (`position_skill.preferred_note`). **필드 존재는 JPA 엔티티/응답 DTO로 확인할 것.**
+
+---
+
+# 남은 작업 전체 목록 (2026-08-11 기준)
+
+우선순위 순. 설계 확정본은 `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)".
+
+## A. 지금 바로 — PR 3개 오픈·머지 대기
+
+전부 develop 최신 반영 + 빌드 통과 상태. `gh` CLI가 없어 **GitHub 웹에서 직접 생성**해야 한다.
+배너는 최근 push된 브랜치 하나에만 뜨므로 나머지는 `Pull requests → New pull request`로 만든다.
+
+| # | 레포 | 브랜치 | 내용 |
+|---|---|---|---|
+| A1 | backend | `fix/matching-settlement-response-and-policy-doc` | 즉시 타결 응답 상태 불일치 + P41 위반 + P06 등급 가중치 명시 |
+| A2 | backend | `fix/matching-candidate-selection-guard` | MT_017/018 + AI_020 오분류 + 임베딩 길이 상한 + 파이프라인 재설계 문서 |
+| A3 | python | `feature/matching-llm-retry-and-pool-relax` | 후보 0명 시 풀 확대 재검색 + LLM 응답 오류 재시도 |
+
+## B. 매칭 파이프라인 재설계 — 1~5단계 (0단계 완료)
+
+0단계(되돌리기)는 `e2e7ef3`으로 완료. 아래는 A2 머지 후 새 브랜치에서 진행한다.
+
+### B1. 1단계 — 임베딩 텍스트 확정 (Java)
+
+- [ ] `FreelancerResumeSummary`에 **학과 목록** 추가 + `FreelancerDirectoryAdapter` 매핑
+      (`resume_education.major`, 학력 여러 개면 전부)
+- [ ] `FreelancerEmbeddingTextBuilder`: 자기소개 + 학과 전부 + 경력 `jobDescription`만
+      (**회사명·부서/직급 제거**)
+- [ ] `ProjectPositionSummary`에 `currentSituation` 추가 + 어댑터 매핑
+- [ ] `PositionEmbeddingTextBuilder`: 프로젝트명 + 진행상황 + 담당업무 + 업무범위 + 우대사항
+      (**최소경력·근무조건·기간·요구스킬 제거**)
+- [ ] 테스트 갱신
+
+> `preferred_note`(포지션별 우대사항)는 **쓸 수 없다** — 우대사항이 프로젝트 단위로 통일되며
+> 폐기됐다(3번 확인). `extra_note`만 쓴다.
+
+### B2. 2단계 — budgetCap 전달 (Java → Python)
+
+- [ ] Java: `BudgetCapCalculator` 결과(월단가)를 `/recommendations` 요청에 추가
+- [ ] Python: 요청 스키마에 `budget_cap` 추가
+
+> 단가는 SQL 혼자 계산 못 한다. 프리랜서는 시급/일급→월단가 환산이, 포지션은 순예산
+> (수수료율에 **클라이언트 등급** 필요 = account 도메인) ÷ 인원 ÷ 개월이 필요하다.
+
+### B3. 3단계 — 조건점수 SQL + 30:70 합산 (Python) ← **본 작업**
+
+- [ ] `search_similar_freelancers` 하드필터에 **요구 스킬 1개 이상** 추가
+- [ ] 조건점수 70 계산 (채점식은 `.ai/STATE.md` [3] 표 그대로)
+- [ ] **유사도 컷 제거** — 하드필터 통과자 전원에 대해 `PERCENT_RANK`로 0~30 정규화 후
+      `+ 조건점수×70` → **그 합계로** 상위 (인원×3)
+      - 유사도로 먼저 자르면 조건 좋고 유사도 낮은 사람이 잘려 처음 문제로 돌아간다
+      - 수만 명 규모가 되면 성능 재검토 필요
+- [ ] 테스트
+
+### B4. 4단계 — 가드 교체 (Java)
+
+- [ ] `evaluateGuard`에서 **직무·스킬 재검증 제거**
+- [ ] G3 예산 조합: `Σ(노출 후보 월단가) ≤ budgetCap × 노출 인원 × 1.2`
+      - 분모는 모집 인원이 아니라 **노출 인원**
+      - **탈락시키지 말 것.** `guardPassed=true` 유지, `guardReason`에 기록만
+- [ ] G4 LLM 응답 이상: 중복 ID / 요청 인원 초과 / `reason` 누락 — **여기만 실제로 거른다**
+- [ ] 테스트
+
+### B5. 5단계 — 배포 후
+
+- [ ] **`POST /api/v1/matchings/admin/embeddings/reindex` 1회 실행 (필수)**
+      임베딩 텍스트 규칙이 바뀌므로 기존 벡터가 전부 낡는다. 옛 규칙 벡터와 새 규칙 벡터가
+      섞이면 비교 자체가 무의미해진다
+- [ ] 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`) 갱신 — API 응답 모양은 안 바뀌지만
+      후보 순서 산출 방식이 달라진 것을 공유
+
+## C. 검증 — 아직 한 번도 안 한 것
+
+| # | 항목 | 비고 |
+|---|---|---|
+| C1 | **통합 테스트(end-to-end)** | 이력서 저장 → 임베딩 → 모집 시작 → 추천 → 요청 → 수락까지 실제로 한 번도 안 돌려봤다. **남은 것 중 가장 큰 리스크** |
+| C2 | 실제 Gemini 호출로 추천 품질 확인 | 점수 스케일 버그(0~10으로 답하던 것)를 실호출로만 잡았던 전례가 있다 |
+| C3 | 유사도 분포 측정 | 순위 기반 정규화로 바꿔서 상수는 불필요해졌지만, 분포가 극단적이면 재검토 |
+
+## D. 교수님 요구사항 (미착수)
+
+| # | 항목 | 상태 |
+|---|---|---|
+| D1 | 그라파나 모니터링 지표 | 미착수 |
+| D2 | 트래픽 테스트 | 미착수 |
+| D3 | 프론트 렌더링 | 미착수 |
+| D4 | ~~LLM 비동기 처리~~ | **완료** (리스너 4개 + API 2개 202 응답 + 알림) |
+
+## E. 다른 사람에게 전달만 하면 되는 것
+
+| # | 대상 | 내용 |
+|---|---|---|
+| E1 | 3번 | `ContractDraftListener`에 `@Async`가 없다 — 계약서 생성이 결제 응답을 붙잡는다. 아직 전달 안 함 |
+| E2 | 3번 | 정책 P03 문구(임베딩 시점)를 코드에 맞춰 수정 — **3번이 해주기로 함**, 확인만 |
+| E3 | — | 프리랜서 성공보수 정산 미생성 건 — develop에 `CreateFreelancerSuccessFeeCommand`가 들어왔다(`199a961`). **해결됐는지 확인 필요** |
+
+## F. 향후 개선 (범위 밖, 기록만)
+
+| # | 항목 | 내용 |
+|---|---|---|
+| F1 | 상주근무 시 주소 비교 | 컬럼은 다 있다(`project.work_location`, `resume.zip_code/address`). 시/군/구까지만, **상세주소는 개인정보라 LLM에 금지**, 거리 계산 안 함. Python `PositionRequirement`/`FreelancerProfile`에 필드 추가부터 필요 |
+| F2 | `position_skill`에 요구 숙련도 컬럼 | 있으면 숙련도를 보너스가 아니라 조건으로 쓸 수 있다 (3번 파트) |
+| F3 | 예산 경고 화면 노출 (U4) | 지금은 `guardReason` 기록만. 띄우려면 회차 플래그 + API 필드 + 프론트 작업 |
+| F4 | LLM 호출 비용 | 포지션당 1회라 포지션 3개면 3회. 원안("프로젝트당 1회")과 다르다 |
+| F5 | 포지션별 우대사항 되살리기 | 기획 결정 사안. 지금은 불필요 |
+
+## 주의 사항 (반복해서 걸린 것)
+
+1. **`db/init/02-create-schema.sql`을 실제 스키마로 믿지 말 것.** 공용 DB는 `ddl-auto`라 JPA
+   엔티티에서 생성된다. 그 SQL에만 남고 실제로는 없는 컬럼이 있다(`preferred_note`).
+   **필드 존재는 JPA 엔티티나 응답 DTO로 확인할 것.**
+2. **우리 문서(STATE.md)끼리만 대조하면 같이 틀린 걸 못 잡는다.** 명세 원문
+   (`docs/spec/requirements.md`), 사용자 설계 메모(`docs/personal/ai-matching-notes.md`),
+   프론트 전달 문서(Desktop)까지 봐야 한다. 이번에 판정을 두 번 뒤집었다.
+3. **앱을 켜둔 채로 브랜치 전환·빌드를 하지 말 것.** devtools가 반쯤 써진 클래스로 재시작해서
+   없는 빈을 못 찾는다는 기동 실패가 난다(코드 문제 아님).
+4. **Gradle 출력을 파이프로 넘기지 말 것.** 종료 코드가 사라진다. `> file 2>&1` 후 `$?` 확인.
