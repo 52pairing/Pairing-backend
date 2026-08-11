@@ -4,6 +4,7 @@ import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.SenderType;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,6 +23,15 @@ public interface NegotiationMessageRepository {
 
     /** 협상의 최신 AI 제안(조건 무관). 목록 카드의 lastProposalBy/lastProposalAt 표시에 쓴다. */
     Optional<NegotiationMessage> findLatestProposal(Long negotiationId);
+
+    /**
+     * {@code excluded} 발신자를 뺀 최신 제안. <b>뷰어 기준 '상대가 낸 제안'</b>을 고르는 데 쓴다.
+     *
+     * <p>화면에 띄울 값도, 수락 시 락할 값도 이걸로 정한다. 내 편 대리인이 낸 값을 내가 수락하면
+     * 상대가 동의한 적 없는 조건이 확정되기 때문이다.
+     */
+    Optional<NegotiationMessage> findLatestProposalExcluding(Long negotiationId, Long conditionId,
+                                                            Collection<SenderType> excluded);
 
     /** 특정 라운드에 이 주체(sender)가 남긴 응답(RESPONSE) 개수. "내 응답 필요(waitingForMe)" 판정용. */
     int countResponsesInRound(Long negotiationId, SenderType senderType, int roundNo);
