@@ -6,7 +6,9 @@ import com.pairing.settlement.domain.model.SettlementStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 
 public interface SettlementRepository {
 
@@ -17,8 +19,8 @@ public interface SettlementRepository {
     /** 계약에 걸린 정산. 프리랜서 착수금은 계약 1건당 1건이라 중복 생성을 여기서 막는다. */
     Optional<Settlement> findByContractId(Long contractId);
 
-    /** 내 정산 목록. phase / status 는 null 이면 필터하지 않는다. */
-    Page<Settlement> findByPayer(Long payerAccountId, SettlementPhase phase,
+    /** 내 정산 목록. projectId / phase / status 는 null 이면 필터하지 않는다. */
+    Page<Settlement> findByPayer(Long payerAccountId, Long projectId, SettlementPhase phase,
                                  SettlementStatus status, Pageable pageable);
 
     /**
@@ -43,4 +45,12 @@ public interface SettlementRepository {
      * 건수가 아니라 존재만 보면 된다.
      */
     boolean existsUnpaidFreelancerDeposit(Long projectId);
+
+    /**
+     * 주어진 계약들 중 프리랜서 착수금을 이미 낸 계약의 ID.
+     *
+     * <p>계약 목록의 "결제 필요" 배지 판정에 쓴다. 계약마다 되물으면 페이지 크기만큼 쿼리가 늘어나
+     * 한 번에 받는다. 입력에 없던 id 는 결과에도 없고, 빈 입력이면 빈 집합이다.
+     */
+    Set<Long> findPaidFreelancerDepositContractIds(Collection<Long> contractIds);
 }

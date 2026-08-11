@@ -11,6 +11,7 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * STOMP over WebSocket 설정.
@@ -55,9 +56,24 @@ public class StompWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
 
-    /** 핸드셰이크 경로. 바꾸면 GlobalSecurityConfig의 permitAll 경로도 함께 맞춰야 한다. */
+    /**
+     * 배포 환경에서 <b>항상</b> 여는 핸드셰이크 경로.
+     *
+     * <p>{@code /api/*} 는 ALB 리스너 규칙과 무관하게 늘 백엔드로 온다. 그래서 이 경로만은
+     * 설정값과 상관없이 고정으로 등록한다. 설정에 의존하면 환경변수 한 줄이 바뀔 때마다
+     * 실시간이 통째로 죽는데, 그게 실제로 일어났다 — 태스크 정의의 {@code WEBSOCKET_ENDPOINT=/ws}
+     * 가 코드 기본값을 덮어써서 프론트가 붙을 곳이 사라졌다.
+     */
+    private static final String ALWAYS_ON_ENDPOINT = "/api/ws";
+
+    /**
+     * 추가 핸드셰이크 경로(쉼표로 여러 개). 바꾸면 GlobalSecurityConfig의 permitAll 경로도 맞춰야 한다.
+     *
+     * <p>{@link #ALWAYS_ON_ENDPOINT} 는 여기 없어도 항상 등록된다. 이 값은 그 밖의 경로를
+     * 더 열 때만 쓴다(예: 구버전 프론트가 아직 쓰는 {@code /ws}).
+     */
     @Value("${app.websocket.endpoint}")
-    private String endpoint;
+    private String endpoints;
 
     /** REST와 동일한 허용 오리진 목록을 사용한다. */
     @Value("${app.cors.allowed-origins}")
@@ -73,9 +89,23 @@ public class StompWebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // SockJS 폴백은 켜지 않는다. 필요하면 .withSockJS() 를 붙이되, 프론트엔드도 SockJS 클라이언트를 써야 한다.
-        registry.addEndpoint(endpoint)
+        registry.addEndpoint(parseEndpoints())
                 .setAllowedOriginPatterns(parseOrigins())
                 .addInterceptors(jwtHandshakeInterceptor);
+    }
+
+    /**
+     * 등록할 핸드셰이크 경로들 = {@link #ALWAYS_ON_ENDPOINT} + 설정값(쉼표 구분).
+     *
+     * <p>설정이 비어 있거나 {@code /api/ws} 를 빠뜨려도 그 경로는 반드시 들어간다.
+     */
+    private String[] parseEndpoints() {
+        return Stream.concat(
+                        Stream.of(ALWAYS_ON_ENDPOINT),
+                        Arrays.stream(endpoints.split(",")).map(String::trim))
+                .filter(path -> !path.isEmpty())
+                .distinct()
+                .toArray(String[]::new);
     }
 
     private String[] parseOrigins() {

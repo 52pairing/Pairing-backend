@@ -82,10 +82,14 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
 
         // 양측 마지노선이 모두 모였다 → 초기 제안(라운드 1) 생성.
         negotiation.incrementRound();
-        List<NegotiationMessage> messages = proposeForPending(negotiation);
+        List<NegotiationMessage> messages = new ArrayList<>(proposeForPending(negotiation));
+        // 첫 라운드에서 대리인끼리 전 조건을 합의해 버릴 수 있다. 그때 바로 타결시킨다.
+        settleIfAllAgreed(negotiation, messages);
 
         persist(negotiation, messages);
-        publish(negotiation, NegotiationEventType.STARTED);
+        createContractIfAgreed(negotiation);
+        publish(negotiation, negotiation.getStatus() == NegotiationStatus.AGREED
+                ? NegotiationEventType.AGREED : NegotiationEventType.STARTED);
     }
 
     @Override
@@ -100,9 +104,18 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         for (AnswerInput answer : answers) {
             NegotiationCondition condition = negotiation.findCondition(answer.conditionId());
             if (answer.accepted()) {
-                String lockValue = messageRepository.findLatestProposal(negotiationId, condition.getId())
+                // 수락 대상은 '상대가 낸 제안'이다. 내 편 대리인이 부른 값을 내가 수락하면 상대는
+                // 동의한 적 없는 조건이 확정된다(먼저 누른 쪽이 이기는 협상).
+                String lockValue = messageRepository
+                        .findLatestProposalExcluding(negotiationId, condition.getId(), role.ownSenders())
                         .map(NegotiationMessage::getProposedValue)
-                        .orElse(answer.proposedValue());
+                        .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NO_PROPOSAL_TO_RESPOND));
+                // 사람도 클릭 한 번으로 자기가 그은 선을 넘지 못한다. 대리인에게 적용하는 기준과 같다.
+                // 양보하려면 [거절] → 재지시로 마지노선을 다시 그어야 한다(그 경로가 이미 있다).
+                if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), lockValue,
+                        condition.getClientFloor(), condition.getFreelancerFloor())) {
+                    throw new BusinessException(NegotiationErrorCode.ACCEPT_BREAKS_FLOOR);
+                }
                 condition.lock(lockValue);
                 messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
                         negotiation.getTotalRound(), sender, "제안을 수락했습니다.", "YES", accountId));
@@ -121,27 +134,14 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
             }
         }
 
-        if (negotiation.allConditionsAgreed()) {
-            negotiation.agree(finalAmount(negotiation));
-            // 타결 → 매칭 요청을 계약 대기(CONTRACT_PENDING)로 전환(같은 트랜잭션).
-            matchingOutcomeUseCase.markNegotiationAgreed(negotiation.getRequestId());
-            // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
-            messages.add(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
-                    "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
-        } else if (!negotiation.awaitingRedirect()) {
+        if (!settleIfAllAgreed(negotiation, messages) && !negotiation.awaitingRedirect()) {
             advanceOrFail(negotiation, messages);
         }
         // 거절만 들어온 경우(awaitingRedirect)는 여기서 멈춘다. 사람이 새 마지노선을 낼 때까지
         // 라운드를 태우지 않는다 — 다음 요청의 재지시가 들어오면 그때 라운드가 오른다.
 
         persist(negotiation, messages);
-
-        // 타결 → 표준계약서 자동 생성(요구사항 44행). persist 뒤여야 한다 — 계약 쪽이
-        // getAgreedForContract 로 협상을 다시 읽으므로 저장 전에 부르면 못 찾는다.
-        // 같은 트랜잭션이라 계약 생성이 실패하면 타결도 함께 롤백된다(멱등이라 재시도 안전).
-        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
-            contractCreationUseCase.createFromNegotiation(negotiation.getId());
-        }
+        createContractIfAgreed(negotiation);
 
         // 사람 채팅방은 타결이 아니라 계약 체결 시 열린다(계약 도메인이 ChatActivationUseCase 로 호출).
         publish(negotiation, switch (negotiation.getStatus()) {
@@ -196,6 +196,41 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
             throw e;
         }
         messages.addAll(proposeForPending(negotiation));
+        // 이 라운드에서 대리인끼리 남은 조건을 전부 합의했을 수 있다. 그러면 여기서 타결이다.
+        settleIfAllAgreed(negotiation, messages);
+    }
+
+    /**
+     * 모든 쟁점이 합의됐으면 타결 처리하고 {@code true} 를 돌려준다.
+     *
+     * <p><b>사람 응답 경로에만 두면 안 된다.</b> 대리인끼리 마지막 조건까지 자동 합의하는 경우가 있고,
+     * 그때 이 판정이 없으면 조건은 전부 🔒 인데 협상은 IN_PROGRESS 에 갇힌다. 계약서도 안 생기고
+     * 매칭 요청도 CONTRACT_PENDING 으로 넘어가지 않는다(실제로 그 상태를 확인했다).
+     */
+    private boolean settleIfAllAgreed(Negotiation negotiation, List<NegotiationMessage> messages) {
+        if (!negotiation.allConditionsAgreed()) {
+            return false;
+        }
+        negotiation.agree(finalAmount(negotiation));
+        // 타결 → 매칭 요청을 계약 대기(CONTRACT_PENDING)로 전환(같은 트랜잭션).
+        matchingOutcomeUseCase.markNegotiationAgreed(negotiation.getRequestId());
+        // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
+        messages.add(NegotiationMessage.system(negotiation.getId(), negotiation.getTotalRound(),
+                "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
+        return true;
+    }
+
+    /**
+     * 타결이면 표준계약서를 만든다(요구사항 44행).
+     *
+     * <p>반드시 {@code persist} 뒤에 불러야 한다 — 계약 쪽이 {@code getAgreedForContract} 로 협상을
+     * 다시 읽으므로 저장 전에 부르면 못 찾는다. 같은 트랜잭션이라 계약 생성이 실패하면 타결도 함께
+     * 롤백된다(멱등이라 재시도 안전).
+     */
+    private void createContractIfAgreed(Negotiation negotiation) {
+        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
+            contractCreationUseCase.createFromNegotiation(negotiation.getId());
+        }
     }
 
     /** PENDING 조건들에 대한 제안 메시지 생성(현재 라운드). 제안값은 AI 포트(실패 시 stub 폴백)에서 온다. */

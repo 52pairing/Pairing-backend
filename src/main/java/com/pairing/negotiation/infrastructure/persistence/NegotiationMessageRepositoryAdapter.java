@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,6 +42,15 @@ public class NegotiationMessageRepositoryAdapter implements NegotiationMessageRe
         return springDataRepository
                 .findFirstByNegotiationIdAndConditionIdAndMessageTypeOrderByRoundNoDescIdDesc(
                         negotiationId, conditionId, NegotiationMessageType.PROPOSAL)
+                .map(mapper::toDomain);
+    }
+
+    @Override
+    public Optional<NegotiationMessage> findLatestProposalExcluding(Long negotiationId, Long conditionId,
+                                                                   Collection<SenderType> excluded) {
+        return springDataRepository
+                .findFirstByNegotiationIdAndConditionIdAndMessageTypeAndSenderTypeNotInOrderByRoundNoDescIdDesc(
+                        negotiationId, conditionId, NegotiationMessageType.PROPOSAL, excluded)
                 .map(mapper::toDomain);
     }
 
