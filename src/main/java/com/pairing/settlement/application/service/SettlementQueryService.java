@@ -39,9 +39,9 @@ public class SettlementQueryService implements SettlementQueryUseCase {
     }
 
     @Override
-    public Page<SettlementResult> findMine(Long accountId, SettlementPhase phase,
+    public Page<SettlementResult> findMine(Long accountId, Long projectId, SettlementPhase phase,
                                            SettlementStatus status, Pageable pageable) {
-        return settlementRepository.findByPayer(accountId, phase, status, pageable)
+        return settlementRepository.findByPayer(accountId, projectId, phase, status, pageable)
                 .map(SettlementResult::from);
     }
 

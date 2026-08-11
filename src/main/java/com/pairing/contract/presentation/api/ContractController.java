@@ -55,15 +55,18 @@ public class ContractController {
     private final ContractCommandUseCase contractCommandUseCase;
 
     @GetMapping
-    @Operation(summary = "내 계약 목록", description = "헤더의 계약관리 화면에 사용합니다.")
+    @Operation(summary = "내 계약 목록",
+            description = "헤더의 계약관리 화면에 사용합니다. projectId 를 주면 그 프로젝트의 계약만 "
+                    + "나오므로 프로젝트 상세의 계약 탭에도 같은 API 를 씁니다. 최신순입니다.")
     public ResponseEntity<ApiResponse<PageResponse<ContractSummaryResponse>>> findMine(
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) ContractStatus status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
         Page<ContractSummaryResponse> data = contractQueryUseCase
-                .findMine(accountId, status, PageRequest.of(page, size))
+                .findMine(accountId, projectId, status, PageRequest.of(page, size))
                 .map(ContractSummaryResponse::from);
 
         return ResponseEntity.ok(ApiResponse.success("CONTRACTS_FOUND", "조회에 성공했습니다.",

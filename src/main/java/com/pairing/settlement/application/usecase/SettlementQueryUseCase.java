@@ -11,8 +11,13 @@ public interface SettlementQueryUseCase {
     /** 납부자 본인만 열람할 수 있다. 없으면 ST_001, 남의 것이면 ST_002. */
     SettlementResult getByIdForPayer(Long settlementId, Long accountId);
 
-    /** 내가 납부자인 정산 목록. phase / status 는 null 이면 필터하지 않는다. */
-    Page<SettlementResult> findMine(Long accountId, SettlementPhase phase,
+    /**
+     * 내가 납부자인 정산 목록. projectId / phase / status 는 null 이면 필터하지 않는다.
+     *
+     * <p>{@code projectId} 는 프로젝트 상세가 그 프로젝트에서 낸 수수료만 보여줄 때 쓴다.
+     * 없으면 전체 목록을 받아 프론트가 걸러야 하는데, 페이징에 잘려 정확하지 않다.
+     */
+    Page<SettlementResult> findMine(Long accountId, Long projectId, SettlementPhase phase,
                                     SettlementStatus status, Pageable pageable);
 
     /**

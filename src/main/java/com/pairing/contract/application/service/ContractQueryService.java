@@ -6,6 +6,7 @@ import com.pairing.contract.application.port.ContractFileReaderPort;
 import com.pairing.contract.application.port.ContractPartyReaderPort;
 import com.pairing.contract.application.port.ContractPdfPort;
 import com.pairing.contract.application.port.ContractProjectReaderPort;
+import com.pairing.contract.application.port.ContractSettlementReaderPort;
 import com.pairing.contract.application.result.ContractDetail;
 import com.pairing.contract.application.result.ContractPdfView;
 import com.pairing.contract.application.result.ContractSummary;
@@ -31,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 계약 조회.
@@ -50,13 +52,25 @@ public class ContractQueryService implements ContractQueryUseCase {
     private final ContractPartyReaderPort partyReaderPort;
     private final ContractFileReaderPort fileReaderPort;
     private final ContractPdfPort contractPdfPort;
+    private final ContractSettlementReaderPort settlementReaderPort;
     private final S3Settings s3Settings;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 목록. 착수금 결제 여부만 페이지 단위로 한 번에 받는다.
+     *
+     * <p>프로젝트명·상대 이름은 계약마다 포트를 타지만, 착수금은 계약 수만큼 정산을 물으면 쿼리가
+     * 그만큼 늘어난다. 배지 하나 때문에 그럴 필요가 없어 페이지의 계약 ID 를 모아 한 번에 묻는다.
+     */
     @Override
-    public Page<ContractSummary> findMine(Long accountId, ContractStatus status, Pageable pageable) {
-        return contractRepository.findByParty(accountId, status, pageable)
-                .map(contract -> toSummary(contract, accountId));
+    public Page<ContractSummary> findMine(Long accountId, Long projectId, ContractStatus status,
+                                          Pageable pageable) {
+        Page<Contract> page = contractRepository.findByParty(accountId, projectId, status, pageable);
+
+        Set<Long> paidContractIds = settlementReaderPort.findPaidDepositContractIds(
+                page.getContent().stream().map(Contract::getId).toList());
+
+        return page.map(contract -> toSummary(contract, accountId, paidContractIds));
     }
 
     @Override
@@ -165,18 +179,30 @@ public class ContractQueryService implements ContractQueryUseCase {
         }
     }
 
-    /** 목록 카드 한 장. 상대 이름은 보는 사람의 반대편을 채운다. */
-    private ContractSummary toSummary(Contract contract, Long accountId) {
+    /**
+     * 목록 카드 한 장. 상대 이름은 보는 사람의 반대편을 채운다.
+     *
+     * <p>양측 서명 여부는 뷰어와 무관하게 같은 값이다. 카드가 "클라이언트 서명 ○ / 프리랜서 서명 ✓"
+     * 를 함께 보여줘서, 내 차례가 아닐 때 누구를 기다리는지 알 수 있어야 한다.
+     */
+    private ContractSummary toSummary(Contract contract, Long accountId, Set<Long> paidContractIds) {
         ContractSignature mine = contract.findSignature(accountId);
 
         String counterpartName = mine.getPartyRole() == PartyRole.CLIENT
                 ? partyReaderPort.findFreelancerName(contract.getFreelancerId())
                 : partyReaderPort.findClientName(contract.getClientId());
 
+        ContractProjectReaderPort.ProjectView project =
+                projectReaderPort.findByPositionId(contract.getPositionId());
+
         return new ContractSummary(
                 contract,
-                projectReaderPort.findByPositionId(contract.getPositionId()).projectTitle(),
+                project.projectTitle(),
+                project.jobRole(),
                 counterpartName,
-                mine.getStatus() == SignatureStatus.PENDING);
+                mine.getStatus() == SignatureStatus.PENDING,
+                contract.isSignedBy(PartyRole.CLIENT),
+                contract.isSignedBy(PartyRole.FREELANCER),
+                paidContractIds.contains(contract.getId()));
     }
 }
