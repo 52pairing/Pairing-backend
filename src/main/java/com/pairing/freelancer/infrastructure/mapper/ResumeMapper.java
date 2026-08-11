@@ -29,7 +29,9 @@ public interface ResumeMapper {
                 resume.getProfileFileId(),
                 resume.getContactPhone(),
                 resume.getContactEmail(),
+                resume.getZipCode(),
                 resume.getAddress(),
+                resume.getAddressDetail(),
                 resume.getSelfIntroduction(),
                 resume.getPortfolioFileId(),
                 resume.getAgreements().isProfileCollectionAgreed(),
@@ -82,15 +84,15 @@ public interface ResumeMapper {
             return null;
         }
         return new ResumeCertificateEmbeddable(certificate.getAcquiredDate(), certificate.getName(),
-                certificate.getIssuerScore(), certificate.getNote());
+                certificate.getIssuer(), certificate.getScore(), certificate.getNote());
     }
 
     default Certificate toDomainCertificate(ResumeCertificateEmbeddable embeddable) {
         if (embeddable == null) {
             return null;
         }
-        return Certificate.of(embeddable.getAcquiredDate(), embeddable.getName(), embeddable.getIssuerScore(),
-                embeddable.getNote());
+        return Certificate.of(embeddable.getAcquiredDate(), embeddable.getName(), embeddable.getIssuer(),
+                embeddable.getScore(), embeddable.getNote());
     }
 
     default String toUrl(ResumeLink link) {
@@ -117,7 +119,9 @@ public interface ResumeMapper {
                 entity.getProfileFileId(),
                 entity.getContactPhone(),
                 entity.getContactEmail(),
+                entity.getZipCode(),
                 entity.getAddress(),
+                entity.getAddressDetail(),
                 entity.getSelfIntroduction(),
                 entity.getPortfolioFileId(),
                 educations,

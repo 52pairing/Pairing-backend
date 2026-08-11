@@ -34,7 +34,7 @@ public class ClientCommandService implements ClientCommandUseCase {
 
         accountCommandUseCase.updateClientProfile(
                 command.accountId(), command.companyName(), command.employeeCount(), command.phone(),
-                command.address());
+                command.address(), command.logoFileId());
 
         // 인증 마커는 1회용이다. 남겨 두면 같은 인증으로 여러 번 수정할 수 있다.
         emailVerificationUseCase.clearVerification(account.getEmail(), VerificationPurpose.PROFILE_UPDATE);

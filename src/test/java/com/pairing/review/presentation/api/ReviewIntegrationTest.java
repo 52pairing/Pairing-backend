@@ -2,6 +2,14 @@ package com.pairing.review.presentation.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.account.domain.model.AccountStatus;
+import com.pairing.contract.application.result.ContractDetail;
+import com.pairing.contract.application.result.ContractSummary;
+import com.pairing.contract.application.usecase.ContractQueryUseCase;
+import com.pairing.contract.domain.model.Contract;
+import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.exception.ContractErrorCode;
+import com.pairing.global.config.ContractDetailStub;
+import com.pairing.global.exception.BusinessException;
 import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SignupType;
 import com.pairing.account.infrastructure.persistence.AccountJpaEntity;
@@ -33,6 +41,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -47,7 +57,10 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -57,8 +70,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 리뷰 작성 -> 받은/작성한 목록 -> 요약, 관리자 사이트 리뷰 흐름을 실제 요청으로 확인한다.
  *
- * <p>contract/settlement 도메인이 아직 스켈레톤이라 projectId/revieweeAccountId 를 요청에서
- * 직접 받는 임시 계약을 그대로 검증한다.
+ * <p>프로젝트와 상대방은 서버가 계약에서 유도한다. 계약을 진짜로 만들려면 매칭→협상→타결까지
+ * 태워야 해서, 계약 조회만 스텁으로 대신하고 나머지는 실제로 저장·조회한다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -99,6 +112,10 @@ class ReviewIntegrationTest {
 
     private static final Long PROJECT_ID = 5001L;
     private static final String ADMIN_EMAIL = "review-admin@pairing.com";
+
+    // 계약 조회만 대신한다. 리뷰 저장·조회는 실제 로직 그대로 검증한다.
+    @MockitoBean
+    private ContractQueryUseCase contractQueryUseCase;
 
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
@@ -158,6 +175,13 @@ class ReviewIntegrationTest {
         Long clientProfileId = clientProfileRepository.findByAccountIdAndDeletedAtIsNull(clientAccountId)
                 .orElseThrow().getId();
         projectId = seedProject(clientProfileId);
+
+        // 스텁을 given(...) 안에서 만들면 mock 안에서 mock 을 세우게 되어 Mockito 가 막는다. 먼저 만든다.
+        ContractDetail contractDetail = ContractDetailStub.of(CONTRACT_ID, projectId, "페어링 웹 리뉴얼",
+                clientAccountId, "주식회사 페어링", freelancerAccountId, "이프리");
+        given(contractQueryUseCase.getDetail(eq(CONTRACT_ID), any())).willReturn(contractDetail);
+        // 스텁하지 않으면 mock 이 null 을 돌려줘 작성 대기 조회가 NPE 로 죽는다.
+        given(contractQueryUseCase.findMine(any(), any(), any(), any())).willReturn(Page.empty());
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {
@@ -274,11 +298,10 @@ class ReviewIntegrationTest {
         return loginResult.getResponse().getCookie("accessToken");
     }
 
-    private Map<String, Object> reviewCreateBody(Long revieweeAccountId) {
+    /** 상대방은 서버가 계약에서 유도하므로 요청에 넣지 않는다. */
+    private Map<String, Object> reviewCreateBody() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("contractId", CONTRACT_ID);
-        body.put("projectId", projectId);
-        body.put("revieweeAccountId", revieweeAccountId);
         body.put("counterpart", Map.of("score", 5, "content", "일정 준수가 좋았습니다."));
         body.put("site", Map.of("score", 4, "content", "협상 과정이 편했습니다."));
         return body;
@@ -290,7 +313,7 @@ class ReviewIntegrationTest {
         mockMvc.perform(post("/api/v1/reviews")
                         .cookie(freelancerAccessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(reviewCreateBody(clientAccountId))))
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.reviewerName").value("이프리"))
                 .andExpect(jsonPath("$.data.reviewerRole").value("FREELANCER"))
@@ -315,25 +338,107 @@ class ReviewIntegrationTest {
     }
 
     @Test
+    @DisplayName("없는 계약으로 리뷰를 쓰면 저장 전에 막힌다")
+    void createReviewWithUnknownContractIsRejected() throws Exception {
+        // 계약을 확인하지 않으면 없는 참조로 저장하다 500(GLOBAL_001)이 나간다.
+        given(contractQueryUseCase.getDetail(eq(888L), any()))
+                .willThrow(new BusinessException(ContractErrorCode.CONTRACT_NOT_FOUND));
+
+        Map<String, Object> body = reviewCreateBody();
+        body.put("contractId", 888L);
+
+        mockMvc.perform(post("/api/v1/reviews")
+                        .cookie(freelancerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.errorCode").value("CT_001"));
+    }
+
+    @Test
+    @DisplayName("대금 지급 전이면 리뷰를 쓸 수 없다")
+    void createReviewBeforeSettlementIsRejected() throws Exception {
+        // 성공보수 결제 전에는 프로젝트가 완료 대기다. 이 상태에서는 리뷰가 열리지 않는다. (P51)
+        jdbcTemplate.update("UPDATE project SET status = ?, payment_status = ? WHERE id = ?",
+                "COMPLETION_PENDING", "DEPOSIT_PAID", PROJECT_ID);
+
+        mockMvc.perform(post("/api/v1/reviews")
+                        .cookie(freelancerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("RV_004"));
+    }
+
+    @Test
+    @DisplayName("리뷰 대상과 프로젝트는 요청이 아니라 계약에서 가져온다")
+    void createReviewDerivesRevieweeAndProjectFromContract() throws Exception {
+        // 프리랜서가 쓰면 상대는 클라이언트다. 요청에 상대 정보가 없어도 계약으로 정해진다.
+        mockMvc.perform(post("/api/v1/reviews")
+                        .cookie(freelancerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.projectTitle").value("페어링 웹 리뉴얼"));
+
+        // 클라이언트가 받은 리뷰로 잡혀야 한다.
+        mockMvc.perform(get("/api/v1/reviews/received").cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content.length()").value(1));
+    }
+
+    @Test
     @DisplayName("같은 계약을 같은 사람이 두 번 리뷰하면 막힌다")
     void duplicateReviewIsRejected() throws Exception {
         mockMvc.perform(post("/api/v1/reviews")
                         .cookie(freelancerAccessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(reviewCreateBody(clientAccountId))))
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(post("/api/v1/reviews")
                         .cookie(freelancerAccessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(reviewCreateBody(clientAccountId))))
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("RV_001"));
     }
 
     @Test
-    @DisplayName("작성 대기 목록은 아직 항상 빈 목록이다")
-    void pendingReviewsIsAlwaysEmptyForNow() throws Exception {
+    @DisplayName("대금 지급이 끝난 계약이 없으면 작성 대기 목록은 비어 있다")
+    void pendingReviewsIsEmptyWithoutCompletedContract() throws Exception {
+        mockMvc.perform(get("/api/v1/reviews/pending").cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("성공보수까지 결제되면(프로젝트 CLOSED) 작성 대기로 뜨고, 리뷰를 쓰면 목록에서 빠진다")
+    void pendingReviewDisappearsAfterWriting() throws Exception {
+        // 서비스는 계약 상태가 아니라 프로젝트가 CLOSED 인지로 거른다. 심어둔 프로젝트가 CLOSED 상태다.
+        Contract completed = mock(Contract.class);
+        given(completed.getId()).willReturn(CONTRACT_ID);
+        given(completed.getProjectId()).willReturn(PROJECT_ID);
+        given(completed.getStatus()).willReturn(ContractStatus.COMPLETED);
+        // 서명·정산 플래그는 작성 대기 판정과 무관해서 false 로 둔다.
+        ContractSummary summary = new ContractSummary(completed, "페어링 웹 리뉴얼", null, "이프리",
+                false, true, true, true);
+        given(contractQueryUseCase.findMine(eq(clientAccountId), isNull(), isNull(), any()))
+                .willReturn(new PageImpl<>(List.of(summary)));
+
+        mockMvc.perform(get("/api/v1/reviews/pending").cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].contractId").value(CONTRACT_ID))
+                .andExpect(jsonPath("$.data[0].projectTitle").value("페어링 웹 리뉴얼"))
+                .andExpect(jsonPath("$.data[0].counterpartName").value("이프리"));
+
+        mockMvc.perform(post("/api/v1/reviews")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
+                .andExpect(status().isCreated());
+
         mockMvc.perform(get("/api/v1/reviews/pending").cookie(clientAccessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
@@ -345,7 +450,7 @@ class ReviewIntegrationTest {
         mockMvc.perform(post("/api/v1/reviews")
                         .cookie(freelancerAccessToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(reviewCreateBody(clientAccountId))))
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
                 .andExpect(status().isCreated());
 
         Cookie adminAccessToken = loginAsAdmin();

@@ -12,6 +12,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,9 +28,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ContractRepositoryAdapter implements ContractRepository {
 
-    /** 체결된 것으로 보는 상태. 인원 충족 판정에 쓴다. 파기·거부는 빠진다. */
-    private static final List<ContractStatus> SIGNED_STATUSES =
-            List.of(ContractStatus.SIGNED, ContractStatus.COMPLETED);
+    /**
+     * 체결된 것으로 보는 상태. 인원 충족 판정에 쓴다. 파기·거부는 빠진다.
+     *
+     * <p>{@link ContractStatus#isConcluded()} 와 같은 집합이다. 여기는 쿼리에 넣을 목록이 필요해
+     * 상수로 펼쳐 두는데, 상태를 추가하면 <b>양쪽을 함께</b> 고쳐야 한다. 빠뜨리면 진행중으로
+     * 넘어간 계약이 인원수에서 사라져 프로젝트가 다시 모집중으로 되돌아간다.
+     */
+    private static final List<ContractStatus> SIGNED_STATUSES = Arrays.stream(ContractStatus.values())
+            .filter(ContractStatus::isConcluded)
+            .toList();
 
     private final SpringDataContractRepository springDataRepository;
     private final ContractMapper contractMapper;
@@ -87,8 +95,9 @@ public class ContractRepositoryAdapter implements ContractRepository {
     }
 
     @Override
-    public Page<Contract> findByParty(Long accountId, ContractStatus status, Pageable pageable) {
-        return springDataRepository.findByParty(accountId, status, pageable)
+    public Page<Contract> findByParty(Long accountId, Long projectId, ContractStatus status,
+                                      Pageable pageable) {
+        return springDataRepository.findByParty(accountId, projectId, status, pageable)
                 .map(contractMapper::toDomain);
     }
 

@@ -1,6 +1,9 @@
 package com.pairing.home.presentation.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pairing.contract.application.result.ContractDetail;
+import com.pairing.contract.application.usecase.ContractQueryUseCase;
+import com.pairing.global.config.ContractDetailStub;
 import com.pairing.account.domain.model.AccountStatus;
 import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.model.SignupType;
@@ -47,6 +50,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -97,6 +101,10 @@ class HomeIntegrationTest {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    // 리뷰를 만들려면 계약이 있어야 한다. 계약 생성 플로우까지 태우지 않고 조회만 대신한다.
+    @MockitoBean
+    private ContractQueryUseCase contractQueryUseCase;
 
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
@@ -267,10 +275,13 @@ class HomeIntegrationTest {
 
     private Long createSiteReview(Cookie reviewerToken, Long contractId, Long revieweeAccountId, int siteScore)
             throws Exception {
+        // 상대방은 서버가 계약에서 가져온다. 여기서는 프리랜서가 클라이언트를 평가하는 계약으로 세운다.
+        ContractDetail contractDetail = ContractDetailStub.of(contractId, projectId, "페어링 웹 리뉴얼",
+                revieweeAccountId, "주식회사 페어링", null, "이프리");
+        given(contractQueryUseCase.getDetail(eq(contractId), any())).willReturn(contractDetail);
+
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("contractId", contractId);
-        body.put("projectId", projectId);
-        body.put("revieweeAccountId", revieweeAccountId);
         body.put("counterpart", Map.of("score", 5, "content", "협업이 좋았습니다."));
         body.put("site", Map.of("score", siteScore, "content", "사이트 이용 후기입니다."));
 

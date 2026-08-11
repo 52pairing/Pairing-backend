@@ -22,13 +22,18 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Resume {
 
+    /** 자기소개 최대 길이. 화면 카운터(n/1,500자)와 같은 값이어야 한다. */
+    private static final int MAX_SELF_INTRODUCTION_LENGTH = 1_500;
+
     private Long id;
     private Long accountId;
     private ResumeStatus status;
     private Long profileFileId;
     private String contactPhone;
     private String contactEmail;
+    private String zipCode;
     private String address;
+    private String addressDetail;
     private String selfIntroduction;
     private Long portfolioFileId;
     private List<Education> educations;
@@ -39,7 +44,8 @@ public class Resume {
     private LocalDateTime updatedAt;
 
     private Resume(Long id, Long accountId, ResumeStatus status, Long profileFileId, String contactPhone,
-                   String contactEmail, String address, String selfIntroduction, Long portfolioFileId,
+                   String contactEmail, String zipCode, String address, String addressDetail,
+                   String selfIntroduction, Long portfolioFileId,
                    List<Education> educations, List<Career> careers, List<Certificate> certificates,
                    List<ResumeLink> links, ResumeAgreements agreements, LocalDateTime updatedAt) {
         validate(accountId, profileFileId, address, selfIntroduction, portfolioFileId, educations, careers);
@@ -52,7 +58,9 @@ public class Resume {
         this.profileFileId = profileFileId;
         this.contactPhone = contactPhone;
         this.contactEmail = contactEmail;
+        this.zipCode = zipCode;
         this.address = address;
+        this.addressDetail = addressDetail;
         this.selfIntroduction = selfIntroduction;
         this.portfolioFileId = portfolioFileId;
         this.educations = educations;
@@ -64,33 +72,39 @@ public class Resume {
     }
 
     public static Resume create(Long accountId, Long profileFileId, String contactPhone, String contactEmail,
-                                String address, String selfIntroduction, Long portfolioFileId,
+                                String zipCode, String address, String addressDetail, String selfIntroduction,
+                                Long portfolioFileId,
                                 List<Education> educations, List<Career> careers, List<Certificate> certificates,
                                 List<ResumeLink> links, ResumeAgreements agreements) {
         return new Resume(null, accountId, ResumeStatus.COMPLETED, profileFileId, contactPhone, contactEmail,
-                address, selfIntroduction, portfolioFileId, educations, careers, certificates, links, agreements,
-                LocalDateTime.now());
+                zipCode, address, addressDetail, selfIntroduction, portfolioFileId, educations, careers,
+                certificates, links, agreements, LocalDateTime.now());
     }
 
     public static Resume reconstitute(Long id, Long accountId, ResumeStatus status, Long profileFileId,
-                                      String contactPhone, String contactEmail, String address,
-                                      String selfIntroduction, Long portfolioFileId, List<Education> educations,
-                                      List<Career> careers, List<Certificate> certificates, List<ResumeLink> links,
+                                      String contactPhone, String contactEmail, String zipCode, String address,
+                                      String addressDetail, String selfIntroduction, Long portfolioFileId,
+                                      List<Education> educations, List<Career> careers,
+                                      List<Certificate> certificates, List<ResumeLink> links,
                                       ResumeAgreements agreements, LocalDateTime updatedAt) {
-        return new Resume(id, accountId, status, profileFileId, contactPhone, contactEmail, address,
-                selfIntroduction, portfolioFileId, educations, careers, certificates, links, agreements, updatedAt);
+        return new Resume(id, accountId, status, profileFileId, contactPhone, contactEmail, zipCode, address,
+                addressDetail, selfIntroduction, portfolioFileId, educations, careers, certificates, links,
+                agreements, updatedAt);
     }
 
     /** {@code PUT /me/resume} 재호출. 기존 값을 전부 새 값으로 교체한다. */
-    public void replaceWith(Long profileFileId, String contactPhone, String contactEmail, String address,
-                            String selfIntroduction, Long portfolioFileId, List<Education> educations,
-                            List<Career> careers, List<Certificate> certificates, List<ResumeLink> links) {
+    public void replaceWith(Long profileFileId, String contactPhone, String contactEmail, String zipCode,
+                            String address, String addressDetail, String selfIntroduction, Long portfolioFileId,
+                            List<Education> educations, List<Career> careers, List<Certificate> certificates,
+                            List<ResumeLink> links) {
         validate(this.accountId, profileFileId, address, selfIntroduction, portfolioFileId, educations, careers);
         this.status = ResumeStatus.COMPLETED;
         this.profileFileId = profileFileId;
         this.contactPhone = contactPhone;
         this.contactEmail = contactEmail;
+        this.zipCode = zipCode;
         this.address = address;
+        this.addressDetail = addressDetail;
         this.selfIntroduction = selfIntroduction;
         this.portfolioFileId = portfolioFileId;
         this.educations = educations;
@@ -105,6 +119,9 @@ public class Resume {
         if (accountId == null || profileFileId == null || address == null || address.isBlank()
                 || selfIntroduction == null || selfIntroduction.isBlank() || portfolioFileId == null
                 || educations == null || educations.isEmpty() || careers == null || careers.isEmpty()) {
+            throw new BusinessException(FreelancerErrorCode.INVALID_RESUME_FIELD);
+        }
+        if (selfIntroduction.length() > MAX_SELF_INTRODUCTION_LENGTH) {
             throw new BusinessException(FreelancerErrorCode.INVALID_RESUME_FIELD);
         }
     }

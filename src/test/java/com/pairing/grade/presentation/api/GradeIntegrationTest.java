@@ -1,6 +1,9 @@
 package com.pairing.grade.presentation.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pairing.contract.application.result.ContractDetail;
+import com.pairing.contract.application.usecase.ContractQueryUseCase;
+import com.pairing.global.config.ContractDetailStub;
 import com.pairing.account.infrastructure.persistence.SpringDataAccountRepository;
 import com.pairing.account.infrastructure.persistence.SpringDataClientProfileRepository;
 import com.pairing.account.infrastructure.persistence.SpringDataFreelancerProfileRepository;
@@ -29,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -42,6 +46,7 @@ import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -51,7 +56,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 등급 기준표(공개)와 내 등급 현황(로그인 후, 리뷰 반영)을 실제 요청으로 확인한다.
  *
- * <p>completedProjectCount 는 contract 도메인이 없어 항상 0이라 여기서는 검증하지 않는다.
+ * <p>completedProjectCount 는 계약 조회를 스텁으로 비워둬서 항상 0이다. 이 값을 세는 규칙
+ * (프로젝트가 CLOSED 인 계약만)은 같은 판정을 쓰는 리뷰 작성 대기 테스트가 본다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -87,6 +93,10 @@ class GradeIntegrationTest {
     private SpringDataSiteReviewRepository siteReviewRepository;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    // 완료 건수 조회와 리뷰 작성 시 계약 확인에 쓰인다. 계약 생성 플로우까지 태우지 않는다.
+    @MockitoBean
+    private ContractQueryUseCase contractQueryUseCase;
 
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
@@ -139,6 +149,8 @@ class GradeIntegrationTest {
 
         given(verifiedMarkerPort.isVerified(anyString(), any())).willReturn(true);
         given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
+        // 완료 계약이 없는 상태가 기본값이다. 스텁하지 않으면 mock 이 null 을 돌려줘 등급 조회가 NPE 로 죽는다.
+        given(contractQueryUseCase.findMine(any(), any(), any(), any())).willReturn(Page.empty());
 
         signUpAndLoginClient();
         signUpAndLoginFreelancer();
@@ -274,10 +286,13 @@ class GradeIntegrationTest {
                 .andExpect(jsonPath("$.data.nextGrade").value("SENIOR"))
                 .andExpect(jsonPath("$.data.nextGradeGuide", org.hamcrest.Matchers.containsString("아직 리뷰가 없어")));
 
+        // 상대방·프로젝트는 서버가 계약에서 가져온다. 계약 조회만 스텁으로 대신한다.
+        ContractDetail contractDetail = ContractDetailStub.of(999L, projectId, "페어링 웹 리뉴얼",
+                clientAccountId, "주식회사 페어링", freelancerAccountId, "이프리");
+        given(contractQueryUseCase.getDetail(eq(999L), any())).willReturn(contractDetail);
+
         Map<String, Object> reviewBody = new LinkedHashMap<>();
         reviewBody.put("contractId", 999L);
-        reviewBody.put("projectId", projectId);
-        reviewBody.put("revieweeAccountId", freelancerAccountId);
         reviewBody.put("counterpart", Map.of("score", 5, "content", "일정 준수가 좋았습니다."));
         reviewBody.put("site", Map.of("score", 4, "content", "협상 과정이 편했습니다."));
 

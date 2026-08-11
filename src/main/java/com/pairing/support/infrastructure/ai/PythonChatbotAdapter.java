@@ -48,7 +48,7 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
 
     @Override
     @CircuitBreaker(name = "pythonChatbotApi", fallbackMethod = "askFallback")
-    public String ask(String question) {
+    public Answer ask(String question) {
         Map<String, Object> requestBody = Map.of("question", question);
 
         PythonApiResponse<AnswerData> response = restClient.post()
@@ -59,7 +59,8 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
                 .body(new ParameterizedTypeReference<PythonApiResponse<AnswerData>>() {
                 });
 
-        return requireData(response).answer();
+        AnswerData data = requireData(response);
+        return new Answer(data.answer(), data.intent());
     }
 
     private void withCommonHeaders(HttpHeaders headers) {
@@ -76,7 +77,7 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
     }
 
     /** AI 서버 장애/서킷 오픈 시 폴백. */
-    private String askFallback(String question, Throwable t) {
+    private Answer askFallback(String question, Throwable t) {
         log.error("[Pairing-python] 챗봇 호출 실패/서킷 오픈 (원인: {})", t.getMessage());
         throw new BusinessException(ChatbotErrorCode.AI_SERVER_CALL_FAILED);
     }
@@ -84,6 +85,7 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
     private record PythonApiResponse<T>(String code, String message, T data) {
     }
 
-    private record AnswerData(String answer, String model) {
+    /** {@code intent} 는 구버전 AI 서버가 안 내려줄 수 있다. 그 경우 null 이고 NONE 으로 떨어진다. */
+    private record AnswerData(String answer, String intent, String model) {
     }
 }

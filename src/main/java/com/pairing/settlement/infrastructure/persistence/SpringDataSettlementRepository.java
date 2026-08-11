@@ -9,19 +9,28 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface SpringDataSettlementRepository extends JpaRepository<SettlementJpaEntity, Long> {
 
-    /** phase / status 가 null 이면 그 조건은 건너뛴다. */
+    /**
+     * projectId / phase / status 가 null 이면 그 조건은 건너뛴다.
+     *
+     * <p>최신순으로 고정한다. 정렬이 없으면 페이지를 넘길 때 순서가 달라져 같은 정산이 두 번
+     * 보이거나 빠진다. 생성 시각은 같은 초에 겹칠 수 있어 id 로 매긴다.
+     */
     @Query("""
             SELECT s FROM SettlementJpaEntity s
              WHERE s.payerAccountId = :payerAccountId
+               AND (:projectId IS NULL OR s.projectId = :projectId)
                AND (:phase IS NULL OR s.phase = :phase)
                AND (:status IS NULL OR s.status = :status)
+             ORDER BY s.id DESC
             """)
     Page<SettlementJpaEntity> findByPayer(@Param("payerAccountId") Long payerAccountId,
+                                          @Param("projectId") Long projectId,
                                           @Param("phase") SettlementPhase phase,
                                           @Param("status") SettlementStatus status,
                                           Pageable pageable);
@@ -38,8 +47,25 @@ public interface SpringDataSettlementRepository extends JpaRepository<Settlement
     List<SettlementJpaEntity> findByProjectIdAndPayerRoleAndStatusInOrderByIdAsc(
             Long projectId, PartyRole payerRole, List<SettlementStatus> statuses);
 
-    /** 계약에 걸린 정산. 프리랜서 착수금은 계약 1건당 1건이다. */
-    Optional<SettlementJpaEntity> findByContractId(Long contractId);
+    /** 계약 1건에 착수금·성공보수가 각각 붙는다. phase 를 함께 걸어야 단건이 된다. */
+    Optional<SettlementJpaEntity> findByContractIdAndPhase(Long contractId, SettlementPhase phase);
+
+    /**
+     * 프리랜서 착수금을 이미 낸 계약 ID 들.
+     *
+     * <p>계약 목록 화면이 계약마다 "결제 필요" 배지를 띄울지 판단하는 데 쓴다. 한 건씩 물으면
+     * 페이지 크기만큼 쿼리가 늘어나서 목록의 계약 ID 를 한 번에 넣고 받는다.
+     *
+     * <p>빈 목록을 넘기면 {@code IN ()} 이 되어 DB 에 따라 문법 오류가 난다. 호출부가 막는다.
+     */
+    @Query("""
+            SELECT s.contractId FROM SettlementJpaEntity s
+             WHERE s.contractId IN :contractIds
+               AND s.payerRole = com.pairing.meta.domain.model.PartyRole.FREELANCER
+               AND s.phase = com.pairing.settlement.domain.model.SettlementPhase.DEPOSIT
+               AND s.status = com.pairing.settlement.domain.model.SettlementStatus.PAID
+            """)
+    List<Long> findPaidFreelancerDepositContractIds(@Param("contractIds") Collection<Long> contractIds);
 
     /** 탈퇴 가능 여부 판정용. 행을 읽지 않고 존재만 확인한다. */
     boolean existsByPayerAccountIdAndStatusIn(Long payerAccountId, List<SettlementStatus> statuses);

@@ -12,6 +12,7 @@ import com.pairing.review.domain.model.SiteReviewVisibility;
 import com.pairing.review.exception.ReviewErrorCode;
 import com.pairing.review.presentation.api.request.ReviewCreateRequest;
 import com.pairing.review.presentation.api.request.SiteReviewVisibilityRequest;
+import com.pairing.review.presentation.api.response.PendingReviewResponse;
 import com.pairing.review.presentation.api.response.ReviewResponse;
 import com.pairing.review.presentation.api.response.ReviewSummaryResponse;
 import com.pairing.review.presentation.api.response.SiteReviewResponse;
@@ -42,8 +43,8 @@ import java.util.List;
  * <p>대금 지급이 끝난 계약에 대해서만 작성할 수 있고, 한 번 쓰면 수정·삭제할 수 없다.
  * 상대 평가와 사이트 후기를 한 화면에서 작성하므로 등록 API 도 하나다.
  *
- * <p>contract/settlement 도메인이 아직 스켈레톤이라 "완료+지급완료" 자격 검증은 하지 않는다.
- * {@code findPending} 은 그 데이터가 없어 항상 빈 리스트를 반환한다(TODO).
+ * <p>작성 자격은 계약의 프로젝트가 종료(성공보수 수수료 결제 완료)됐는지로 판정한다. 아직이면 RV_004 다.
+ * 작성 대기 목록도 같은 기준으로 거른다.
  */
 @RestController
 @RequestMapping("/api/v1/reviews")
@@ -103,11 +104,13 @@ public class ReviewController {
 
     @GetMapping("/pending")
     @Operation(summary = "작성 대기 목록",
-            description = "대금 지급이 끝났는데 아직 리뷰를 쓰지 않은 계약입니다. "
-                    + "contract/settlement 도메인 구현 전까지는 항상 빈 목록입니다.")
-    public ResponseEntity<ApiResponse<List<ReviewResponse>>> findPending(@CurrentAccountId Long accountId) {
-        List<ReviewResponse> response = reviewUseCase.findPending(accountId).stream()
-                .map(ReviewResponse::from)
+            description = "성공보수 수수료까지 결제되어 프로젝트가 종료된 계약 중 아직 리뷰를 쓰지 않은 건입니다. "
+                    + "contractId 를 그대로 리뷰 작성 요청에 넣으면 됩니다.")
+    public ResponseEntity<ApiResponse<List<PendingReviewResponse>>> findPending(
+            @CurrentAccountId Long accountId
+    ) {
+        List<PendingReviewResponse> response = reviewUseCase.findPending(accountId).stream()
+                .map(PendingReviewResponse::from)
                 .toList();
         return ResponseEntity.ok(ApiResponse.success("PENDING_REVIEWS_FOUND", "조회에 성공했습니다.", response));
     }

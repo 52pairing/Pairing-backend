@@ -4,7 +4,9 @@ import com.pairing.client.domain.model.ClientGrade;
 import com.pairing.settlement.application.command.CreateDepositSettlementCommand;
 import com.pairing.settlement.application.command.CreateFreelancerDepositCommand;
 
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 프로젝트 도메인이 쓰는 인바운드 포트.
@@ -37,6 +39,17 @@ public interface DepositSettlementUseCase {
      * 정산이 하나도 없으면 낼 것도 없으므로 true 다. 호출부가 인원 확정 여부를 함께 본다.
      */
     boolean isFreelancerDepositSettled(Long projectId);
+
+    /**
+     * 주어진 계약들 중 프리랜서 착수금을 이미 낸 계약의 ID.
+     *
+     * <p>계약 목록 화면이 계약마다 "결제 필요" 배지를 띄울지 판단한다. 계약마다 되물으면 페이지
+     * 크기만큼 쿼리가 늘어나서 한 번에 받는다.
+     *
+     * <p>정산은 <b>계약 체결 시점에 생긴다</b>(P27·P29). 아직 체결되지 않은 계약은 낼 정산 자체가
+     * 없어 결과에 안 들어간다. 호출부가 체결 여부를 함께 봐야 한다.
+     */
+    Set<Long> findPaidFreelancerDepositContractIds(Collection<Long> contractIds);
 
     /** 프로젝트에 걸린 결제 대기 정산 ID. 결제할 게 없으면 empty. */
     Optional<Long> findPayableSettlementId(Long projectId);

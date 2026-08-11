@@ -13,6 +13,7 @@ import com.pairing.freelancer.domain.model.ResumeStatus;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.review.application.result.ReviewSummaryResult;
 import com.pairing.review.application.usecase.ReviewUseCase;
+import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,6 +27,7 @@ public class FreelancerQueryService implements FreelancerQueryUseCase {
     private final FileQueryUseCase fileQueryUseCase;
     private final ReviewUseCase reviewUseCase;
     private final ResumeUseCase resumeUseCase;
+    private final SettlementQueryUseCase settlementQueryUseCase;
 
     @Override
     public FreelancerMyPageResult findMyPage(Long accountId) {
@@ -50,8 +52,8 @@ public class FreelancerQueryService implements FreelancerQueryUseCase {
                 reviewSummary.averageScore(),
                 reviewSummary.reviewCount(),
                 resumeCompleted,
-                // TODO: project/settlement 도메인 구현 후 진행 중 프로젝트·미납 요금 확인
-                true
+                // 진행 중 프로젝트 확인은 project 도메인에 판정 포트가 생기면 함께 본다.
+                !settlementQueryUseCase.hasUnpaidSettlement(accountId)
         );
     }
 }

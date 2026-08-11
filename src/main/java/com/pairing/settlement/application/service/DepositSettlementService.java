@@ -14,7 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * 프로젝트 도메인이 호출하는 정산 생성·조회.
@@ -47,7 +49,9 @@ public class DepositSettlementService implements DepositSettlementUseCase {
     @Override
     public Long createFreelancerDeposit(CreateFreelancerDepositCommand command) {
         // 계약 1건당 1건. 서명 처리가 재시도되어도 두 번 청구되지 않는다.
-        Optional<Settlement> existing = settlementRepository.findByContractId(command.contractId());
+        // 같은 계약에 성공보수도 붙으므로 단계를 함께 걸어야 한다.
+        Optional<Settlement> existing = settlementRepository
+                .findByContractIdAndPhase(command.contractId(), SettlementPhase.DEPOSIT);
         if (existing.isPresent()) {
             return existing.get().getId();
         }
@@ -68,6 +72,12 @@ public class DepositSettlementService implements DepositSettlementUseCase {
     @Transactional(readOnly = true)
     public boolean isFreelancerDepositSettled(Long projectId) {
         return !settlementRepository.existsUnpaidFreelancerDeposit(projectId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Set<Long> findPaidFreelancerDepositContractIds(Collection<Long> contractIds) {
+        return settlementRepository.findPaidFreelancerDepositContractIds(contractIds);
     }
 
     @Override

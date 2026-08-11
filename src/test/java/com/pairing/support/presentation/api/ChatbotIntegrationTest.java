@@ -132,7 +132,8 @@ class ChatbotIntegrationTest {
 
         given(verifiedMarkerPort.isVerified(anyString(), any())).willReturn(true);
         given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
-        given(chatbotAiPort.ask(anyString())).willReturn(FAKE_ANSWER);
+        given(chatbotAiPort.ask(anyString()))
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "RESUME_EDIT"));
 
         writerAccessToken = signUpAndLoginFreelancer(WRITER_EMAIL, "이프리", "010-3333-4444", "110-123-456789");
         otherAccessToken = signUpAndLoginFreelancer(OTHER_EMAIL, "김다른", "010-5555-6666", "110-987-654321");
@@ -208,7 +209,39 @@ class ChatbotIntegrationTest {
                 .andExpect(jsonPath("$.data.sessionId").isNumber())
                 .andExpect(jsonPath("$.data.question").value("착수금 수수료는 언제 결제하나요?"))
                 .andExpect(jsonPath("$.data.answer").value(FAKE_ANSWER))
+                // AI 가 고른 코드를 서버가 경로로 바꿔 내려준다. 프론트는 answer 를 파싱하지 않는다.
+                .andExpect(jsonPath("$.data.actions.length()").value(1))
+                .andExpect(jsonPath("$.data.actions[0].code").value("RESUME_EDIT"))
+                .andExpect(jsonPath("$.data.actions[0].label").value("이력서 작성하러 가기"))
+                .andExpect(jsonPath("$.data.actions[0].url").value("/mypage/resume"))
                 .andExpect(jsonPath("$.data.remainingQuota").value(9));
+    }
+
+    @Test
+    @DisplayName("AI 가 모르는 화면 코드를 주면 버튼만 빠지고 답변은 그대로 나간다")
+    void unknownIntentFallsBackToNoAction() throws Exception {
+        // 프롬프트로 목록을 닫아 두지만 모델이 어길 수 있다. 그때 답변까지 막히면 안 된다.
+        given(chatbotAiPort.ask(anyString()))
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "GO_TO_MARS"));
+
+        mockMvc.perform(post("/api/v1/support/chatbot/questions")
+                        .cookie(writerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(askBody(null, "질문"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.answer").value(FAKE_ANSWER))
+                .andExpect(jsonPath("$.data.actions.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("지난 대화를 다시 불러오면 버튼 없이 텍스트만 나온다")
+    void historyHasNoActions() throws Exception {
+        ask(writerAccessToken, null, "착수금 수수료는 언제 결제하나요?");
+
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].answer").value(FAKE_ANSWER))
+                .andExpect(jsonPath("$.data[0].actions.length()").value(0));
     }
 
     @Test
@@ -280,23 +313,48 @@ class ChatbotIntegrationTest {
     }
 
     @Test
-    @DisplayName("세션의 대화 이력이 시간순으로 조회되고, 본인이 아니면 볼 수 없다")
-    void findMessagesReturnsHistoryInOrderAndRestrictsOwnership() throws Exception {
+    @DisplayName("오늘 대화 이력이 시간순으로 조회되고, 남의 대화는 섞이지 않는다")
+    void findTodayMessagesReturnsHistoryInOrderAndOnlyMine() throws Exception {
         MvcResult created = ask(writerAccessToken, null, "첫 질문");
         Long sessionId = objectMapper.readTree(created.getResponse().getContentAsString())
                 .path("data").path("sessionId").asLong();
         ask(writerAccessToken, sessionId, "두번째 질문");
+        ask(otherAccessToken, null, "남의 질문");
 
-        mockMvc.perform(get("/api/v1/support/chatbot/sessions/" + sessionId + "/messages")
-                        .cookie(writerAccessToken))
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].question").value("첫 질문"))
                 .andExpect(jsonPath("$.data[1].question").value("두번째 질문"));
 
-        mockMvc.perform(get("/api/v1/support/chatbot/sessions/" + sessionId + "/messages")
-                        .cookie(otherAccessToken))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.errorCode").value("CB_002"));
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(otherAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].question").value("남의 질문"));
+    }
+
+    @Test
+    @DisplayName("세션이 여러 개로 나뉘어도 오늘 대화는 한 흐름으로 모아서 조회된다")
+    void findTodayMessagesMergesSeparateSessions() throws Exception {
+        // sessionId 없이 물으면 세션이 새로 생긴다. 화면을 새로 열어 다시 묻는 상황이다.
+        ask(writerAccessToken, null, "첫 세션 질문");
+        ask(writerAccessToken, null, "새 세션 질문");
+
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].question").value("첫 세션 질문"))
+                .andExpect(jsonPath("$.data[1].question").value("새 세션 질문"))
+                // 이어서 물을 때 쓰라고 sessionId 를 항목마다 같이 준다.
+                .andExpect(jsonPath("$.data[0].sessionId").isNumber())
+                .andExpect(jsonPath("$.data[1].sessionId").isNumber());
+    }
+
+    @Test
+    @DisplayName("대화한 적이 없으면 빈 목록이다")
+    void findTodayMessagesReturnsEmptyWhenNothingAsked() throws Exception {
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 }

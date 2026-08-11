@@ -286,10 +286,30 @@ CREATE TABLE "resume" (
     "freelancer_id" BIGINT NOT NULL,
     "contact_phone" VARCHAR(20),
     "contact_email" VARCHAR(255),
+    -- 주소는 세 칸으로 나눠 받는다(우편번호 검색 결과 + 사용자가 직접 쓰는 상세주소).
+    -- 합쳐 저장하면 수정 화면에서 다시 나눌 수 없다. zip_code 는 옛 이력서에 없어 nullable.
+    "zip_code" VARCHAR(10),
+    "address" VARCHAR(255),
+    "address_detail" VARCHAR(255),
     "self_introduction" TEXT,
     "portfolio_file_id" BIGINT,
     "status" VARCHAR(20) DEFAULT 'DRAFT' NOT NULL,
     "completed_at" TIMESTAMP,
+    "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY ("id")
+);
+
+-- 이력서 작성 중 임시 저장(초안). 화면 입력값을 검증 없이 통째로 보관한다.
+--
+-- resume 본체에 반쯤 채운 값을 넣지 않는 이유: resume 와 자식 테이블(resume_education 등)의
+-- NOT NULL 을 전부 풀어야 하고, 그러면 "완성된 이력서만 매칭에 쓴다"는 보장이 깨진다.
+-- 초안은 조회·집계 대상이 아니라 화면 복원용이라 관계형으로 쪼갤 이유도 없다.
+CREATE TABLE "resume_draft" (
+    "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    "account_id" BIGINT NOT NULL,
+    -- 위저드 1·2단계(희망 조건 + 이력서) 입력값을 한 덩어리 JSON 문자열로 담는다.
+    "payload" TEXT NOT NULL,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
@@ -328,7 +348,9 @@ CREATE TABLE "resume_certificate" (
     "resume_id" BIGINT NOT NULL,
     "acquired_date" DATE NOT NULL,
     "name" VARCHAR(100) NOT NULL,
-    "issuer_score" VARCHAR(100),
+    -- 발급기관과 점수는 화면 입력칸이 따로다. 합쳐 저장하면 수정 화면에서 다시 나눌 수 없다.
+    "issuer" VARCHAR(100),
+    "score" VARCHAR(50),
     "note" VARCHAR(255),
     "sort_order" INTEGER DEFAULT 0 NOT NULL,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -890,6 +912,8 @@ ALTER TABLE "social_account" ADD CONSTRAINT "uk_social_provider_uid" UNIQUE ("pr
 ALTER TABLE "client_profile" ADD CONSTRAINT "uk_client_account" UNIQUE ("account_id");
 ALTER TABLE "client_profile" ADD CONSTRAINT "uk_client_business_no" UNIQUE ("business_no");
 ALTER TABLE "freelancer_profile" ADD CONSTRAINT "uk_freelancer_account" UNIQUE ("account_id");
+-- 초안은 계정당 1건만 둔다. 저장할 때마다 덮어쓴다.
+ALTER TABLE "resume_draft" ADD CONSTRAINT "uk_resume_draft_account" UNIQUE ("account_id");
 ALTER TABLE "terms_agreement" ADD CONSTRAINT "uk_terms_agreement" UNIQUE ("account_id", "terms_id");
 ALTER TABLE "freelancer_condition" ADD CONSTRAINT "uk_condition_freelancer" UNIQUE ("freelancer_id");
 ALTER TABLE "condition_skill" ADD CONSTRAINT "uk_condition_skill" UNIQUE ("condition_id", "skill_code");

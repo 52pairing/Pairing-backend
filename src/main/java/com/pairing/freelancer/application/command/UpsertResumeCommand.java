@@ -11,7 +11,9 @@ public record UpsertResumeCommand(
         Long profileFileId,
         String contactPhone,
         String contactEmail,
+        String zipCode,
         String address,
+        String addressDetail,
         String selfIntroduction,
         Long portfolioFileId,
         List<Education> educations,
@@ -29,7 +31,7 @@ public record UpsertResumeCommand(
                          String jobDescription) {
     }
 
-    public record Certificate(LocalDate acquiredDate, String name, String issuerScore, String note) {
+    public record Certificate(LocalDate acquiredDate, String name, String issuer, String score, String note) {
     }
 
     public record Agreements(boolean profileCollectionAgreed, boolean profileProvisionAgreed,

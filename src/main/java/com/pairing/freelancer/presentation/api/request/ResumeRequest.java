@@ -38,14 +38,24 @@ public record ResumeRequest(
         @Email(message = "이메일 형식이 올바르지 않습니다.")
         String contactEmail,
 
-        @Schema(description = "주소", example = "서울 강남구")
+        // 우편번호 검색(다음 우편번호 등)은 프론트 위젯이 처리하고, 서버는 결과만 받는다.
+        // 세 칸을 한 문자열로 합쳐 저장하면 수정 화면에서 다시 나눌 수 없어 따로 받는다.
+        @Schema(description = "우편번호. 주소 찾기 결과", example = "06234")
+        @Size(max = 10)
+        String zipCode,
+
+        @Schema(description = "기본 주소. 주소 찾기 결과", example = "서울특별시 강남구 테헤란로 123")
         @NotBlank(message = "주소는 필수입니다.")
         @Size(max = 255)
         String address,
 
+        @Schema(description = "상세 주소. 사용자가 직접 입력한다.", example = "2층")
+        @Size(max = 255)
+        String addressDetail,
+
         @Schema(description = "간단 자기소개")
         @NotBlank(message = "자기소개는 필수입니다.")
-        @Size(max = 2000, message = "자기소개는 2000자 이하여야 합니다.")
+        @Size(max = 1500, message = "자기소개는 1500자 이하여야 합니다.")
         String selfIntroduction,
 
         @Schema(description = "포트폴리오 fileId. PDF 만 허용", example = "4")
@@ -78,7 +88,8 @@ public record ResumeRequest(
 
     public UpsertResumeCommand toCommand(Long accountId) {
         return new UpsertResumeCommand(
-                accountId, profileFileId, contactPhone, contactEmail, address, selfIntroduction, portfolioFileId,
+                accountId, profileFileId, contactPhone, contactEmail, zipCode, address, addressDetail,
+                selfIntroduction, portfolioFileId,
                 educations.stream()
                         .map(e -> new UpsertResumeCommand.Education(e.startDate(), e.endDate(), e.schoolName(),
                                 e.major(), e.graduationStatus(), e.campusType()))
@@ -91,7 +102,7 @@ public record ResumeRequest(
                         ? List.of()
                         : certificates.stream()
                                 .map(c -> new UpsertResumeCommand.Certificate(c.acquiredDate(), c.name(),
-                                        c.issuerScore(), c.note()))
+                                        c.issuer(), c.score(), c.note()))
                                 .toList(),
                 links == null ? List.of() : links.stream().map(Link::url).toList(),
                 new UpsertResumeCommand.Agreements(agreements.profileCollectionAgreed(),
@@ -125,7 +136,8 @@ public record ResumeRequest(
     public record Certificate(
             @Schema(description = "취득일자") @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate acquiredDate,
             @Schema(description = "자격/어학 시험명") @NotBlank @Size(max = 100) String name,
-            @Schema(description = "발급기관/점수") @Size(max = 100) String issuerScore,
+            @Schema(description = "발급기관", example = "한국산업인력공단") @Size(max = 100) String issuer,
+            @Schema(description = "점수", example = "850") @Size(max = 50) String score,
             @Schema(description = "비고") @Size(max = 255) String note
     ) {
     }

@@ -143,12 +143,18 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
                 });
     }
 
-    /** 상세 뷰: 조건별 현재 AI 제안(값·근거) + 채팅방 ID 를 채운다. */
+    /**
+     * 상세 뷰: 조건별 현재 AI 제안(값·근거) + 채팅방 ID 를 채운다.
+     *
+     * <p>제안값은 <b>뷰어 기준 '상대가 낸 것'</b>만 고른다. 내 편 대리인이 부른 값을 승인 패널에
+     * 띄우면 자기 요구를 자기가 수락하게 되고, 상대는 동의한 적 없는 조건이 확정된다.
+     * 수락 처리(NegotiationLoopService)도 같은 기준으로 락할 값을 고른다.
+     */
     private NegotiationView detailView(Negotiation negotiation, PartyRole role, String title, Long clientProfileId,
                                        Long chatRoomId) {
         Map<Long, NegotiationView.ConditionProposal> proposals = new HashMap<>();
         for (NegotiationCondition c : negotiation.getConditions()) {
-            messageRepository.findLatestProposal(negotiation.getId(), c.getId())
+            messageRepository.findLatestProposalExcluding(negotiation.getId(), c.getId(), role.ownSenders())
                     .ifPresent(m -> proposals.put(c.getId(),
                             new NegotiationView.ConditionProposal(m.getProposedValue(), m.getReason())));
         }

@@ -3,10 +3,16 @@ package com.pairing.review.application.service;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.Role;
+import com.pairing.contract.application.result.ContractDetail;
+import com.pairing.contract.application.usecase.ContractQueryUseCase;
+import com.pairing.contract.domain.model.Contract;
+import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
+import com.pairing.project.domain.model.ProjectStatus;
 import com.pairing.review.application.command.CreateReviewCommand;
+import com.pairing.review.application.result.PendingReviewResult;
 import com.pairing.review.application.result.ReviewResult;
 import com.pairing.review.application.result.ReviewSummaryResult;
 import com.pairing.review.application.usecase.ReviewUseCase;
@@ -17,12 +23,14 @@ import com.pairing.review.domain.repository.SiteReviewRepository;
 import com.pairing.review.exception.ReviewErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 클래스 전체를 {@code @Transactional} 로 묶지 않는다. {@code toResult()} 가 조회하는
@@ -35,10 +43,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ReviewService implements ReviewUseCase {
 
+    /** 작성 대기는 화면이 목록으로 훑는 용도라 페이지를 나누지 않는다. 한 사람이 이만큼 밀릴 일은 없다. */
+    private static final int PENDING_LIMIT = 100;
+
     private final ReviewRepository reviewRepository;
     private final SiteReviewRepository siteReviewRepository;
     private final AccountQueryUseCase accountQueryUseCase;
     private final ProjectQueryUseCase projectQueryUseCase;
+    private final ContractQueryUseCase contractQueryUseCase;
     private final PlatformTransactionManager transactionManager;
 
     @Override
@@ -49,13 +61,35 @@ public class ReviewService implements ReviewUseCase {
         }
 
         Account reviewer = accountQueryUseCase.getById(command.reviewerAccountId());
-        PartyRole reviewerRole = toPartyRole(reviewer.getRole());
-        PartyRole revieweeRole = reviewerRole == PartyRole.CLIENT ? PartyRole.FREELANCER : PartyRole.CLIENT;
 
-        Review review = Review.create(command.contractId(), command.projectId(), command.reviewerAccountId(),
-                reviewerRole, command.revieweeAccountId(), revieweeRole, command.counterpartScore(),
+        // 계약에서 프로젝트와 상대방을 유도한다. 없는 계약이면 CT_001, 당사자가 아니면 CT_002 로 여기서 끊긴다.
+        // 프론트가 보낸 값을 그대로 믿으면 남의 계약에 리뷰를 남기거나, 없는 참조로 저장하다 500 이 난다.
+        ContractDetail contract = contractQueryUseCase.getDetail(command.contractId(),
+                command.reviewerAccountId());
+
+        // 대금 지급이 끝나야 리뷰가 열린다(P51). 작성 대기 목록에서만 거르면 API 를 직접 부르는 경로가 뚫린다.
+        if (!isSettled(contract.contract())) {
+            throw new BusinessException(ReviewErrorCode.NOT_REVIEWABLE_YET);
+        }
+
+        boolean reviewerIsClient = Objects.equals(contract.client().accountId(), command.reviewerAccountId());
+        PartyRole reviewerRole = reviewerIsClient ? PartyRole.CLIENT : PartyRole.FREELANCER;
+        PartyRole revieweeRole = reviewerIsClient ? PartyRole.FREELANCER : PartyRole.CLIENT;
+        Long revieweeAccountId = reviewerIsClient
+                ? contract.freelancer().accountId()
+                : contract.client().accountId();
+
+        // 상대 프로필이 지워지면 계약에 이름만 남고 계정 참조가 끊긴다. 그 계약은 리뷰 대상이 없다.
+        if (revieweeAccountId == null) {
+            throw new BusinessException(ReviewErrorCode.INVALID_REVIEW_FIELD);
+        }
+
+        Long projectId = contract.contract().getProjectId();
+
+        Review review = Review.create(command.contractId(), projectId, command.reviewerAccountId(),
+                reviewerRole, revieweeAccountId, revieweeRole, command.counterpartScore(),
                 command.counterpartContent());
-        SiteReview siteReview = SiteReview.create(command.contractId(), command.projectId(),
+        SiteReview siteReview = SiteReview.create(command.contractId(), projectId,
                 command.reviewerAccountId(), reviewerRole, command.siteScore(), command.siteContent());
 
         Review saved = new TransactionTemplate(transactionManager).execute(status -> {
@@ -86,9 +120,39 @@ public class ReviewService implements ReviewUseCase {
     }
 
     @Override
-    public List<ReviewResult> findPending(Long accountId) {
-        // TODO: contract/settlement 도메인 구현되면 완료+지급완료 계약 중 미작성 건 조회
-        return List.of();
+    public List<PendingReviewResult> findPending(Long accountId) {
+        // 기준은 "대금 지급 완료"다(R22). 성공보수 수수료까지 결제되면 프로젝트가 CLOSED 가 된다.
+        // 계약의 COMPLETED 는 검수 완료 시점이라 성공보수 결제 전이어서 여기서는 쓰지 않는다.
+        return contractQueryUseCase.findMine(accountId, null, null, PageRequest.of(0, PENDING_LIMIT))
+                .getContent().stream()
+                .filter(summary -> isSettled(summary.contract()))
+                .filter(summary -> !reviewRepository.existsByContractIdAndReviewerAccountId(
+                        summary.contract().getId(), accountId))
+                .map(summary -> new PendingReviewResult(
+                        summary.contract().getId(),
+                        summary.projectTitle(),
+                        summary.counterpartName(),
+                        summary.contract().getCompletedAt()))
+                .toList();
+    }
+
+    /**
+     * 대금 지급까지 끝난 계약인지. 프로젝트가 CLOSED 면 성공보수 수수료까지 결제된 것이다.
+     *
+     * <p>파기·거부된 계약은 제외한다. 끝까지 가지 않은 거래는 평가 대상이 아니다.
+     *
+     * <p>계약마다 프로젝트를 한 번씩 읽는다. 한 사람의 미작성 리뷰가 많아질 일이 없어 지금은 이대로 둔다.
+     */
+    private boolean isSettled(Contract contract) {
+        if (contract.getStatus() != ContractStatus.SIGNED && contract.getStatus() != ContractStatus.COMPLETED) {
+            return false;
+        }
+        try {
+            return projectQueryUseCase.getById(contract.getProjectId()).getStatus() == ProjectStatus.CLOSED;
+        } catch (BusinessException e) {
+            // 프로젝트가 지워졌으면 판단할 근거가 없다. 계약은 5년 보관이라 프로젝트보다 오래 남는다.
+            return false;
+        }
     }
 
     private String resolveCurrentGrade(Long accountId) {
