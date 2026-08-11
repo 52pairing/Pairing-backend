@@ -729,6 +729,33 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("조건에 맞는 후보가 없으면 장애가 아니라 후보 소진으로 닫고 그렇게 안내한다")
+    void rerecommendEmptyPoolIsExhaustedNotFailed() throws Exception {
+        seedRound(2);
+        // AI 서버가 "조건에 맞는 후보 없음"으로 답한 상황(어댑터가 빈 결과로 바꿔서 넘긴다).
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash", List.of()));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isAccepted());
+
+        // 장애가 아니므로 FAILED 가 아니라 EXHAUSTED 로 닫혀야 한다.
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM matching_round WHERE position_id = ? ORDER BY id DESC LIMIT 1",
+                String.class, POSITION_ID))
+                .isEqualTo("EXHAUSTED");
+
+        // 안내 문구도 "일시적 오류, 다시 시도"가 아니라 "더 없다"여야 한다.
+        // 후보는 다시 시도해도 안 생기므로 재시도를 권하면 사용자가 계속 누르게 된다.
+        assertThat(notificationTitles(clientAccountId, "MATCHING_RECOMMENDED"))
+                .anyMatch(title -> title.contains("더 없습니다"));
+    }
+
+    @Test
     @DisplayName("AI 호출이 실패하면 회차를 FAILED로 닫고, 그 회차는 재추천 한도를 쓴 걸로 치지 않는다")
     void rerecommendMarksRoundFailedAndDoesNotConsumeQuotaWhenAiFails() throws Exception {
         seedRound(2);
