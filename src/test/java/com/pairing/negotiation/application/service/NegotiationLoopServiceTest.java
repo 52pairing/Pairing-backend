@@ -45,6 +45,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Transactional
 class NegotiationLoopServiceTest {
 
+    /** 대리인끼리 합의한 것으로 응답할지(outcome.agreed). 기본은 false — 사람이 승인/거절하는 경로. */
+    private static boolean agreeOnPropose = false;
+
     /** 파이썬 HTTP 호출 없이 결정적으로 돌리기 위한 stub 제안 포트(폴백과 동일한 중간값 규칙). */
     @TestConfiguration
     static class StubProposalConfig {
@@ -69,7 +72,7 @@ class NegotiationLoopServiceTest {
                             NegotiationProposalStub.Proposal p =
                                     NegotiationProposalStub.propose(c.clientValue(), c.freelancerValue());
                             return new NegotiationProposalPort.ConditionOutcome(
-                                    c.conditionId(), p.value(), false);
+                                    c.conditionId(), p.value(), agreeOnPropose);
                         })
                         .toList();
                 return new NegotiationProposalPort.A2AResult(messages, outcomes);
@@ -99,6 +102,7 @@ class NegotiationLoopServiceTest {
 
     @BeforeEach
     void setUp() {
+        agreeOnPropose = false;   // 테스트 간 누수 방지(스텁이 정적 플래그를 읽는다)
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 CLIENT_ACCOUNT_ID, "삼성전자", "1234567890",
                 BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
@@ -260,6 +264,22 @@ class NegotiationLoopServiceTest {
         // 재지시 값도 /start 와 같은 규칙으로 정규화된다.
         assertThat(reloaded.getConditions().get(0).getFreelancerFloor()).isEqualTo("5800000");
         assertThat(reloaded.getTotalRound()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("대리인끼리 전 조건을 합의하면 사람 응답 없이도 타결된다(AGREED)")
+    void agentAgreementSettlesWithoutHumanAnswer() {
+        // 대리인이 합의(agreed=true)를 내놓는 포트로 바꿔 끼운다.
+        agreeOnPropose = true;
+
+        startBothSides();
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        // 예전에는 조건만 전부 🔒 되고 협상은 IN_PROGRESS 에 갇혔다 — 계약서도 안 생겼다.
+        assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.AGREED);
+        assertThat(reloaded.getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.AGREED);
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .anyMatch(m -> m.getContent().contains("최종 조건 봉인"));
     }
 
     @Test
