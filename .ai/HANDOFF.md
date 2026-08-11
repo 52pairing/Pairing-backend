@@ -137,11 +137,11 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 - [ ] 프리랜서: 자기소개 + **학과 전부(`resume_education.major`, 학력 여러 개면 다)** +
       경력 **`job_description`만**(회사명·부서/직급 제거).
       `FreelancerResumeSummary`에 학과 목록 추가 + `FreelancerDirectoryAdapter` 매핑
-- [ ] 포지션: **프로젝트명** + 진행상황(`currentSituation`) + 담당업무 + 업무범위 + 우대사항
-      + 포지션 우대사항(`preferred_note`). 최소경력·근무조건·기간·요구스킬 **제거**
+- [ ] 포지션: **프로젝트명** + 진행상황(`currentSituation`) + 담당업무 + 업무범위 +
+      우대사항(`extraNote`). 최소경력·근무조건·기간·요구스킬 **제거**
 - [ ] `ProjectPositionSummary`에 `currentSituation` 추가 + 어댑터 매핑
-- [ ] `preferred_note`는 project 도메인 응답에 있으면 같이, **없으면 빼고 진행**(U7) —
-      3번 작업을 기다리지 않는다
+- [x] ~~`preferred_note`~~ — **쓸 수 없음 확정(3번).** 우대사항이 프로젝트 단위로 통일되며
+      폐기됐다(매핑·DTO·컬럼 전부 없음). `extra_note`만 쓴다
 
 ### 2단계 — budgetCap 전달 (Java → Python)
 
@@ -187,10 +187,17 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 | U4 | 예산 경고 화면에 **안 띄움**. `guardReason` 기록만 |
 | U5 | 학력 여러 개면 학과 **전부** |
 | U6 | 조건점수 채점식 확정 (STATE.md [3] 표) |
-| U7 | `preferred_note`가 없으면 `extra_note`만으로 먼저 진행 |
+| U7 | `preferred_note`는 **폐기된 필드라 쓸 수 없음**(3번 확인). `extra_note`만 쓴다 |
 
-### 3번과 협의
+### 3번과 협의 — 2026-08-11 완료, 남은 액션 없음
 
-- [ ] `project_position.preferred_note`를 매칭까지 내려주기
-- [ ] 프로젝트 임베딩 시점을 **결제 완료**로 확정했음 공유 (정책 P03 문구는 "등록 시점")
-- 사전검수(P02) 기준은 **안 건드리기로 확정** — 협의 불필요
+- [x] ~~`preferred_note`를 매칭까지 내려주기~~ — **불가.** 우대사항이 프로젝트 단위로 통일되며
+      폐기됨(엔티티 매핑·DTO·공용 DB 컬럼 전부 없음). 되살리려면 등록 위저드+프론트까지
+      열어야 해서 기획 결정 사안. **`extra_note`만 쓴다**
+- [x] 프로젝트 임베딩 시점 = 결제 완료 — 동의. **3번이 정책 P03 문구를 코드에 맞춰 고쳐주기로 함**
+- [x] `current_situation` 임베딩 사용 — 동의, project 도메인 정책 변경 없음
+- [x] 사전검수(P02) 기준 유지 — 동의
+
+> ⚠️ **`db/init/02-create-schema.sql`을 실제 스키마로 믿지 말 것.** 공용 DB는 `ddl-auto`라
+> JPA 엔티티에서 생성된다. 그 SQL 파일에만 남고 실제로는 없는 컬럼이 있다
+> (`position_skill.preferred_note`). **필드 존재는 JPA 엔티티/응답 DTO로 확인할 것.**
