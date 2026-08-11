@@ -34,6 +34,21 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
     private static final int CONNECT_TIMEOUT_MS = 3000;
 
+    /**
+     * A2A 읽기 타임아웃 기본값(ms).
+     *
+     * <p>기본이 20초였는데 <b>실측 최대치가 이미 그걸 넘었다.</b> 조건 3개짜리 협상에서 평균
+     * 15.0초·최대 22.8초였고, 조건 5개짜리에서는 한 라운드가 33초 걸려 스프링이 정확히 20초에
+     * 끊고 stub 으로 폴백했다(2026-08-11, 협상 10번 라운드 2). 파이썬은 정상 응답을 만들어
+     * 13초 뒤 로그까지 남겼다 — 실패한 쪽은 파이썬이 아니라 기다리는 쪽이었다.
+     *
+     * <p>조건 수에 비례해 프롬프트가 길어지므로 실측 최대의 2배 이상으로 잡는다.
+     *
+     * <p>근본 해결은 아니다. 동기로 기다리는 한 사람은 그만큼 빈 화면을 본다.
+     * LLM 비동기화가 예정돼 있고, 그때 이 값의 의미도 달라진다.
+     */
+    private static final int DEFAULT_READ_TIMEOUT_MS = 60_000;
+
     private static final String CLIENT_AGENT = "CLIENT_AGENT";
     private static final String FREELANCER_AGENT = "FREELANCER_AGENT";
 
@@ -43,7 +58,7 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
     public NegotiationProposalHttpAdapter(
             @Value("${app.ai.base-url:http://localhost:8000}") String baseUrl,
             @Value("${app.ai.internal-api-key:}") String internalApiKey,
-            @Value("${app.ai.timeout-ms:20000}") int timeoutMs) {
+            @Value("${app.ai.timeout-ms:" + DEFAULT_READ_TIMEOUT_MS + "}") int timeoutMs) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(CONNECT_TIMEOUT_MS);
         factory.setReadTimeout(timeoutMs);
