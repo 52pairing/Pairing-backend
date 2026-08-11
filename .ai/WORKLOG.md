@@ -305,3 +305,27 @@ WebSocket 알림(이 프로젝트에 STOMP·알림 도메인이 이미 있음) �
 `NON_ACTIVE_STATUSES`가 `REJECTED`/`NEGOTIATION_FAILED` 2개뿐인데 도메인의
 `MatchingRequest.isTerminal()`은 4개(`TERMINATED`/`CLOSED` 포함)를 종결로 본다. 지적된 `TERMINATED`
 외에 `CLOSED`도 빠져 있어서 둘 다 추가하고, 두 목록이 어긋나면 안 된다는 주석을 달았다.
+
+## 2026-08-10 (계속) — 즉시 타결 시 매칭 요청이 NEGOTIATING에 갇히던 문제 (3번·5번 협의)
+
+3번이 계약 도메인 붙이며 발견, 5번이 (a)안(한 PR로 묶기)으로 동의해서 양쪽을 함께 수정.
+따로 머지되면 위험이 순서에 갈린다 — 매칭만 먼저 들어가면 무해하지만, 협상만 먼저 들어가면
+즉시 타결 시 수락이 롤백되는 장애가 배포된다.
+
+- `MatchingRequestService.accept()` 순서 변경: `advanceStatus(NEGOTIATING)` + `save`를
+  `createNegotiation` **앞으로** 옮김. 기존엔 협상이 즉시 타결로 올려둔 `CONTRACT_PENDING`을
+  뒤따라오는 `advanceStatus`가 덮어썼다. 또 `agreeNegotiation()`이 `NEGOTIATING`을 요구하는데
+  저장 전이면 DB는 아직 `REQUEST_PENDING`이라 `INVALID_MATCHING_STATE`로 수락째 롤백된다.
+- `NegotiationCommandService` 즉시 타결 블록에 `markNegotiationAgreed(requestId)` 추가.
+  라운드를 도는 경로(`NegotiationLoopService.answer()`)는 이미 부르고 있어서 여기만 빠져 있었다.
+
+**예상 못 했던 것 — 순환 참조.** 위 한 줄을 넣자 컨텍스트가 아예 안 떴다:
+`matchingRequestService → negotiationAdapter → negotiationCommandService → matchingRequestService`.
+`MatchingRequestService`가 "매칭→협상"과 "협상→매칭" 양쪽 역할을 다 맡고 있던 게 원인.
+`MatchingNegotiationOutcomeService`(신규)로 협상 결과 반영만 분리해서 고리를 끊었다 — 이 클래스는
+자기 저장소와 project 도메인만 쓰므로 협상을 다시 호출하지 않는다. **여기에 `NegotiationPort`
+의존을 추가하면 순환이 재발한다**(클래스 주석에 명시).
+
+- 테스트: `NegotiationCommandServiceTest` 픽스처 2곳에 `matching_request` 행 추가(5번이 미리 알려줌 —
+  이 테스트는 협상 단독 기준으로 짜여 있어 매칭 행이 없었다). 즉시 타결 후 요청이 실제로
+  `CONTRACT_PENDING`이 되는지 검증하는 단언도 추가. `./gradlew clean build` 통과.

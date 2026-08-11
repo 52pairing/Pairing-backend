@@ -44,8 +44,9 @@ import java.util.Map;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class MatchingRequestService implements MatchingRequestCommandUseCase, MatchingRequestQueryUseCase,
-        MatchingNegotiationOutcomeUseCase {
+// 협상 결과 반영(MatchingNegotiationOutcomeUseCase)은 MatchingNegotiationOutcomeService가 맡는다 —
+// 여기서 같이 구현하면 negotiation 도메인과 빈 생성이 순환한다(그 클래스 주석 참고).
+public class MatchingRequestService implements MatchingRequestCommandUseCase, MatchingRequestQueryUseCase {
 
     private static final List<MatchingStatus> NON_ACTIVE_STATUSES =
             List.of(MatchingStatus.REJECTED, MatchingStatus.NEGOTIATION_FAILED, MatchingStatus.TERMINATED);
@@ -126,14 +127,21 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         long budgetCap = budgetCapCalculator.calculate(request.getProjectId(), position.budgetAmount(),
                 position.totalHeadcount(), position.periodValue(), position.periodUnit());
 
+        // 협상 생성보다 먼저 NEGOTIATING을 저장한다. 조건 불일치가 0개면 협상 도메인이 그 안에서
+        // 즉시 타결까지 끝내면서 이 요청을 CONTRACT_PENDING으로 올리는데(markNegotiationAgreed),
+        // 순서가 반대면 그 결과를 아래 advanceStatus/save가 NEGOTIATING으로 덮어써 버린다.
+        // 게다가 agreeNegotiation()은 NEGOTIATING을 요구하므로, 저장 전에 호출되면
+        // INVALID_MATCHING_STATE가 나서 수락 자체가 롤백된다(3번·5번과 확인, 2026-08-10).
+        request.advanceStatus(MatchingStatus.NEGOTIATING);
+        matchingRequestRepository.save(request);
+
         negotiationPort.createNegotiation(new CreateNegotiationCommand(
                 request.getId(), request.getProjectId(), request.getPositionId(), request.getFreelancerId(),
                 budgetCap, condition.payUnit(), condition.payAmount(), condition.workStyle(), condition.workForm(),
                 condition.availableFrom(), condition.minAcceptAmount(), condition.startNegotiable(),
                 condition.periodValue(), condition.periodUnit()));
 
-        request.advanceStatus(MatchingStatus.NEGOTIATING);
-        matchingRequestRepository.save(request);
+        // 프로젝트 상태는 전진만 하므로(이미 계약 대기면 아무 일도 안 함) 즉시 타결 뒤에 불러도 안전하다.
         projectCommandUseCase.startNegotiating(request.getProjectId());
         matchingNotifier.notifyAccepted(request);
         return matchingRequestResponseAssembler.build(request, accountId);
@@ -242,24 +250,6 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         return expiredCount;
     }
 
-    @Override
-    @Transactional
-    public void markNegotiationAgreed(Long requestId) {
-        MatchingRequest request = matchingRequestRepository.findById(requestId)
-                .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
-        request.agreeNegotiation();
-        matchingRequestRepository.save(request);
-    }
-
-    @Override
-    @Transactional
-    public void markNegotiationFailed(Long requestId) {
-        MatchingRequest request = matchingRequestRepository.findById(requestId)
-                .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
-        request.failNegotiation();
-        matchingRequestRepository.save(request);
-        syncProjectStage(request.getProjectId());
-    }
 
     private MatchingRequest getOwnedByFreelancer(Long requestId, Long accountId) {
         MatchingRequest request = matchingRequestRepository.findById(requestId)
