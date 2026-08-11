@@ -223,16 +223,26 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 
 0단계(되돌리기)는 `e2e7ef3`으로 완료. 아래는 A2 머지 후 새 브랜치에서 진행한다.
 
-### B1. 1단계 — 임베딩 텍스트 확정 (Java)
+### B1. 1단계 — 임베딩 텍스트 확정 (Java) — **완료 (2026-08-12)**
 
-- [ ] `FreelancerResumeSummary`에 **학과 목록** 추가 + `FreelancerDirectoryAdapter` 매핑
-      (`resume_education.major`, 학력 여러 개면 전부)
-- [ ] `FreelancerEmbeddingTextBuilder`: 자기소개 + 학과 전부 + 경력 `jobDescription`만
-      (**회사명·부서/직급 제거**)
-- [ ] `ProjectPositionSummary`에 `currentSituation` 추가 + 어댑터 매핑
-- [ ] `PositionEmbeddingTextBuilder`: 프로젝트명 + 진행상황 + 담당업무 + 업무범위 + 우대사항
-      (**최소경력·근무조건·기간·요구스킬 제거**)
-- [ ] 테스트 갱신
+브랜치 `feature/matching-embedding-text-redesign`. `./gradlew clean build` 통과.
+
+- [x] `FreelancerResumeSummary`를 **임베딩에 실제로 들어가는 것만** 담도록 재정의:
+      `(selfIntroduction, majors, careerDescriptions)`. 기존 `CareerEntry`(회사명·부서/직급·
+      담당업무) 레코드는 **삭제**했다 — 필드로 남겨두면 다시 넣기 쉬워서다
+- [x] `FreelancerDirectoryAdapter`: `resume.educations()` → `major`, `resume.careers()` →
+      `jobDescription`만 뽑아 매핑
+- [x] `FreelancerEmbeddingTextBuilder`: 자기소개 + 학과 전부 + 경력 담당업무.
+      **학과를 경력보다 앞에** 둔다(경력 건수엔 상한이 없어 뒤에 두면 잘려 나간다)
+- [x] `ProjectPositionSummary`(매칭)에 `currentSituation` 추가 + `ProjectDirectoryAdapter` 매핑.
+      project 쪽 DTO엔 이미 있어서 옮기기만 하면 됐다
+- [x] `PositionEmbeddingTextBuilder`: 프로젝트명 + 진행상황 + 담당업무 + 업무범위 + 우대사항.
+      직무·요구스킬·최소경력·근무조건·기간 **제거**
+- [x] 양쪽 다 **값 없는 항목은 줄째로 뺀다** — 빈 줄이 남으면 그 자리에 의미 없는 토큰이 들어가,
+      항목 수가 적은 프로젝트끼리 서로 비슷해 보이는 쪽으로 벡터가 밀린다
+- [x] `FreelancerEmbeddingTextBuilderTest` 5건으로 확장, `PositionEmbeddingTextBuilderTest`
+      **신규 4건**(원래 포지션 쪽엔 테스트가 없었다 — 이번 재설계의 발단이 된 "포지션에만 스킬이
+      있어서 짝이 어긋난" 버그를 회귀로 고정)
 
 > `preferred_note`(포지션별 우대사항)는 **쓸 수 없다** — 우대사항이 프로젝트 단위로 통일되며
 > 폐기됐다(3번 확인). `extra_note`만 쓴다.
@@ -280,7 +290,7 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 | C2 | 실제 Gemini 호출로 추천 품질 확인 | 점수 스케일 버그(0~10으로 답하던 것)를 실호출로만 잡았던 전례가 있다 |
 | C3 | 유사도 분포 측정 | 순위 기반 정규화로 바꿔서 상수는 불필요해졌지만, 분포가 극단적이면 재검토 |
 
-## D. 교수님 요구사항 (미착수)
+## D.+ 요구사항 (미착수)
 
 | # | 항목 | 상태 |
 |---|---|---|

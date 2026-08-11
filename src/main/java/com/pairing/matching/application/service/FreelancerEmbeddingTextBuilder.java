@@ -2,6 +2,8 @@ package com.pairing.matching.application.service;
 
 import com.pairing.matching.application.result.FreelancerResumeSummary;
 
+import java.util.List;
+
 /**
  * 프리랜서 임베딩용 텍스트 조립.
  *
@@ -10,6 +12,10 @@ import com.pairing.matching.application.result.FreelancerResumeSummary;
  * 작동한다(포지션이 "경력 3년 이상"이면 숫자가 같은 "경력 3년"이 "경력 10년"보다 가깝게 나와서
  * 더 자격 있는 사람이 뒤로 밀린다). 그 값들은 DB 조건점수(Pairing-python)가 처리한다.
  * 근거는 `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)" 참고.
+ *
+ * <p>넣는 것은 <b>자기소개 + 학과 전부 + 경력 담당업무</b> 셋이다. 학과는 클라이언트가
+ * 우대사항에 "○○학과 우대"라고 쓰는 경우를 잡으려고 넣는 것이라,
+ * {@link PositionEmbeddingTextBuilder}에 우대사항이 같이 들어가 있어야 의미가 있다(둘은 세트다).
  *
  * <p>{@link PositionEmbeddingTextBuilder}와 짝을 맞춰야 한다. 한쪽에만 어떤 항목이 들어가면
  * 대조할 말이 반대쪽에 없어서 그 항목이 유사도에 사실상 반영되지 않는다.
@@ -35,18 +41,21 @@ final class FreelancerEmbeddingTextBuilder {
         StringBuilder text = new StringBuilder(
                 summary.selfIntroduction() != null ? summary.selfIntroduction() : "");
 
-        for (FreelancerResumeSummary.CareerEntry career : summary.careers()) {
-            text.append('\n').append(career.companyName());
-            if (career.departmentRank() != null && !career.departmentRank().isBlank()) {
-                text.append(' ').append(career.departmentRank());
-            }
-            if (career.jobDescription() != null && !career.jobDescription().isBlank()) {
-                text.append(": ").append(career.jobDescription());
-            }
-        }
+        // 학과를 경력보다 앞에 둔다. 경력 건수엔 상한이 없어서 뒤로 밀면 잘려 나갈 수 있는데,
+        // 학과는 다 합쳐도 몇 십 자라 앞에 둬도 경력이 밀려나는 양이 사실상 없다.
+        appendAll(text, summary.majors());
+        appendAll(text, summary.careerDescriptions());
 
         // 자기소개가 앞이라 잘려도 핵심(본인 소개)은 남는다. 뒤쪽 경력이 일부 빠지는 편이
         // 임베딩 자체가 안 만들어지는 것보다 낫다.
         return text.length() > MAX_TEXT_LENGTH ? text.substring(0, MAX_TEXT_LENGTH) : text.toString();
+    }
+
+    private static void appendAll(StringBuilder text, List<String> values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                text.append('\n').append(value);
+            }
+        }
     }
 }
