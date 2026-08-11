@@ -57,15 +57,39 @@ class MatchingRoundCreationService {
     private final FreelancerDirectoryPort freelancerDirectoryPort;
     private final ClientGradeResolver clientGradeResolver;
 
+    /** 회차 생성 + 후보 채우기를 한 번에. 이미 비동기 문맥에서 도는 최초 추천(모집 시작)이 쓴다. */
     MatchingRound createRound(Long projectId, Long positionId, RecommendationType roundType, int recruitCount,
                               long costAmount) {
+        MatchingRound round = openRound(projectId, positionId, roundType, recruitCount, costAmount);
+        return fillCandidates(round);
+    }
+
+    /**
+     * 회차 레코드만 만든다(LLM 호출 없음).
+     *
+     * <p>재추천은 이 단계까지만 **동기로** 처리한다. 회차가 저장돼야 무료/유료 한도 검증
+     * ({@code MatchingRerecommendService.assertFreeAvailable})이 다음 요청을 막을 수 있어서다 —
+     * LLM까지 기다렸다 저장하면 그 사이 같은 버튼을 두 번 누르면 회차가 두 개 생긴다.
+     */
+    MatchingRound openRound(Long projectId, Long positionId, RecommendationType roundType, int recruitCount,
+                            long costAmount) {
         int roundNo = (int) matchingRoundRepository.countByPositionId(positionId) + 1;
         int poolSize = recruitCount * POOL_MULTIPLIER;
         Integer requestedCount = roundType == RecommendationType.PAID ? recruitCount : null;
 
         MatchingRound round = MatchingRound.create(projectId, positionId, roundNo, roundType, requestedCount,
                 costAmount, recruitCount, poolSize);
-        round = matchingRoundRepository.save(round);
+        return matchingRoundRepository.save(round);
+    }
+
+    /**
+     * 회차에 실제 후보를 채운다. **여기서 AI 서버(임베딩 검색 + LLM 재랭킹)를 부른다** — 수 초에서
+     * 수십 초가 걸리므로 호출하는 쪽은 비동기 문맥이어야 한다.
+     */
+    MatchingRound fillCandidates(MatchingRound round) {
+        Long projectId = round.getProjectId();
+        Long positionId = round.getPositionId();
+        int recruitCount = round.getExposeCount();
 
         List<Long> excludedFreelancerIds = matchingCandidateRepository.findFreelancerIdsByProjectId(projectId);
         MatchingRecommendation recommendation =

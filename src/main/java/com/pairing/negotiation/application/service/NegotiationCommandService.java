@@ -2,6 +2,7 @@ package com.pairing.negotiation.application.service;
 
 import com.pairing.contract.application.usecase.ContractCreationUseCase;
 import com.pairing.global.exception.BusinessException;
+import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCase;
 import com.pairing.negotiation.application.command.CreateNegotiationCommand;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort.ProjectView;
@@ -29,6 +30,9 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
     private final ProjectReaderPort projectReaderPort;
     // 무협상 즉시 타결도 계약서를 만들어야 한다(방향: negotiation → contract).
     private final ContractCreationUseCase contractCreationUseCase;
+    // 즉시 타결 시 매칭 요청도 CONTRACT_PENDING 으로 올린다(방향: negotiation → matching).
+    // 라운드를 도는 경로는 NegotiationLoopService 가 같은 포트를 이미 쓰고 있다.
+    private final MatchingNegotiationOutcomeUseCase matchingNegotiationOutcomeUseCase;
 
     @Override
     public Long create(CreateNegotiationCommand command) {
@@ -68,6 +72,10 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
 
         if (settledImmediately) {
             sealAgreementSnapshot(negotiationId, negotiation);   // 최종 조건 봉인(증거 일관성)
+            // 매칭 요청도 CONTRACT_PENDING 으로 올린다. 이게 없으면 즉시 타결 건만 NEGOTIATING 에
+            // 갇힌다 — 라운드를 도는 경로는 NegotiationLoopService.answer() 가 이미 부르고 있어서
+            // 여기만 빠져 있었다(2026-08-10, 3번이 계약 도메인 붙이며 발견).
+            matchingNegotiationOutcomeUseCase.markNegotiationAgreed(negotiation.getRequestId());
             // 타결 경로가 둘이라 여기도 계약서를 만든다. 저장 뒤여야 한다 — 계약 쪽이
             // getAgreedForContract 로 협상을 다시 읽으므로 save 전에 부르면 못 찾는다.
             contractCreationUseCase.createFromNegotiation(negotiationId);

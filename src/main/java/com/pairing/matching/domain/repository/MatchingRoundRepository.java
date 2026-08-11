@@ -18,8 +18,12 @@ public interface MatchingRoundRepository {
     long countByPositionId(Long positionId);
 
     /**
-     * 프로젝트 전체(포지션 불문)에서 지금까지 만들어진 특정 종류의 회차 수.
+     * 프로젝트 전체(포지션 불문)에서 지금까지 <b>실제로 쓴</b> 특정 종류의 회차 수.
      * 무료/유료 재추천 한도는 포지션이 아니라 프로젝트 전체 기준이다(P40/P41).
+     *
+     * <p>{@code FAILED} 회차는 세지 않는다. 재추천은 회차를 먼저 만들고 AI 호출은 비동기로 하는데,
+     * AI 서버가 죽어 후보를 한 명도 못 받은 회차까지 한도로 치면 서버 장애 때문에 무료 1회가
+     * 영영 사라진다.
      */
     long countByProjectIdAndRoundType(Long projectId, RecommendationType roundType);
 }

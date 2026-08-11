@@ -49,6 +49,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.pairing.global.config.SyncTaskExecutorTestConfig;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -79,6 +81,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>{@code @TransactionalEventListener(AFTER_COMMIT)}는 실제로 트랜잭션이 커밋돼야 실행되므로,
  * 이벤트 발행을 {@link TransactionTemplate}로 감싸 실제 커밋을 일으킨 뒤 결과를 확인한다.
  */
+@Import(SyncTaskExecutorTestConfig.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class RecruitingStartedEventListenerTest {

@@ -366,10 +366,6 @@
 11. Matching,응답,MatchingRequestResponse,,maxRound,Integer,선택,,최대 협상 라운드,15,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
 11. Matching,응답,MatchingRequestResponse,,newProposalCount,Integer,선택,,확인하지 않은 새 AI 제안 수,1,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
 11. Matching,응답,MatchingRequestResponse,,negotiationId,Long,선택,,협상 ID. 수락 후 생성된다.,300,GET /api/v1/matchings/requests (응답) / POST /api/v1/matchings/requests (응답) / GET /api/v1/matchings/requests/received (응답) 외 3건
-11. Matching,응답,EmbeddingReindexResponse,,freelancerSuccessCount,int,선택,,재색인 성공한 프리랜서 수,48,POST /api/v1/matchings/admin/embeddings/reindex (응답)
-11. Matching,응답,EmbeddingReindexResponse,,freelancerFailCount,int,선택,,재색인 실패한 프리랜서 수,0,POST /api/v1/matchings/admin/embeddings/reindex (응답)
-11. Matching,응답,EmbeddingReindexResponse,,positionSuccessCount,int,선택,,재색인 성공한 포지션 수,12,POST /api/v1/matchings/admin/embeddings/reindex (응답)
-11. Matching,응답,EmbeddingReindexResponse,,positionFailCount,int,선택,,재색인 실패한 포지션 수,0,POST /api/v1/matchings/admin/embeddings/reindex (응답)
 11. Matching,중첩,CandidateResponse,CandidateListResponse,candidateId,Long,선택,,후보 ID. 매칭 요청 발송 시 이 값을 보낸다.,100,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
 11. Matching,중첩,CandidateResponse,CandidateListResponse,freelancerId,Long,선택,,프리랜서 ID,7,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)
 11. Matching,중첩,CandidateResponse,CandidateListResponse,name,String,선택,,이름,홍길동,POST /api/v1/matchings/candidates/{candidateId}/rejection (응답) / GET /api/v1/matchings/positions/{positionId}/candidates (응답) / POST /api/v1/matchings/positions/{positionId}/rerecommendations (응답)

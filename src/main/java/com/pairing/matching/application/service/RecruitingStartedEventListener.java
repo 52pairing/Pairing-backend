@@ -4,6 +4,7 @@ import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.project.application.event.RecruitingStartedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -22,6 +23,15 @@ import java.util.List;
  * 안에서 자기 자신의 메서드를 호출하면({@code this.method()}) 스프링 프록시를 거치지 않아
  * {@code @Transactional(REQUIRES_NEW)}가 적용되지 않는다(자체 호출 문제). REQUIRES_NEW로
  * 새 트랜잭션을 열지 않으면 커밋된 트랜잭션은 이미 끝난 상태라 저장이 붙지 않는다.
+ *
+ * <p><b>{@code @Async}인 이유.</b> AFTER_COMMIT 리스너는 기본적으로 커밋한 스레드에서 그대로
+ * 이어서 실행된다. 즉 이 리스너가 끝날 때까지 <b>착수금 결제 API 응답이 나가지 않는다</b>.
+ * 포지션마다 임베딩 생성 + LLM 추천을 부르는데 LLM 읽기 타임아웃만 60초라, 포지션이 여러 개면
+ * 결제 화면이 1분 넘게 멈춘다. 결제 결과는 추천 완료 여부와 무관하게 바로 알려줘야 하므로
+ * 별도 스레드({@code AsyncConfig.taskExecutor})로 넘긴다.
+ *
+ * <p>비동기로 넘기면 호출한 쪽은 예외를 볼 수 없다. 그래서 여기서 반드시 로그로 남긴다
+ * (이미 포지션 단위로 잡고 있음).
  */
 @Slf4j
 @Component
@@ -31,6 +41,7 @@ class RecruitingStartedEventListener {
     private final ProjectDirectoryPort projectDirectoryPort;
     private final RecruitingStartedPositionHandler positionHandler;
 
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onRecruitingStarted(RecruitingStartedEvent event) {
         List<Long> positionIds = projectDirectoryPort.findPositionIds(event.projectId());

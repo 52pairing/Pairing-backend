@@ -32,6 +32,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.pairing.global.config.SyncTaskExecutorTestConfig;
+import org.springframework.context.annotation.Import;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -60,6 +62,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * project 도메인이 발행하는 {@link ProjectUpdatedEvent}를 받아 포지션별 임베딩을 다시 올리는지,
  * 그리고 매칭 요청 카드용 {@link MatchingSnapshot}은 건드리지 않는지 확인한다.
  */
+@Import(SyncTaskExecutorTestConfig.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class ProjectUpdatedEventListenerTest {
