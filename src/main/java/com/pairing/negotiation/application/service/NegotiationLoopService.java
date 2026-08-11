@@ -151,6 +151,27 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         });
     }
 
+    /**
+     * 내 마지노선만 다시 긋는다. 라운드도 안 올리고 대리인도 안 돌린다.
+     *
+     * <p>이미 합의된 쟁점은 못 고친다. 락된 값과 모순되는 선이 남으면 이후 판정이 전부 흔들린다.
+     */
+    @Override
+    public void updateFloors(Long negotiationId, Long accountId, List<FloorInput> floors) {
+        Negotiation negotiation = load(negotiationId);
+        PartyRole role = resolveRole(negotiation, accountId);
+        ensureInProgress(negotiation);
+
+        for (FloorInput floor : floors) {
+            NegotiationCondition condition = findByType(negotiation, floor.conditionType());
+            if (condition.isAgreed()) {
+                throw new BusinessException(NegotiationErrorCode.CONDITION_ALREADY_LOCKED);
+            }
+            condition.submitFloor(role, normalizeFloor(condition, floor.value()));
+        }
+        negotiationRepository.save(negotiation);
+    }
+
     @Override
     public void giveUp(Long negotiationId, Long accountId, String reason) {
         Negotiation negotiation = load(negotiationId);
