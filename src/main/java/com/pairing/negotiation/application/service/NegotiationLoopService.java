@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.contract.application.usecase.ContractCreationUseCase;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCase;
 import com.pairing.negotiation.application.event.NegotiationEvent;
@@ -17,8 +18,11 @@ import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
+import com.pairing.negotiation.domain.service.NegotiationAgreedValueNormalizer;
+import com.pairing.negotiation.domain.service.NegotiationFloorGuard;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +33,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -42,19 +47,43 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final NegotiationProposalPort proposalPort;
     // 협상 결과(타결/결렬)를 매칭 요청 건에 반영하는 인바운드 포트(방향: negotiation → matching).
     private final MatchingNegotiationOutcomeUseCase matchingOutcomeUseCase;
+    // 타결 시 표준계약서를 생성하는 인바운드 포트(방향: negotiation → contract).
+    private final ContractCreationUseCase contractCreationUseCase;
 
+    /**
+     * 마지노선 제출. <b>양측이 모두 낸 뒤에야</b> 대리인 협상(라운드 1)이 시작된다.
+     *
+     * <p>먼저 낸 쪽은 저장만 하고 상대를 기다린다. 한쪽 마지노선만으로 돌리면 선을 안 그은 쪽
+     * 대리인이 지킬 게 없어 그대로 양보하고, 상대는 동의한 적도 없는데 조건이 확정된다.
+     */
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
         Negotiation negotiation = load(negotiationId);
         PartyRole role = resolveRole(negotiation, accountId);
         ensureInProgress(negotiation);
-
-        // 요청자 본인 쪽 마지노선 저장(쟁점별).
-        for (FloorInput floor : floors) {
-            findByType(negotiation, floor.conditionType()).submitFloor(role, floor.value());
+        if (negotiation.hasFloorsFrom(role)) {
+            throw new BusinessException(NegotiationErrorCode.FLOOR_ALREADY_SUBMITTED);
         }
 
-        // 초기 제안(라운드 1) 생성.
+        // 요청자 본인 쪽 마지노선 저장(쟁점별). 저장 전에 계약 표기로 정규화한다 —
+        // 화면이 "4"(단위 없음)나 "재택"(코드 아닌 라벨)을 보내면 대리인이 비교조차 못 한다.
+        for (FloorInput floor : floors) {
+            NegotiationCondition condition = findByType(negotiation, floor.conditionType());
+            String normalized = NegotiationAgreedValueNormalizer
+                    .normalize(floor.conditionType(), floor.value(), reference(condition))
+                    .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
+            condition.submitFloor(role, normalized);
+        }
+
+        // 상대가 아직 안 냈으면 여기서 멈춘다. 상대 화면에는 '내 응답 필요'로 뜬다.
+        if (!negotiation.bothFloorsSubmitted()) {
+            persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
+                    "마지노선이 저장되었습니다. 상대방이 조건을 입력하면 AI 대리인 협상이 시작됩니다.")));
+            publish(negotiation, NegotiationEventType.STARTED);
+            return;
+        }
+
+        // 양측 마지노선이 모두 모였다 → 초기 제안(라운드 1) 생성.
         negotiation.incrementRound();
         List<NegotiationMessage> messages = proposeForPending(negotiation);
 
@@ -103,6 +132,13 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         }
 
         persist(negotiation, messages);
+
+        // 타결 → 표준계약서 자동 생성(요구사항 44행). persist 뒤여야 한다 — 계약 쪽이
+        // getAgreedForContract 로 협상을 다시 읽으므로 저장 전에 부르면 못 찾는다.
+        // 같은 트랜잭션이라 계약 생성이 실패하면 타결도 함께 롤백된다(멱등이라 재시도 안전).
+        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
+            contractCreationUseCase.createFromNegotiation(negotiation.getId());
+        }
 
         // 사람 채팅방은 타결이 아니라 계약 체결 시 열린다(계약 도메인이 ChatActivationUseCase 로 호출).
         publish(negotiation, switch (negotiation.getStatus()) {
@@ -189,9 +225,19 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                 .collect(Collectors.toMap(NegotiationCondition::getId, Function.identity(), (a, b) -> a));
         for (NegotiationProposalPort.ConditionOutcome o : result.outcomes()) {
             NegotiationCondition condition = pendingById.get(o.conditionId());
-            if (condition != null && o.agreed() && !condition.isAgreed()) {
-                condition.lock(o.proposedValue());
+            if (condition == null || !o.agreed() || condition.isAgreed()) {
+                continue;
             }
+            // 대리인이 사람이 그은 선을 넘겨 합의했으면 락하지 않는다. 미합의로 남겨 승인 패널로 넘긴다.
+            // (프롬프트로 유도하지만 LLM 이 지킨다는 보장이 없어 여기서 최종 확인한다)
+            if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), o.proposedValue(),
+                    condition.getClientFloor(), condition.getFreelancerFloor())) {
+                log.warn("마지노선을 넘은 합의라 락하지 않음(사람 승인으로 이관): negotiationId={}, conditionId={}, "
+                                + "type={}, value={}", negotiation.getId(), condition.getId(),
+                        condition.getConditionType(), o.proposedValue());
+                continue;
+            }
+            condition.lock(o.proposedValue());
         }
         return messages;
     }
@@ -227,6 +273,11 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                 .filter(c -> c.getConditionType() == type)
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
+    }
+
+    /** PERIOD 처럼 단위가 빠졌을 때 복원 기준이 되는 기존 값(희망값). */
+    private String reference(NegotiationCondition condition) {
+        return condition.getClientValue() != null ? condition.getClientValue() : condition.getFreelancerValue();
     }
 
     private PartyRole resolveRole(Negotiation negotiation, Long accountId) {
