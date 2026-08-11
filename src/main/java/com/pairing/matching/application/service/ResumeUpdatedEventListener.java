@@ -19,8 +19,11 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * 이대로 두면 <b>프리랜서의 이력서 저장 API 응답이 임베딩 생성(외부 AI 호출)까지 기다린다</b>.
  * 임베딩은 저장 결과와 무관하게 뒤에서 만들면 되는 값이라 별도 스레드로 넘긴다.
  *
- * <p>실제 조립·전송은 {@link FreelancerEmbeddingRefresher}가 한다 — 조건 저장
- * ({@link ConditionUpdatedEventListener})도 같은 벡터를 다시 만들기 때문이다.
+ * <p>실제 조립·전송은 {@link FreelancerEmbeddingRefresher}가 한다 — 관리자 일괄 재색인
+ * ({@link EmbeddingReindexService})도 같은 조립을 써야 벡터가 갈리지 않는다.
+ *
+ * <p><b>조건(스킬·단가·근무조건) 저장은 이 흐름을 타지 않는다.</b> 임베딩 텍스트에 문장만
+ * 들어가므로 조건을 바꿔도 같은 벡터가 나온다 — `.ai/STATE.md` "매칭 파이프라인 재설계" 참고.
  */
 @Slf4j
 @Component

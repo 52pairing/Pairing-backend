@@ -1,24 +1,18 @@
 package com.pairing.matching.application.service;
 
-import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
 import com.pairing.matching.application.result.FreelancerResumeSummary;
 
-import java.util.stream.Collectors;
-
 /**
- * 프리랜서 임베딩용 텍스트 조립. 요구사항 R01.2 "프로젝트 요구조건 ↔ 프리랜서 <b>프로필·이력서</b>
- * 벡터 비교"에 따라 이력서(자기소개+경력사항)와 조건(프로필)을 <b>둘 다</b> 넣는다.
+ * 프리랜서 임베딩용 텍스트 조립.
  *
- * <p><b>2026-08-11 수정 — 포지션 쪽과 짝이 안 맞던 것을 맞췄다.</b> 그 전에는 자기소개+경력사항만
- * 넣었는데, {@link PositionEmbeddingTextBuilder}는 이미 요구스킬·최소경력·근무조건·기간을 넣고
- * 있었다. 그래서 포지션 벡터에는 "Java, Spring Boot / 경력 3년 이상 / 상주 · 풀타임"이 들어가는데
- * 프리랜서 벡터에는 대응하는 말이 아예 없어서, <b>프리랜서가 자기소개에 우연히 "자바"라고 써둔
- * 경우에만</b> 그 단어가 걸렸다. 스킬·연차·근무조건이 1차 추림에 사실상 반영되지 않던 상태다.
+ * <p><b>문장만 넣는다.</b> 스킬·경력연차·근무조건·단가·기간 같은 구조화 값은 여기 안 들어간다 —
+ * 임베딩은 글이 비슷한지만 볼 뿐 숫자의 크기를 비교하지 못하고, 연차는 방향이 아예 반대로
+ * 작동한다(포지션이 "경력 3년 이상"이면 숫자가 같은 "경력 3년"이 "경력 10년"보다 가깝게 나와서
+ * 더 자격 있는 사람이 뒤로 밀린다). 그 값들은 DB 조건점수(Pairing-python)가 처리한다.
+ * 근거는 `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)" 참고.
  *
- * <p><b>단가(payAmount)와 시작 가능일(availableFrom)은 일부러 안 넣는다.</b> 임베딩은 숫자를
- * 비교하지 못해서 "월 500만원"과 "월 5000만원"이 벡터상 거의 같게 취급된다 — 넣으면 정확도가
- * 오히려 떨어진다. 포지션 쪽에도 예산·시작희망일이 없어서 넣으면 짝이 다시 어긋난다. 이 둘은
- * Stage E(LLM 최종선정)가 원본 숫자를 보고 감점으로 처리한다(`.ai/STATE.md` "Stage B 조건필터 폐기").
+ * <p>{@link PositionEmbeddingTextBuilder}와 짝을 맞춰야 한다. 한쪽에만 어떤 항목이 들어가면
+ * 대조할 말이 반대쪽에 없어서 그 항목이 유사도에 사실상 반영되지 않는다.
  */
 final class FreelancerEmbeddingTextBuilder {
 
@@ -36,17 +30,9 @@ final class FreelancerEmbeddingTextBuilder {
     private FreelancerEmbeddingTextBuilder() {
     }
 
-    /**
-     * @param condition 아직 조건을 등록하지 않은 프리랜서면 null. 이력서만으로도 임베딩은 만든다 —
-     *                  조건이 없다고 벡터 자체를 포기하면 그 사람은 후보에 아예 안 잡힌다.
-     */
-    static String buildText(FreelancerResumeSummary summary, FreelancerConditionResponse condition) {
+    static String buildText(FreelancerResumeSummary summary) {
         StringBuilder text = new StringBuilder(
                 summary.selfIntroduction() != null ? summary.selfIntroduction() : "");
-
-        // 조건을 경력보다 앞에 붙인다. 뒤쪽은 길이 상한에 걸려 잘려나갈 수 있는데, 스킬·연차 같은
-        // 짧고 핵심적인 값이 긴 경력 설명에 밀려 사라지면 안 된다.
-        appendCondition(text, condition);
 
         for (FreelancerResumeSummary.CareerEntry career : summary.careers()) {
             text.append('\n').append(career.companyName());
@@ -61,29 +47,5 @@ final class FreelancerEmbeddingTextBuilder {
         // 자기소개가 앞이라 잘려도 핵심(본인 소개)은 남는다. 뒤쪽 경력이 일부 빠지는 편이
         // 임베딩 자체가 안 만들어지는 것보다 낫다.
         return text.length() > MAX_TEXT_LENGTH ? text.substring(0, MAX_TEXT_LENGTH) : text.toString();
-    }
-
-    /** {@link PositionEmbeddingTextBuilder}의 직무/요구스킬/최소경력/근무조건/기간과 1:1로 대응한다. */
-    private static void appendCondition(StringBuilder text, FreelancerConditionResponse condition) {
-        if (condition == null) {
-            return;
-        }
-        if (condition.jobRole() != null) {
-            text.append('\n').append(condition.jobRole().getLabel());
-        }
-        if (!condition.skills().isEmpty()) {
-            text.append('\n').append(condition.skills().stream()
-                    .map(skill -> skill.skillCode().getLabel())
-                    .collect(Collectors.joining(", ")));
-        }
-        text.append('\n').append("경력 ").append(condition.careerYears()).append("년");
-        if (condition.workStyle() != null && condition.workForm() != null) {
-            text.append('\n').append(condition.workStyle().getLabel())
-                    .append(" · ").append(condition.workForm().getLabel());
-        }
-        // 기간은 "협의 가능"이면 값이 없다(FreelancerConditionResponse.periodValue Javadoc).
-        if (condition.periodValue() != null && condition.periodUnit() != null) {
-            text.append('\n').append(condition.periodValue()).append(condition.periodUnit().getLabel());
-        }
     }
 }
