@@ -55,7 +55,7 @@ public record ResumeRequest(
 
         @Schema(description = "간단 자기소개")
         @NotBlank(message = "자기소개는 필수입니다.")
-        @Size(max = 2000, message = "자기소개는 2000자 이하여야 합니다.")
+        @Size(max = 1500, message = "자기소개는 1500자 이하여야 합니다.")
         String selfIntroduction,
 
         @Schema(description = "포트폴리오 fileId. PDF 만 허용", example = "4")

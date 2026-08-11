@@ -161,14 +161,14 @@ public class AccountCommandService implements AccountCommandUseCase {
 
     @Override
     public void updateClientProfile(Long accountId, String companyName, EmployeeCount employeeCount, String phone,
-                                    String address) {
+                                    String address, Long logoFileId) {
         Account account = loadAccount(accountId);
         account.updatePhone(ContactPolicy.normalizePhone(phone));
         accountRepository.save(account);
 
         ClientProfile profile = clientProfileRepository.findByAccountId(accountId)
                 .orElseThrow(() -> new BusinessException(AccountErrorCode.PROFILE_NOT_FOUND));
-        profile.updateCompanyInfo(companyName, employeeCount, address);
+        profile.updateCompanyInfo(companyName, employeeCount, address, logoFileId);
         clientProfileRepository.save(profile);
     }
 

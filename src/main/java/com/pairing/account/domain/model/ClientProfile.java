@@ -72,12 +72,22 @@ public class ClientProfile {
     }
 
     /** 마이페이지 기업정보 수정. 사업자등록번호·사업 분야는 여기서 바꿀 수 없다. */
-    public void updateCompanyInfo(String companyName, EmployeeCount employeeCount, String address) {
+    /**
+     * 기업 정보 수정. 사업자등록번호·사업 분야는 바꾸지 않는다.
+     *
+     * <p>{@code logoFileId} 는 null 이면 기존 로고를 그대로 둔다. 수정 화면이 로고를 건드리지 않고
+     * 저장하는 경우가 대부분이라, null 을 "지움"으로 보면 매번 로고가 날아간다.
+     */
+    public void updateCompanyInfo(String companyName, EmployeeCount employeeCount, String address,
+                                  Long logoFileId) {
         if (companyName == null || companyName.isBlank() || employeeCount == null) {
             throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
         }
         this.companyName = companyName;
         this.employeeCount = employeeCount;
         this.address = address;
+        if (logoFileId != null) {
+            this.logoFileId = logoFileId;
+        }
     }
 }
