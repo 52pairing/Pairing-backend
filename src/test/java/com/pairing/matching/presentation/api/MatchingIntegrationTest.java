@@ -528,6 +528,31 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("조건이 전부 맞으면 즉시 타결되고, 수락 응답도 계약 대기로 나간다")
+    void acceptWithNoMismatchReturnsContractPending() throws Exception {
+        // 프로젝트 조건을 프리랜서 조건(REMOTE/FULL_TIME/6개월/월 650만)에 맞춰 불일치를 0개로 만든다.
+        // 예산은 budgetCap(순예산 ÷ 인원 ÷ 개월)이 희망 단가를 넘도록 올린다.
+        jdbcTemplate.update("UPDATE project SET work_style = 'REMOTE', budget_amount = ?, "
+                        + "start_desired_date = ? WHERE id = ?",
+                200_000_000L, LocalDate.now().plusDays(14), PROJECT_ID);
+
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 협상 라운드를 돌지 않고 바로 타결되므로 CONTRACT_PENDING 이 나가야 한다.
+        // 응답을 저장 전 객체로 만들면 DB(CONTRACT_PENDING)와 다른 NEGOTIATING 이 나간다.
+        mockMvc.perform(post("/api/v1/matchings/requests/" + requestId + "/acceptance")
+                        .cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CONTRACT_PENDING"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM matching_request WHERE id = ?", String.class, requestId))
+                .isEqualTo("CONTRACT_PENDING");
+    }
+
+    @Test
     @DisplayName("매칭 요청을 보내면 받은 프리랜서에게 알림이 간다")
     void sendingRequestNotifiesFreelancer() throws Exception {
         MatchingRound round = seedRound(2);
@@ -559,16 +584,28 @@ class MatchingIntegrationTest {
     }
 
     @Test
-    @DisplayName("계약 후 중도 종료(TERMINATED)된 요청은 무료 재추천을 막지 않는다")
-    void terminatedRequestDoesNotBlockFreeRerecommend() throws Exception {
+    @DisplayName("계약 후 중도 종료·협상 결렬은 무료 재추천 조건에 포함되지 않는다(P41)")
+    void terminatedOrNegotiationFailedDoesNotUnlockFreeRerecommend() throws Exception {
         MatchingRound round = seedRound(2);
         MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
         Long requestId = sendRequestAndGetId(candidate.getId());
 
-        // 종결 상태(TERMINATED/CLOSED)는 "아직 진행 중"이 아니므로 무료 재추천을 막으면 안 된다.
-        // NON_ACTIVE_STATUSES에 빠져 있으면 여기서 MT_008로 거부된다.
-        jdbcTemplate.update("UPDATE matching_request SET status = 'TERMINATED' WHERE id = ?", requestId);
+        // P41: "협상 결렬, 계약 전 파기, 계약 후 중도 종료는 무료 재추천 조건에 포함하지 않는다."
+        // 전원 거절·만료된 경우에만 열어줘야 하므로, 아래 두 상태에서는 계속 막혀야 한다.
+        for (String status : List.of("TERMINATED", "NEGOTIATION_FAILED")) {
+            jdbcTemplate.update("UPDATE matching_request SET status = ? WHERE id = ?", status, requestId);
 
+            mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                            .cookie(clientAccessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"type":"FREE"}"""))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("MT_008"));
+        }
+
+        // 거절(만료 포함)이면 그때는 열린다.
+        jdbcTemplate.update("UPDATE matching_request SET status = 'REJECTED' WHERE id = ?", requestId);
         given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash", List.of()));
 
