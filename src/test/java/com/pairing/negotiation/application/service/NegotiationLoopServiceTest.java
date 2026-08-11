@@ -223,6 +223,51 @@ class NegotiationLoopServiceTest {
     }
 
     @Test
+    @DisplayName("answer 거절(값 없음): REJECTED 로 두고 라운드를 태우지 않는다 — 새 마지노선 대기")
+    void rejectWithoutValueWaitsForRedirect() {
+        startBothSides();
+
+        // 화면은 [거절]만 누르고 새 마지노선은 그 다음 단계에서 받는다(와이어 6번).
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, false, null)));
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.IN_PROGRESS);
+        assertThat(reloaded.getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.REJECTED);
+        // 같은 마지노선으로 대리인을 다시 돌리면 같은 대화만 반복되므로 라운드를 올리지 않는다.
+        assertThat(reloaded.getTotalRound()).isEqualTo(1);
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .noneMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL && m.getRoundNo() == 2);
+    }
+
+    @Test
+    @DisplayName("answer 재지시: 거절된 조건에 새 마지노선이 오면 PENDING 복귀 + 라운드 진행")
+    void redirectAfterRejectResumesNegotiation() {
+        startBothSides();
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, false, null)));
+
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, false, "5,800,000")));
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.PENDING);
+        // 재지시 값도 /start 와 같은 규칙으로 정규화된다.
+        assertThat(reloaded.getConditions().get(0).getFreelancerFloor()).isEqualTo("5800000");
+        assertThat(reloaded.getTotalRound()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("answer 재지시: 해석할 수 없는 새 마지노선은 거부(NG_004)")
+    void redirectRejectsUnparsableValue() {
+        startBothSides();
+
+        assertThatThrownBy(() -> loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, false, "580만원"))))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     @DisplayName("answer 거절: 재지시 후 다음 라운드 재제안 생성(라운드 2)")
     void rejectReproposesNextRound() {
         startBothSides();

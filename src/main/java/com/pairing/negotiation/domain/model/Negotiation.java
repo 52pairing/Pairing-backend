@@ -190,6 +190,16 @@ public class Negotiation {
         return !conditions.isEmpty() && conditions.stream().allMatch(NegotiationCondition::isAgreed);
     }
 
+    /**
+     * 사람이 거절해 새 마지노선을 기다리는 쟁점이 있는가.
+     *
+     * <p>참이면 라운드를 진행하지 않는다. 거절은 "이 선으로는 안 된다"는 뜻일 뿐 새 선이 아니라,
+     * 그대로 대리인을 다시 돌리면 같은 마지노선으로 같은 대화를 반복하며 라운드만 태운다.
+     */
+    public boolean awaitingRedirect() {
+        return conditions.stream().anyMatch(NegotiationCondition::isRejected);
+    }
+
     /** 이 당사자가 모든 쟁점에 마지노선을 냈는가. */
     public boolean hasFloorsFrom(PartyRole role) {
         return !conditions.isEmpty() && conditions.stream().allMatch(c -> c.hasFloorFrom(role));
