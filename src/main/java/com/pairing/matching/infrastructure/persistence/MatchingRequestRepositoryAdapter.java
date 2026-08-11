@@ -94,4 +94,11 @@ public class MatchingRequestRepositoryAdapter implements MatchingRequestReposito
                 .map(matchingRequestMapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public List<MatchingRequest> findByProjectIdAndStatus(Long projectId, MatchingStatus status) {
+        return springDataRepository.findByProjectIdAndStatus(projectId, status).stream()
+                .map(matchingRequestMapper::toDomain)
+                .toList();
+    }
 }
