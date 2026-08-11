@@ -55,7 +55,7 @@ public final class NegotiationResponseFactory {
         Negotiation n = view.negotiation();
         return new NegotiationSummaryResponse(
                 n.getId(),
-                negotiationNo(n.getId()),   // 표시용 협상번호(원천 없어 ID 로 파생)
+                NegotiationAdminResponseFactory.negotiationNo(n.getId(), n.getStartedAt()),
                 n.getProjectId(),
                 view.projectTitle(),
                 counterpartName(view),
@@ -76,11 +76,6 @@ public final class NegotiationResponseFactory {
         return new NegotiationMessageResponse(
                 m.getId(), m.getRoundNo(), m.getSenderType(), m.getMessageType(), conditionType,
                 m.getContent(), m.getReason(), m.getProposedValue(), m.getResponse(), m.getCreatedAt());
-    }
-
-    /** 표시용 협상번호. 스키마에 원천이 없어 협상 ID 로 파생한다(포맷 확정 시 교체). */
-    private static String negotiationNo(Long negotiationId) {
-        return negotiationId == null ? null : "NEG-" + negotiationId;
     }
 
     /** 뷰어 기준 상대 이름: 클라가 보면 프리 이름, 프리가 보면 클라 회사명. */
