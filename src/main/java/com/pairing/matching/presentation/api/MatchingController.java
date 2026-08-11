@@ -17,7 +17,6 @@ import com.pairing.matching.presentation.api.request.MatchingRejectRequest;
 import com.pairing.matching.presentation.api.request.MatchingRequestCreateRequest;
 import com.pairing.matching.presentation.api.request.RerecommendRequest;
 import com.pairing.matching.presentation.api.response.CandidateListResponse;
-import com.pairing.matching.presentation.api.response.EmbeddingReindexResponse;
 import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -164,24 +163,30 @@ public class MatchingController {
     @PostMapping("/positions/{positionId}/rerecommendations")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "재추천 요청",
-            description = "FREE 는 요청 후보 전원 거절 시 프로젝트당 1회, PAID 는 최대 5회(1명당 10,000원)입니다. 이전에 노출된 후보는 제외됩니다.")
-    public ResponseEntity<ApiResponse<CandidateListResponse>> rerecommend(
+            description = "FREE 는 요청 후보 전원 거절 시 프로젝트당 1회, PAID 는 최대 5회(1명당 10,000원)입니다. "
+                    + "이전에 노출된 후보는 제외됩니다. "
+                    + "**후보 목록을 바로 돌려주지 않고 202로 응답합니다** — AI 추천에 수 초~수십 초가 걸려서입니다. "
+                    + "완료되면 `MATCHING_RECOMMENDED` 알림이 가므로, 알림을 받은 뒤 추천 후보 조회 API를 "
+                    + "다시 호출하면 됩니다. 한도 초과·모집 종료 같은 검증 실패는 이 응답에서 바로 알려줍니다.")
+    public ResponseEntity<ApiResponse<Void>> rerecommend(
             @PathVariable Long positionId,
             @Valid @RequestBody RerecommendRequest request,
             @CurrentAccountId Long accountId
     ) {
-        CandidateListResponse response = matchingRerecommendUseCase.rerecommend(positionId, request.type(),
-                request.quantity(), accountId);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.created("RERECOMMENDED", "재추천을 완료했습니다.", response));
+        matchingRerecommendUseCase.rerecommend(positionId, request.type(), request.quantity(), accountId);
+        return ResponseEntity.accepted()
+                .body(ApiResponse.accepted("RERECOMMEND_STARTED", "재추천을 시작했습니다. 완료되면 알려드릴게요."));
     }
 
     @PostMapping("/admin/embeddings/reindex")
     @Operation(summary = "[관리자] 임베딩 일괄 재색인",
             description = "이력서 있는 프리랜서 전체 + 모집 시작한 포지션 전체의 임베딩을 다시 생성합니다. "
-                    + "임베딩 모델을 교체해 벡터 공간이 달라졌을 때 씁니다. 건수가 많으면 시간이 걸릴 수 있습니다.")
-    public ResponseEntity<ApiResponse<EmbeddingReindexResponse>> reindexEmbeddings() {
-        EmbeddingReindexResponse response = EmbeddingReindexResponse.from(embeddingReindexUseCase.reindexAll());
-        return ResponseEntity.ok(ApiResponse.success("EMBEDDINGS_REINDEXED", "임베딩 재색인을 완료했습니다.", response));
+                    + "임베딩 모델을 교체해 벡터 공간이 달라졌을 때 씁니다. "
+                    + "**백그라운드로 처리하고 즉시 응답합니다** — 대상 1건마다 외부 AI 호출이 일어나 "
+                    + "전체가 몇 분씩 걸릴 수 있어서입니다. 성공·실패 건수는 완료 시점에 서버 로그로 남습니다.")
+    public ResponseEntity<ApiResponse<Void>> reindexEmbeddings() {
+        embeddingReindexUseCase.startReindexAll();
+        return ResponseEntity.accepted()
+                .body(ApiResponse.accepted("EMBEDDINGS_REINDEX_STARTED", "임베딩 재색인을 시작했습니다."));
     }
 }

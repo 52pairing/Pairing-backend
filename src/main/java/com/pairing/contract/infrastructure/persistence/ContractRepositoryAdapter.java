@@ -1,0 +1,106 @@
+package com.pairing.contract.infrastructure.persistence;
+
+import com.pairing.contract.domain.model.Contract;
+import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.domain.repository.ContractRepository;
+import com.pairing.contract.exception.ContractErrorCode;
+import com.pairing.contract.infrastructure.mapper.ContractMapper;
+import com.pairing.global.exception.BusinessException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+/**
+ * 계약 리포지토리 어댑터.
+ *
+ * <p>서명 저장은 계약 애그리거트의 cascade 로 처리한다.
+ */
+@Repository
+@RequiredArgsConstructor
+public class ContractRepositoryAdapter implements ContractRepository {
+
+    /** 체결된 것으로 보는 상태. 인원 충족 판정에 쓴다. 파기·거부는 빠진다. */
+    private static final List<ContractStatus> SIGNED_STATUSES =
+            List.of(ContractStatus.SIGNED, ContractStatus.COMPLETED);
+
+    private final SpringDataContractRepository springDataRepository;
+    private final ContractMapper contractMapper;
+
+    /**
+     * 저장 후 계약 번호를 채운다.
+     *
+     * <p>번호에 id 가 들어가 INSERT 전에는 만들 수 없다. 같은 트랜잭션 안에서 덮어쓰므로
+     * 번호 없는 행이 외부에 보이지 않는다. 정산번호와 같은 방식이다.
+     */
+    @Override
+    public Contract save(Contract contract) {
+        ContractJpaEntity saved = springDataRepository.save(contractMapper.toJpaEntity(contract));
+
+        Contract domain = contractMapper.toDomain(saved);
+        domain.assignContractNo(LocalDate.now().getYear());
+        saved.applyContractNo(domain.getContractNo());
+
+        return domain;
+    }
+
+    @Override
+    public Contract updateState(Contract contract) {
+        ContractJpaEntity entity = springDataRepository.findById(contract.getId())
+                .orElseThrow(() -> new BusinessException(ContractErrorCode.CONTRACT_NOT_FOUND));
+
+        // 영속 엔티티를 그대로 두고 스칼라만 갱신한다. 변경 감지가 커밋 시점에 UPDATE 를 만든다.
+        entity.applyState(contractMapper.toJpaEntity(contract));
+        applySignatureState(entity, contract);
+
+        return contractMapper.toDomain(entity);
+    }
+
+    /** 서명 행을 재생성하지 않고 계정별로 짝지어 상태만 옮긴다. */
+    private void applySignatureState(ContractJpaEntity entity, Contract contract) {
+        Map<Long, ContractSignatureJpaEntity> persisted = entity.getSignatures().stream()
+                .collect(Collectors.toMap(ContractSignatureJpaEntity::getAccountId, Function.identity()));
+
+        contract.getSignatures().forEach(signature -> {
+            ContractSignatureJpaEntity target = persisted.get(signature.getAccountId());
+            if (target != null) {
+                target.applyState(contractMapper.toSignatureEntity(signature));
+            }
+        });
+    }
+
+    @Override
+    public Optional<Contract> findById(Long contractId) {
+        return springDataRepository.findById(contractId).map(contractMapper::toDomain);
+    }
+
+    @Override
+    public Optional<Contract> findByNegotiationId(Long negotiationId) {
+        return springDataRepository.findByNegotiationId(negotiationId).map(contractMapper::toDomain);
+    }
+
+    @Override
+    public Page<Contract> findByParty(Long accountId, ContractStatus status, Pageable pageable) {
+        return springDataRepository.findByParty(accountId, status, pageable)
+                .map(contractMapper::toDomain);
+    }
+
+    @Override
+    public List<Contract> findByProjectId(Long projectId) {
+        return springDataRepository.findByProjectIdOrderByIdAsc(projectId).stream()
+                .map(contractMapper::toDomain)
+                .toList();
+    }
+
+    @Override
+    public long countSignedByPositionId(Long positionId) {
+        return springDataRepository.countByPositionIdAndStatusIn(positionId, SIGNED_STATUSES);
+    }
+}

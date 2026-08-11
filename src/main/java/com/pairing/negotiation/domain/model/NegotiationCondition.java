@@ -118,6 +118,17 @@ public class NegotiationCondition {
         return this.status == ConditionStatus.AGREED;
     }
 
+    /** 사람이 거절해 새 마지노선을 기다리는 중인가. 이 상태에서는 대리인을 다시 돌리지 않는다. */
+    public boolean isRejected() {
+        return this.status == ConditionStatus.REJECTED;
+    }
+
+    /** 이 쟁점에 해당 측 마지노선이 들어와 있는가. 양측이 다 내야 대리인 협상을 시작한다. */
+    public boolean hasFloorFrom(PartyRole role) {
+        String floor = role == PartyRole.CLIENT ? this.clientFloor : this.freelancerFloor;
+        return floor != null && !floor.isBlank();
+    }
+
     /** 뷰어 본인 마지노선만 노출(상대 것은 절대 반환하지 않는다). */
     public String floorForViewer(PartyRole viewer) {
         return viewer == PartyRole.CLIENT ? this.clientFloor : this.freelancerFloor;

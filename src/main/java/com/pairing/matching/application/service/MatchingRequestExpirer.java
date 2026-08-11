@@ -39,6 +39,7 @@ class MatchingRequestExpirer {
 
     private final MatchingRequestRepository matchingRequestRepository;
     private final ProjectCommandUseCase projectCommandUseCase;
+    private final MatchingNotifier matchingNotifier;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     void expireNow(MatchingRequest request) {
@@ -51,5 +52,8 @@ class MatchingRequestExpirer {
         boolean hasNegotiating = matchingRequestRepository.existsByProjectIdAndStatusIn(
                 projectId, NEGOTIATING_STATUSES);
         projectCommandUseCase.syncStage(projectId, hasContractPending, hasNegotiating);
+
+        // 스케줄러가 처리하든 수락/거절 시도 중에 발견되든 여기를 거치므로, 알림도 여기서 한 번만 보낸다.
+        matchingNotifier.notifyExpired(request);
     }
 }

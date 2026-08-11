@@ -9,15 +9,29 @@ import com.pairing.negotiation.presentation.api.response.NegotiationAdminDetailR
 import com.pairing.negotiation.presentation.api.response.NegotiationAdminSummaryResponse;
 import com.pairing.negotiation.presentation.api.response.NegotiationSummaryResponse;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
 /** 관리자 협상 조회 결과(Admin*) → 응답 DTO 변환. */
 public final class NegotiationAdminResponseFactory {
 
     private NegotiationAdminResponseFactory() {
     }
 
-    /** 화면 표시용 협상번호. 스키마에 원천이 없어 협상 ID 로 파생한다(포맷 확정 시 교체). */
-    public static String negotiationNo(Long negotiationId) {
-        return negotiationId == null ? null : "NEG-" + negotiationId;
+    /**
+     * 화면 표시용 협상번호({@code NEG-2026-005}).
+     *
+     * <p>스키마에 번호 원천이 없어 <b>시작 연도 + 협상 ID</b> 로 파생한다. 그래서 그 해의 순번이
+     * 아니라 전체 일련번호이며, 연도가 바뀌어도 001 부터 다시 시작하지 않는다. 관리자 화면의
+     * 식별 표기일 뿐 업무 규칙에 쓰이지 않아 이 정도로 둔다. 진짜 연도별 순번이 필요해지면
+     * 컬럼을 추가해야 한다(동시 생성 시 순번 충돌 처리도 함께).
+     */
+    public static String negotiationNo(Long negotiationId, LocalDateTime startedAt) {
+        if (negotiationId == null) {
+            return null;
+        }
+        int year = startedAt != null ? startedAt.getYear() : LocalDate.now().getYear();
+        return String.format("NEG-%d-%03d", year, negotiationId);
     }
 
     public static NegotiationAdminSummaryResponse summary(AdminSummary s) {
@@ -29,7 +43,7 @@ public final class NegotiationAdminResponseFactory {
     public static NegotiationSummaryResponse listItem(AdminListItem item) {
         return new NegotiationSummaryResponse(
                 item.negotiationId(),
-                negotiationNo(item.negotiationId()),
+                negotiationNo(item.negotiationId(), item.startedAt()),
                 item.projectId(),
                 item.projectTitle(),
                 null,                       // counterpartName: 관리자 목록에선 미사용
@@ -57,7 +71,7 @@ public final class NegotiationAdminResponseFactory {
                         r.proposalReason(), r.response(), r.responseReason())).toList();
 
         return new NegotiationAdminDetailResponse(
-                d.negotiationId(), negotiationNo(d.negotiationId()), d.projectId(), d.projectTitle(),
+                d.negotiationId(), negotiationNo(d.negotiationId(), d.startedAt()), d.projectId(), d.projectTitle(),
                 d.clientName(), d.freelancerName(), d.status(), d.startedAt(), d.endedAt(), d.totalRound(),
                 finalResult, roundLogs);
     }

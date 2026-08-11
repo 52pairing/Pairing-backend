@@ -61,8 +61,24 @@ class NegotiationCommandServiceTest {
 
     private static final Long PROJECT_ID = 8000L;
 
+    private Long clientProfileId;
+    private Long freelancerProfileId;
+
+    /**
+     * 프로젝트와 그 소유 프로필을 함께 만든다.
+     *
+     * <p>프로필을 실제로 만드는 이유: 즉시 타결 경로가 계약서를 생성하고, 계약은 양측 <b>계정 ID</b>를
+     * 프로필에서 역으로 찾는다. 존재하지 않는 ID 를 박아 두면 계약 생성이 실패하면서 협상 생성까지
+     * 같은 트랜잭션으로 롤백된다.
+     */
     private void insertProject(Long budgetAmount, WorkStyle workStyle, WorkForm workForm,
                                LocalDate startDesiredDate, boolean startNegotiable) {
+        clientProfileId = clientProfileRepository.save(ClientProfile.create(
+                910_201L, "삼성전자", "1234567890",
+                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
+        freelancerProfileId = freelancerProfileRepository.save(
+                FreelancerProfile.create(910_202L, LocalDate.of(1990, 1, 1))).getId();
+
         // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.
         jdbcTemplate.update("INSERT INTO project "
                         + "(id, client_id, title, budget_amount, work_style, work_form, "
@@ -71,13 +87,22 @@ class NegotiationCommandServiceTest {
                         + "total_headcount, confirmed_headcount, "
                         + "extension_count, free_rerecommend_used, paid_rerecommend_used) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                PROJECT_ID, 1L, "페어링 웹 리뉴얼", budgetAmount,
+                PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼", budgetAmount,
                 workStyle.name(), workForm.name(), startDesiredDate, startNegotiable,
                 6, "MONTH", "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
+
+        // 즉시 타결이면 매칭 요청도 CONTRACT_PENDING 으로 올리므로(markNegotiationAgreed) 대상 행이 있어야
+        // 한다. id 는 command() 가 requestId 로 넘기는 값(100L)과 맞춘다. NEGOTIATING 인 이유는
+        // agreeNegotiation() 이 그 상태만 허용해서다 — 실제 흐름에서도 매칭이 협상 생성 전에 저장해둔다.
+        jdbcTemplate.update("INSERT INTO matching_request "
+                        + "(id, project_id, position_id, candidate_id, freelancer_id, "
+                        + "status, requested_at, expires_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                100L, PROJECT_ID, 10L, 1L, freelancerProfileId, "NEGOTIATING");
     }
 
     private CreateNegotiationCommand command(Long budgetCap, FreelancerConditionSnapshot snapshot) {
-        return new CreateNegotiationCommand(100L, PROJECT_ID, 10L, 51L, budgetCap, snapshot);
+        return new CreateNegotiationCommand(100L, PROJECT_ID, 10L, freelancerProfileId, budgetCap, snapshot);
     }
 
     @Test
@@ -94,7 +119,7 @@ class NegotiationCommandServiceTest {
         assertThat(saved.getStatus()).isEqualTo(NegotiationStatus.IN_PROGRESS);
         assertThat(saved.getBudgetCap()).isEqualTo(4_800_000L);
         assertThat(saved.getProjectId()).isEqualTo(PROJECT_ID);
-        assertThat(saved.getFreelancerId()).isEqualTo(51L);
+        assertThat(saved.getFreelancerId()).isEqualTo(freelancerProfileId);
         assertThat(saved.getConditions())
                 .extracting(NegotiationCondition::getConditionType)
                 .containsExactlyInAnyOrder(ConditionType.AMOUNT, ConditionType.WORK_STYLE,
@@ -120,6 +145,14 @@ class NegotiationCommandServiceTest {
                 WorkStyle.REMOTE.name(), WorkForm.FULL_TIME.name(), LocalDate.of(2026, 1, 1), true,
                 6, "MONTH", "RECRUITING", "DEPOSIT_PAID", 1, 0, 0, 0, 0);
 
+        // 이 테스트가 즉시 타결 경로다 — markNegotiationAgreed 가 올릴 매칭 요청이 있어야 한다.
+        // 이 테스트는 setUp 픽스처를 안 쓰고 자기 데이터를 따로 심어서 여기도 넣는다.
+        jdbcTemplate.update("INSERT INTO matching_request "
+                        + "(id, project_id, position_id, candidate_id, freelancer_id, "
+                        + "status, requested_at, expires_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+                100L, PROJECT_ID, 10L, 1L, freelancerProfileId, "NEGOTIATING");
+
         Long id = commandUseCase.create(new CreateNegotiationCommand(100L, PROJECT_ID, 10L, freelancerProfileId,
                 5_000_000L,
                 new FreelancerConditionSnapshot(PayUnit.MONTHLY, 5_000_000L,
@@ -138,6 +171,12 @@ class NegotiationCommandServiceTest {
         assertThat(logs).anyMatch(m -> m.getContent().contains("봉인")
                 && m.getContent().contains("agreedAmount=5000000"));
         assertThat(NegotiationLogVerifier.verify(logs).valid()).isTrue();
+
+        // 매칭 요청도 계약 대기로 넘어가야 한다. 이게 빠져 있어서 즉시 타결 건만 NEGOTIATING 에
+        // 갇혀 있었다(라운드를 도는 경로는 NegotiationLoopService 가 이미 처리하고 있었음).
+        String requestStatus = jdbcTemplate.queryForObject(
+                "SELECT status FROM matching_request WHERE id = ?", String.class, 100L);
+        assertThat(requestStatus).isEqualTo("CONTRACT_PENDING");
     }
 
     @Test

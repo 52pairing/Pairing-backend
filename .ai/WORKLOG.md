@@ -200,3 +200,169 @@ Pairing-python 담당 팀원이 임베딩 모델을 `text-embedding-004` → `ge
 - 대상 목록을 고르려고 두 군데 추가: `ResumeRepository.findAllAccountIds()`(freelancer 도메인, 이력서 있는 계정 전체) → `FreelancerDirectoryPort.findAllFreelancerIdsWithResume()`, `MatchingSnapshotRepository.findAllBySnapshotType(POSITION)`(매칭 자신의 도메인이라 새 포트 불필요).
 - 테스트는 `@SpringBootTest` 대신 순수 Mockito 단위테스트(`EmbeddingReindexServiceTest`)로 작성 — 이 서비스는 포트 호출만 반복하는 얇은 오케스트레이션이라 실제 DB/Gemini 없이도 충분히 검증되고, 안 그래도 알려진 풀스위트 전용 flaky 이슈(`.ai/HANDOFF.md` 참고)에 컨텍스트를 더 안 보태려는 목적도 있음.
 - `feature/matching-embedding-reindex` 브랜치. `.ai/API.md`(11. Matching 표), `.ai/STATE.md`(임베딩 모델명 갱신 + 재색인 API 언급) 동기화.
+
+## 2026-08-10 (계속) — Stage E 조건 감점 구현 (HANDOFF 10-2번, Pairing-python)
+
+일정/근무조건/단가를 하드필터로 배제하지 않고 LLM 최종선정에서 감점 요인으로만 반영하기로 한 결정(`.ai/STATE.md` "Stage B 조건필터 폐기")의 남은 절반. 여태 프롬프트가 직군/직무/경력/스킬/자기소개/경력사항만 보여주고 예산·단가·일정·근무조건은 LLM에게 아예 안 알려주고 있었어서, "감점하기로 했다"는 결정이 실제로는 아무 효과가 없던 상태였다.
+
+- `DirectoryRepository`: 포지션 쪽에 `budget_amount`/`period_value`/`period_unit`/`start_desired_date`/`start_negotiable`, 프리랜서 쪽에 `pay_unit`/`pay_amount`/`work_style`/`work_form`/`available_from`/`start_negotiable`/`period_value`/`period_unit` 추가. 프리랜서 쿼리는 `string_agg`(경력 요약) 때문에 GROUP BY가 있어서 새 컬럼을 SELECT뿐 아니라 GROUP BY에도 넣어야 했다.
+- `_build_prompt`: 조건 값을 프롬프트에 넣고 "어긋나도 후보에서 제외하지 말고 감점만 하고 사유에 적어라"를 명시. 감점 공식은 우리가 정하지 않고 LLM 판단에 맡김(설계 결정대로).
+- **함정 2개를 프롬프트에서 막았음**: (1) 총예산은 프로젝트 전체 인원·기간 합계인데 프리랜서 희망급여는 1인 월단가라, 그냥 넣으면 LLM이 4,800만 vs 620만을 직접 비교해서 과도하게 감점한다 — "두 숫자를 그대로 비교하지 말고 기간·인원 감안하라, 총예산은 참고치일 뿐 확정 상한 아니다"를 명시. (2) `start_negotiable`(협의 가능)이 켜진 항목은 어긋나도 감점하지 말라고 명시 — 안 그러면 "시작일 협의 가능"인 프리랜서가 일정 불일치로 부당하게 밀린다.
+- 조건을 아직 안 채운 프리랜서도 후보에 들어올 수 있어서, 값이 `None`인 항목은 줄 자체를 뺐다(그냥 찍으면 LLM이 "None"을 조건 값으로 읽는다).
+- 테스트 3건 추가(`tests/test_matching_service.py`): 조건 값이 실제로 프롬프트에 들어가는지, 협의가능 표시가 붙는지, 값 없을 때 줄이 빠지는지. 전체 22건 통과(기존 19 + 3), ruff 통과. 실제 렌더링된 프롬프트도 직접 출력해서 눈으로 확인함.
+- **API 응답 모양은 안 바뀜** — 기존 `reason`(파이프 구분 문자열)에 감점 사유가 항목으로 하나 더 붙는 형태라 프론트 변경 불필요.
+- 같은 브랜치(`feature/matching-stage-e-condition-penalty`)에 임베딩 모델 교체 관련 Python 문서 정정도 같이 실었다(`db/init/10-create-ai-schema.sql`, `README.md` — "차원 768은 text-embedding-004 기준"이 낡은 문구였고, `output_dimensionality`로 차원을 맞춰도 벡터 공간은 달라진다는 점이 빠져 있었음).
+
+## 2026-08-10 (계속) — LLM 호출 비동기 처리 (강사 요구사항)
+
+강사 요구사항: "AI쪽 LLM 돌릴 때 프론트 화면에서 기다리게 하지 말고 비동기로 처리". 확인해보니
+`AsyncConfig`(`@EnableAsync` + 스레드풀 core 5/max 10/queue 500)는 이미 있는데 `@Async`를 쓰는 곳이
+코드 전체에 한 곳도 없었다. 그래서 LLM 호출이 전부 요청 스레드를 붙잡고 있었다.
+
+**문제가 컸던 이유**: `@TransactionalEventListener(AFTER_COMMIT)`는 커밋한 스레드에서 그대로 이어
+실행된다. 즉 매칭이 남의 도메인 API 응답을 붙잡고 있었다 — 결제(정산 도메인), 이력서 저장(freelancer),
+프로젝트 수정(project). LLM 읽기 타임아웃이 60초라 포지션이 여러 개면 결제 화면이 1분 넘게 멈춘다.
+
+- `RecruitingStartedEventListener`(결제 완료 → 최초 추천), `ResumeUpdatedEventListener`(이력서 저장 →
+  프리랜서 임베딩), `ProjectUpdatedEventListener`(프로젝트 수정 → 포지션 임베딩) 3곳에 `@Async` 추가.
+  전부 결과를 응답에 안 싣는 후처리라 스레드만 분리하면 되고, 각 리스너가 이미 예외를 잡아 로그로
+  남기고 있어서 비동기로 바뀌어도 실패가 묻히지 않는다.
+- 관리자 재색인 API(`POST /admin/embeddings/reindex`)를 **202 즉시 응답 + 백그라운드 처리**로 변경.
+  대상 1건마다 외부 AI 호출이라 전체가 몇 분씩 걸리는데, 동기로 두면 관리자 화면이 멈추고 그 전에
+  프록시 타임아웃에 먼저 끊긴다. `EmbeddingReindexUseCase.startReindexAll()`(`@Async`) 신규,
+  기존 `reindexAll()`은 결과를 돌려주는 동기 버전으로 남겨 테스트/배치용으로 유지.
+  결과 건수는 응답 대신 완료 로그로 남긴다 — 응답 DTO(`EmbeddingReindexResponse`)는 쓰는 곳이
+  없어져서 삭제하고 `docs/api-dto.csv` 행도 제거.
+- `ApiResponse.accepted(code, message)` 추가(202). 기존 `success`(200)/`created`(201)와 같은 패턴.
+- **테스트 5개가 깨졌다** — 비동기로 바뀌니 검증이 백그라운드 작업보다 먼저 실행됨. sleep이나
+  Mockito `timeout()`으로 때우면 느리고 CI에서 간헐적으로 깨지므로, `SyncTaskExecutorTestConfig`
+  (테스트 전용 `@Primary` `SyncTaskExecutor`)를 만들어 해당 3개 테스트 클래스에서 `@Import`.
+  검증 대상은 리스너의 처리 내용이지 스프링의 비동기 동작 자체가 아니라, 실행 스레드만 동기로
+  바꿔 결정적으로 만들었다.
+- `feature/matching-async-llm-processing` 브랜치. `./gradlew clean build` 전체 통과.
+
+**남은 것(2번, 팀 협의 중)**: 재추천 API(`POST /rerecommendations`)는 사용자가 결과를 기다리는
+화면이라 그냥 비동기로 던지면 보여줄 게 없다. (a) 현행 유지 + 프론트 로딩 UI, (b) 202 응답 후
+WebSocket 알림(이 프로젝트에 STOMP·알림 도메인이 이미 있음) 중 선택 필요 — 프론트 작업이 같이
+필요해서 사용자가 팀과 협의하기로 함.
+
+## 2026-08-10 (계속) — 재추천 비동기 전환 + 매칭 알림 5종
+
+강사 요구사항 2번(재추천도 비동기)과 알림 담당자의 `NotificationCreateUseCase` 연동 요청을 함께 처리.
+재추천 방식은 사용자가 팀과 협의해 **(b) 비동기 + 알림 푸시**로 결정.
+
+**재추천 비동기 전환**
+
+- `POST /positions/{id}/rerecommendations`가 `202` + 본문 없음으로 바뀐다(기존 `201` + 후보 목록).
+  후보는 AI 호출이 끝난 뒤 비동기로 채워지고, 완료되면 `MATCHING_RECOMMENDED` 알림이 간다.
+- **검증은 동기로 남겼다.** 한도 초과(MT_008)·모집 종료(MT_014)·quantity 누락(MT_012)은 버튼을 누른
+  즉시 알려줘야지 알림으로 실패를 통보하면 쓰기 나쁘다.
+- **회차 레코드 생성까지도 동기다.** `MatchingRoundCreationService.createRound`를
+  `openRound`(회차만)와 `fillCandidates`(AI 호출 + 후보 저장)로 쪼갰다. 회차가 저장돼야
+  `assertFreeAvailable`이 다음 요청을 막는데, LLM까지 기다렸다 저장하면 그 사이 같은 버튼을 두 번
+  누르면 회차가 두 개 생긴다(무료 1회 정책 구멍). `createRound`는 둘을 합친 형태로 남겨서 최초
+  추천(모집 시작, 이미 비동기 문맥)이 계속 쓴다.
+- `RerecommendRequestedEvent` + `RerecommendRequestedEventListener`(`@Async` + AFTER_COMMIT +
+  REQUIRES_NEW) 신규. AFTER_COMMIT이어야 비동기 스레드가 방금 만든 회차를 조회할 수 있다.
+- 후보가 0명이어도 알림을 보낸다 — 기다리는 쪽에서는 "아직 처리 중"과 구분이 안 되기 때문.
+
+**알림 5종**(`MatchingNotifier`로 모음 — 문구·링크가 흩어지면 같은 상황에 다른 말이 나간다)
+
+| 시점 | 받는 사람 | 타입 |
+| --- | --- | --- |
+| 매칭 요청 발송 | 프리랜서 | `MATCHING_REQUESTED` |
+| 요청 수락 | 클라이언트 | `MATCHING_ACCEPTED` |
+| 요청 거절 | 클라이언트 | `MATCHING_REJECTED` |
+| 응답기한 만료(자동) | 클라이언트 | `MATCHING_REJECTED` (문구로 구분) |
+| 재추천 완료 | 클라이언트 | `MATCHING_RECOMMENDED` |
+
+- 만료 알림은 `MatchingRequestExpirer.expireNow()`에 넣었다 — 스케줄러 경로와 수락/거절 중 발견되는
+  경로가 모두 여기를 지나므로 한 번만 보내진다.
+- 알림용으로 `FreelancerDirectoryPort.resolveAccountId(freelancerId)` 신규(기존 `resolveFreelancerId`의
+  반대 방향). 알림은 계정 단위인데 매칭이 들고 있는 건 freelancerId뿐이라 변환이 필요했다.
+- **알림 실패가 본 기능을 막지 않는다.** 매칭 요청은 정상 처리됐는데 알림 한 건 때문에 500이 나가면
+  안 되므로 `MatchingNotifier`에서 예외를 삼키고 로그만 남긴다.
+
+**테스트**: 재추천 통합테스트 4건을 새 흐름(202 → 후보 조회 API 재호출)으로 수정하고
+`MatchingIntegrationTest`에도 `SyncTaskExecutorTestConfig`를 `@Import`. `./gradlew clean build` 통과.
+(전체 빌드 1회차에서 `ChatServiceTest`가 실패했는데 단독 실행은 통과하고 2회차 전체 빌드도 통과 —
+이 레포에 이미 알려진 풀스위트 전용 flaky 이슈로 판단, 매칭 변경과 무관.)
+
+## 2026-08-10 (계속) — 재추천 비동기 리뷰 지적 3건 처리
+
+**① 실패한 회차가 RUNNING으로 방치됨 (유효, 지적보다 결과가 더 나빴음)**
+
+`fillCandidates()` 실패 시 로그만 찍고 끝나서 회차가 `RUNNING`으로 영원히 남았다. 추적해보니
+그것보다 심각한 게 있었는데, `assertFreeAvailable`이 `countByProjectIdAndRoundType(FREE) > 0`으로만
+보기 때문에 **AI 서버가 잠깐 죽으면 무료 재추천 1회가 영영 사라진다**(후보는 한 명도 못 받았는데).
+
+- 실패 시 `round.fail()` + 실패 알림 발송 추가. 성공하든 실패하든 알림이 가야 클라이언트가
+  "추천 생성 중" 화면에서 안 오는 알림을 기다리지 않는다.
+- `countByProjectIdAndRoundType`이 `FAILED` 회차를 세지 않도록 변경(`...AndStatusNot`). 무료/유료
+  한도 계산과 화면의 `paidRerecommendRemaining` 양쪽에 같이 적용된다.
+- **트랜잭션 문제를 하나 더 찾았다**: 실패 처리를 리스너의 같은 트랜잭션에서 하면, 이미
+  rollback-only로 오염된 트랜잭션이라 FAILED 저장이 같이 롤백된다. `RerecommendRoundFiller`(별도 빈,
+  성공/실패 각각 REQUIRES_NEW)로 분리해서 해결 — `MatchingRequestExpirer`와 같은 패턴.
+- 회귀 테스트 추가: AI 호출이 터지면 회차가 FAILED로 닫히고, 이어서 재추천을 다시 걸면 성공하며
+  `paidRerecommendRemaining`이 4(5회 중 성공한 1회만 차감)로 나오는지 검증.
+
+**② 알림/Swagger 한글 깨짐 — 오탐**
+
+소스 파일은 UTF-8이고(`file` 확인), `build.gradle`에 `options.encoding = 'UTF-8'`이 이미 있으며,
+컴파일된 `.class`에서 한글 문자열 9개를 추출해 전부 정상인 것까지 확인했다. 리뷰 도구가 cp949로
+읽어서 깨져 보인 것으로 보인다(이 환경의 콘솔 출력도 같은 이유로 깨진다). 코드 변경 없음.
+
+**③ 무료 재추천 판정에서 종결 상태가 active로 잡힘 (유효, 지적보다 1개 더 있었음)**
+
+`NON_ACTIVE_STATUSES`가 `REJECTED`/`NEGOTIATION_FAILED` 2개뿐인데 도메인의
+`MatchingRequest.isTerminal()`은 4개(`TERMINATED`/`CLOSED` 포함)를 종결로 본다. 지적된 `TERMINATED`
+외에 `CLOSED`도 빠져 있어서 둘 다 추가하고, 두 목록이 어긋나면 안 된다는 주석을 달았다.
+
+## 2026-08-10 (계속) — 즉시 타결 시 매칭 요청이 NEGOTIATING에 갇히던 문제 (3번·5번 협의)
+
+3번이 계약 도메인 붙이며 발견, 5번이 (a)안(한 PR로 묶기)으로 동의해서 양쪽을 함께 수정.
+따로 머지되면 위험이 순서에 갈린다 — 매칭만 먼저 들어가면 무해하지만, 협상만 먼저 들어가면
+즉시 타결 시 수락이 롤백되는 장애가 배포된다.
+
+- `MatchingRequestService.accept()` 순서 변경: `advanceStatus(NEGOTIATING)` + `save`를
+  `createNegotiation` **앞으로** 옮김. 기존엔 협상이 즉시 타결로 올려둔 `CONTRACT_PENDING`을
+  뒤따라오는 `advanceStatus`가 덮어썼다. 또 `agreeNegotiation()`이 `NEGOTIATING`을 요구하는데
+  저장 전이면 DB는 아직 `REQUEST_PENDING`이라 `INVALID_MATCHING_STATE`로 수락째 롤백된다.
+- `NegotiationCommandService` 즉시 타결 블록에 `markNegotiationAgreed(requestId)` 추가.
+  라운드를 도는 경로(`NegotiationLoopService.answer()`)는 이미 부르고 있어서 여기만 빠져 있었다.
+
+**예상 못 했던 것 — 순환 참조.** 위 한 줄을 넣자 컨텍스트가 아예 안 떴다:
+`matchingRequestService → negotiationAdapter → negotiationCommandService → matchingRequestService`.
+`MatchingRequestService`가 "매칭→협상"과 "협상→매칭" 양쪽 역할을 다 맡고 있던 게 원인.
+`MatchingNegotiationOutcomeService`(신규)로 협상 결과 반영만 분리해서 고리를 끊었다 — 이 클래스는
+자기 저장소와 project 도메인만 쓰므로 협상을 다시 호출하지 않는다. **여기에 `NegotiationPort`
+의존을 추가하면 순환이 재발한다**(클래스 주석에 명시).
+
+- 테스트: `NegotiationCommandServiceTest` 픽스처 2곳에 `matching_request` 행 추가(5번이 미리 알려줌 —
+  이 테스트는 협상 단독 기준으로 짜여 있어 매칭 행이 없었다). 즉시 타결 후 요청이 실제로
+  `CONTRACT_PENDING`이 되는지 검증하는 단언도 추가. `./gradlew clean build` 통과.
+
+## 2026-08-10 (계속) — 계약 이후 인원별 상태 전이 리스너 4개 (3번 요청 ①)
+
+`matching_request.status`를 CONTRACTED 이후로 옮기는 코드가 어디에도 없어서, 계약을 체결하고
+프로젝트가 끝나도 요청은 `CONTRACT_PENDING`에 그대로 남아 있었다. 3번이 계약 도메인을 붙이며
+발견하고 이벤트 4개를 발행해줬다(`feature/contract-sign`이 develop에 merge되면서 사용 가능해짐 —
+요청받은 시점엔 아직 develop에 없어서 대기했었다).
+
+- `ContractStageEventListener` 신규. ContractSigned→CONTRACTED, ProjectProgressStarted→IN_PROGRESS,
+  ProjectCompletionRequested→COMPLETION_PENDING, ProjectClosed→CLOSED.
+- **`@Async`를 안 붙였다.** 다른 매칭 리스너들과 반대인데, 이건 AI 호출 없이 UPDATE 몇 줄만 하는
+  작업이고 발행 도메인 트랜잭션과 원자적으로 묶이는 게 맞다 — "계약은 체결됐는데 매칭 상태만 안
+  따라오는" 상황을 막는 게 목적이라 실패하면 차라리 같이 롤백되는 편이 낫다. 같은 이유로 여기에
+  알림·외부 호출을 넣으면 안 된다(3번도 "상태 전이 외 무거운 작업은 커밋 뒤로"라고 요청).
+- **직접 발견한 위험 — 거절된 요청까지 옮기면 결제가 롤백된다.** 프로젝트 단위 이벤트 3개는 "그
+  프로젝트의 모든 요청"이 대상이지만 실제로는 거절·만료된 요청이 같이 있고, 그것까지
+  `advanceStatus`에 넣으면 종결 상태라 예외가 난다. 이벤트가 발행 도메인 트랜잭션 안에서
+  처리되므로 착수금 결제까지 통째로 롤백된다. 직전 단계인 요청만 골라 옮기도록
+  `findByProjectIdAndStatus`를 새로 추가해서 해결했고, 덕분에 이벤트가 중복 전달돼도 두 번
+  적용되지 않는다.
+- 테스트 `ContractStageEventListenerTest` 신규 4건(전 단계 전이 / 거절건 섞여도 안 터짐 / 중복
+  전달 멱등 / 계약 체결은 해당 프리랜서 1건만). 이 리스너는 `matching_request`만 건드리므로
+  계정·약관 시딩 없이 요청 행만 직접 넣어 가볍게 검증한다. **거절건을 일부러 포함시켜 돌려보니
+  해당 테스트만 실패하는 것까지 확인**했다.
+- 파킹해뒀던 문서 커밋 2개(Stage E 완료 반영, 점수 스케일 0~100 확정)도 이 브랜치에 같이 실었다.

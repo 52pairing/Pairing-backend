@@ -367,8 +367,8 @@ public class Project {
     /**
      * 인원 1명 확정. 양측 서명이 끝나면 계약 도메인이 호출한다.
      *
-     * <p>필요 인원이 <b>모두</b> 확정돼야 진행중으로 넘어간다. (요구사항 1241)
-     * 3명 중 2명만 계약했으면 가장 앞선 단계가 진행중이어도 계약 대기에 머문다.
+     * <p>여기서는 진행중으로 넘기지 않는다. 서명만으로는 부족하고 프리랜서 착수금 수수료까지
+     * 결제돼야 하는데(P27), 그 시점은 정산 도메인만 안다. 전환은 {@link #startProgress} 가 한다.
      */
     public void confirmPosition(Long positionId) {
         if (status == ProjectStatus.CANCELED || status == ProjectStatus.CLOSED) {
@@ -381,10 +381,27 @@ public class Project {
 
         target.confirm();
         this.confirmedHeadcount = positions.stream().mapToInt(Position::getConfirmedCount).sum();
+    }
 
-        if (positions.stream().allMatch(Position::isFilled)) {
-            advanceTo(ProjectStatus.IN_PROGRESS);
+    /** 모집 인원이 모두 계약으로 확정됐는가. 진행중 전환의 한쪽 조건이다. */
+    public boolean isFullyStaffed() {
+        return positions.stream().allMatch(Position::isFilled);
+    }
+
+    /**
+     * 진행중 전환. 필요 인원이 모두 확정되고 프리랜서 착수금 수수료까지 결제되면 넘어간다.
+     *
+     * <p>결제 완료를 계기로 정산 도메인이 호출한다. 인원이 덜 찼으면 아무 일도 하지 않는다 —
+     * 3명 중 2명만 계약한 상태에서 그 2명이 수수료를 내도 프로젝트는 계약 대기에 머문다.
+     *
+     * @return 이번 호출로 실제 넘어갔으면 true
+     */
+    public boolean startProgress() {
+        if (!isFullyStaffed() || !status.isBefore(ProjectStatus.IN_PROGRESS)) {
+            return false;
         }
+        advanceTo(ProjectStatus.IN_PROGRESS);
+        return true;
     }
 
     /** 1주 단위, 최대 2회. 상한을 넘겨 중단하면 클라이언트 파기로 본다. */

@@ -59,6 +59,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.pairing.global.config.SyncTaskExecutorTestConfig;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -90,6 +92,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * <p>ProjectDirectoryPort/NegotiationPort/FreelancerDirectoryPort 전부 실제 도메인을 그대로 타므로
  * 이 테스트가 통과하면 어댑터 교체가 실제로 맞물려 동작한다는 뜻이다(seedFreelancerProfile 참고).
  */
+@Import(SyncTaskExecutorTestConfig.class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class MatchingIntegrationTest {
@@ -485,6 +488,13 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.content[0].mainTask").doesNotExist());
     }
 
+    /** 특정 계정에게 실제로 저장된 알림 제목들. 알림 도메인 API를 거치지 않고 테이블을 직접 본다. */
+    private List<String> notificationTitles(Long ownerAccountId, String type) {
+        return jdbcTemplate.queryForList(
+                "SELECT title FROM notification WHERE owner_account_id = ? AND type = ?",
+                String.class, ownerAccountId, type);
+    }
+
     private Long sendRequestAndGetId(Long candidateId) throws Exception {
         Map<String, Object> body = Map.of("positionId", POSITION_ID, "candidateIds", List.of(candidateId));
         MvcResult result = mockMvc.perform(post("/api/v1/matchings/requests")
@@ -512,6 +522,20 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.currentRound").isNotEmpty());
 
         assertThat(projectQueryUseCase.findStatus(PROJECT_ID)).isEqualTo(ProjectStatus.NEGOTIATING);
+        // 수락 사실은 클라이언트에게 알림으로 가야 한다(요청을 보낸 쪽이 결과를 알아야 하므로).
+        assertThat(notificationTitles(clientAccountId, "MATCHING_ACCEPTED"))
+                .anyMatch(title -> title.contains("수락"));
+    }
+
+    @Test
+    @DisplayName("매칭 요청을 보내면 받은 프리랜서에게 알림이 간다")
+    void sendingRequestNotifiesFreelancer() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+
+        sendRequestAndGetId(candidate.getId());
+
+        assertThat(notificationTitles(freelancerAccountId, "MATCHING_REQUESTED")).isNotEmpty();
     }
 
     @Test
@@ -529,6 +553,31 @@ class MatchingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("REJECTED"))
                 .andExpect(jsonPath("$.data.rejectReason").value("DIRECT_REJECT"));
+
+        assertThat(notificationTitles(clientAccountId, "MATCHING_REJECTED"))
+                .anyMatch(title -> title.contains("거절"));
+    }
+
+    @Test
+    @DisplayName("계약 후 중도 종료(TERMINATED)된 요청은 무료 재추천을 막지 않는다")
+    void terminatedRequestDoesNotBlockFreeRerecommend() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 종결 상태(TERMINATED/CLOSED)는 "아직 진행 중"이 아니므로 무료 재추천을 막으면 안 된다.
+        // NON_ACTIVE_STATUSES에 빠져 있으면 여기서 MT_008로 거부된다.
+        jdbcTemplate.update("UPDATE matching_request SET status = 'TERMINATED' WHERE id = ?", requestId);
+
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash", List.of()));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"FREE"}"""))
+                .andExpect(status().isAccepted());
     }
 
     @Test
@@ -568,7 +617,7 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"type":"FREE"}"""))
-                .andExpect(status().isCreated());
+                .andExpect(status().isAccepted());
     }
 
     @Test
@@ -606,7 +655,12 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"type":"PAID","quantity":2}"""))
-                .andExpect(status().isCreated())
+                // 후보 목록은 이 응답에 없다 — AI 호출이 끝난 뒤 비동기로 채워지고 알림으로 알려준다.
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.candidates.length()").value(1))
                 .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
     }
@@ -625,8 +679,7 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"type":"PAID","quantity":2}"""))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.candidates.length()").value(0));
+                .andExpect(status().isAccepted());
 
         verify(matchingPort).recommend(POSITION_ID, 2, 3, List.of(freelancerAccountId));
     }
@@ -648,7 +701,11 @@ class MatchingIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"type":"PAID","quantity":1}"""))
-                .andExpect(status().isCreated())
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.candidates.length()").value(1))
                 .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
     }
@@ -669,6 +726,47 @@ class MatchingIntegrationTest {
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 4_000_000L, 3_500_000L,
                 LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 2,
                 List.of(new UpsertConditionCommand.Skill(SkillCode.PYTHON, SkillLevel.ADVANCED))));
+    }
+
+    @Test
+    @DisplayName("AI 호출이 실패하면 회차를 FAILED로 닫고, 그 회차는 재추천 한도를 쓴 걸로 치지 않는다")
+    void rerecommendMarksRoundFailedAndDoesNotConsumeQuotaWhenAiFails() throws Exception {
+        seedRound(2);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+                .willThrow(new IllegalStateException("AI 서버 응답 없음"));
+
+        // 재추천 요청 자체는 접수된다(실패는 비동기 처리 뒤에 알림으로 알려준다).
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isAccepted());
+
+        // 회차가 RUNNING으로 방치되지 않고 FAILED로 닫혀야 한다.
+        Integer failedCount = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM matching_round WHERE position_id = ? AND status = 'FAILED'",
+                Integer.class, POSITION_ID);
+        assertThat(failedCount).isEqualTo(1);
+
+        // 실패한 회차는 한도를 쓴 게 아니므로 유료 재추천을 다시 시도할 수 있어야 한다.
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash",
+                        List.of(new RankedFreelancer(freelancerAccountId, 91.0, "경력 조건 충족"))));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates.length()").value(1))
+                // 유료 5회 중 성공한 1회만 차감돼야 한다(실패한 회차는 안 셈).
+                .andExpect(jsonPath("$.data.paidRerecommendRemaining").value(4));
     }
 
     @Test

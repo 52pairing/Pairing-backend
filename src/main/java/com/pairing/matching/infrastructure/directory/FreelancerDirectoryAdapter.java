@@ -36,6 +36,13 @@ public class FreelancerDirectoryAdapter implements FreelancerDirectoryPort {
     }
 
     @Override
+    public Long resolveAccountId(Long freelancerId) {
+        return accountQueryUseCase.findFreelancerProfileById(freelancerId)
+                .map(FreelancerProfile::getAccountId)
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.FREELANCER_NOT_FOUND));
+    }
+
+    @Override
     public FreelancerCardSummary findCardSummary(Long freelancerId) {
         FreelancerCandidateSummaryResult summary = freelancerCandidateSummaryUseCase.getSummary(freelancerId);
         return new FreelancerCardSummary(summary.name(), summary.profileImageUrl(), summary.grade(),

@@ -190,6 +190,32 @@ public class Negotiation {
         return !conditions.isEmpty() && conditions.stream().allMatch(NegotiationCondition::isAgreed);
     }
 
+    /**
+     * 사람이 거절해 새 마지노선을 기다리는 쟁점이 있는가.
+     *
+     * <p>참이면 라운드를 진행하지 않는다. 거절은 "이 선으로는 안 된다"는 뜻일 뿐 새 선이 아니라,
+     * 그대로 대리인을 다시 돌리면 같은 마지노선으로 같은 대화를 반복하며 라운드만 태운다.
+     */
+    public boolean awaitingRedirect() {
+        return conditions.stream().anyMatch(NegotiationCondition::isRejected);
+    }
+
+    /** 이 당사자가 모든 쟁점에 마지노선을 냈는가. */
+    public boolean hasFloorsFrom(PartyRole role) {
+        return !conditions.isEmpty() && conditions.stream().allMatch(c -> c.hasFloorFrom(role));
+    }
+
+    /**
+     * 양측이 마지노선을 모두 제출했는가. <b>이게 참이 되어야 대리인 협상을 시작한다.</b>
+     *
+     * <p>한쪽 마지노선만으로 돌리면 선을 안 그은 쪽 대리인이 지킬 게 없어 그대로 양보해 버린다.
+     * 그러면 상대는 의사를 한 번도 밝히지 않았는데 계약 조건이 확정된다 — 먼저 누른 쪽이 이기는
+     * 협상이 되므로, 두 번째 제출이 들어올 때까지 기다린다.
+     */
+    public boolean bothFloorsSubmitted() {
+        return hasFloorsFrom(PartyRole.CLIENT) && hasFloorsFrom(PartyRole.FREELANCER);
+    }
+
     public NegotiationCondition findCondition(Long conditionId) {
         return conditions.stream()
                 .filter(c -> Objects.equals(c.getId(), conditionId))

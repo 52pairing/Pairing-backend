@@ -2,6 +2,7 @@ package com.pairing.settlement.application.service;
 
 import com.pairing.client.domain.model.ClientGrade;
 import com.pairing.settlement.application.command.CreateDepositSettlementCommand;
+import com.pairing.settlement.application.command.CreateFreelancerDepositCommand;
 import com.pairing.settlement.application.usecase.DepositSettlementUseCase;
 import com.pairing.settlement.domain.model.Settlement;
 import com.pairing.settlement.domain.model.SettlementPhase;
@@ -41,6 +42,32 @@ public class DepositSettlementService implements DepositSettlementUseCase {
         // 정산번호는 채번된 id 를 쓴다. 같은 트랜잭션이라 임시번호는 커밋 전에 덮어써진다.
         saved.assignNo(LocalDate.now().getYear());
         return settlementRepository.save(saved).getId();
+    }
+
+    @Override
+    public Long createFreelancerDeposit(CreateFreelancerDepositCommand command) {
+        // 계약 1건당 1건. 서명 처리가 재시도되어도 두 번 청구되지 않는다.
+        Optional<Settlement> existing = settlementRepository.findByContractId(command.contractId());
+        if (existing.isPresent()) {
+            return existing.get().getId();
+        }
+
+        BigDecimal feeRate = DepositFeePolicy.freelancerFeeRate();
+        BigDecimal gradeDiscount = DepositFeePolicy.gradeDiscount(command.freelancerGrade());
+        long feeAmount = DepositFeePolicy.feeAmount(command.contractAmount(), feeRate, gradeDiscount);
+
+        Settlement saved = settlementRepository.save(Settlement.createFreelancerDeposit(
+                command.projectId(), command.contractId(), command.payerAccountId(),
+                command.contractAmount(), feeRate, gradeDiscount, feeAmount));
+
+        saved.assignNo(LocalDate.now().getYear());
+        return settlementRepository.save(saved).getId();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean isFreelancerDepositSettled(Long projectId) {
+        return !settlementRepository.existsUnpaidFreelancerDeposit(projectId);
     }
 
     @Override

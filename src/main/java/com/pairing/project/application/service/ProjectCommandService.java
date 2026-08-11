@@ -4,6 +4,8 @@ import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.project.application.command.CreateProjectCommand;
 import com.pairing.project.application.command.UpdateProjectCommand;
+import com.pairing.project.application.event.ProjectClosedEvent;
+import com.pairing.project.application.event.ProjectCompletionRequestedEvent;
 import com.pairing.project.application.event.ProjectUpdatedEvent;
 import com.pairing.project.application.event.RecruitingStartedEvent;
 import com.pairing.project.application.port.ClientProfileReaderPort;
@@ -146,9 +148,12 @@ public class ProjectCommandService implements ProjectCommandUseCase {
         projectRepository.updateState(project);
 
         // 성공보수는 완료 대기로 넘어간 시점에 발생한다. 결제 버튼이 바로 활성화되어야 한다. (P30)
-        // TODO: 계약 도메인이 붙으면 기준 금액을 예산이 아니라 계약 금액 합계로 바꾼다.
+        // 기준 금액은 프로젝트 예산이다. 계약 금액 합계가 아니다(2026-08-11 확인).
         successFeeSettlementUseCase.createClientSuccessFee(new CreateSuccessFeeSettlementCommand(
                 projectId, accountId, project.getBudgetAmount(), client.grade()));
+
+        // 인원별 상태를 완료 대기로 옮기는 쪽(매칭)이 듣는다.
+        eventPublisher.publishEvent(new ProjectCompletionRequestedEvent(projectId));
     }
 
     @Override
@@ -246,6 +251,18 @@ public class ProjectCommandService implements ProjectCommandUseCase {
     }
 
     @Override
+    public boolean startProgress(Long projectId) {
+        Project project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
+
+        if (!project.startProgress()) {
+            return false;
+        }
+        projectRepository.updateState(project);
+        return true;
+    }
+
+    @Override
     public void closeProject(Long projectId) {
         Project project = projectRepository.findById(projectId)
                 .orElseThrow(() -> new BusinessException(ProjectErrorCode.PROJECT_NOT_FOUND));
@@ -253,6 +270,9 @@ public class ProjectCommandService implements ProjectCommandUseCase {
         project.close(LocalDate.now().plusYears(RETENTION_YEARS));
         // 프로젝트 상태와 포지션 상태가 함께 바뀐다. 수정용 경로는 상태를 옮기지 않는다.
         projectRepository.updateStateWithPositions(project);
+
+        // 인원별 상태를 종료로 옮기는 쪽(매칭)이 듣는다.
+        eventPublisher.publishEvent(new ProjectClosedEvent(projectId));
     }
 
     /** 없는 fileId 를 그대로 저장하면 FK 위반으로 500 이 난다. 저장 전에 file 도메인에 존재를 확인한다. */

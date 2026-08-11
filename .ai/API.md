@@ -193,11 +193,10 @@
 | GET | `/api/v1/projects/mine/tab-counts` | CLIENT | 탭별 건수 배지 |
 | GET | `/api/v1/projects/{projectId}` | O | 상세 |
 | PUT | `/api/v1/projects/{projectId}` | CLIENT | 수정(모집 단계까지만) |
-| POST | `/api/v1/projects/{projectId}/cancellation` | CLIENT | 등록 취소 |
+| POST | `/api/v1/projects/{projectId}/registration-cancellation` | CLIENT | 등록 취소 |
 | GET | `/api/v1/projects/{projectId}/pre-review` | CLIENT | 등록 후 검수 결과 조회 |
 | POST | `/api/v1/projects/{projectId}/recruit-close` | CLIENT | 모집 종료 |
 | POST | `/api/v1/projects/{projectId}/completion` | CLIENT | 프로젝트 완료 처리 |
-| POST | `/api/v1/projects/{projectId}/termination` | CLIENT | 프로젝트 중도 종료 |
 | POST | `/api/v1/projects/{projectId}/recruit-extensions` | CLIENT | 모집 기간 연장 |
 | GET | `/api/v1/projects/admin/status-counts` | ADMIN | 상태별 건수 (관리자 탭 배지) |
 | GET | `/api/v1/projects/admin?status=&keyword=&page=&size=` | ADMIN | 전체 프로젝트 |
@@ -207,13 +206,19 @@
 검수 단계에서 `POST /pre-review` 를 호출하고, 마지막 단계에서 `POST /projects` 로 한 번에 등록한다.
 
 등록 body 핵심: `{title, positions[], startDesiredDate, startNegotiable, periodValue, periodUnit, budgetAmount, workStyle, workForm, workLocation, currentSituation, mainTask, detailScope, extraNote, fileIds[], noticeAgreed}`
-`positions[]` = `{jobCategory, jobRole, minCareerYears, headcount, skills[], preferredNote}`
+`positions[]` = `{jobCategory, jobRole, minCareerYears, headcount, skills[]}` — `POST /projects` 전용이다.
+수정(`PUT /projects/{id}`)은 `positionId` 를 포함하는 별도 DTO 를 쓴다.
+`positions[]` = `{positionId?, jobCategory, jobRole, minCareerYears, headcount, skills[]}` (최대 100건)
 
 - 급여는 포지션이 아니라 **프로젝트 단위 예산(`budgetAmount`)** 으로만 받는다.
-- 우대사항(`preferredNote`)은 스킬 코드가 아니라 자유 텍스트다.
+  **단위는 원이다.** 화면은 만원 단위로 입력받으므로 ×10000 해서 보낸다.
+- 포지션별 우대사항(`preferredNote`)은 **없앴다.** 요청·응답 어디에도 없다.
 - `jobCategory` 는 `DEVELOPMENT` / `DESIGN` 두 가지다.
+- 착수금 결제 이후(`RECRUITING` 이상)에는 인원수·포지션·예산을 바꿀 수 없다.
 
-`pre-review` 응답: `{allMatchable, items[{jobRole, headcount, expectedCandidateCount, matchable, message, suggestions[]}]}`
+`pre-review` 응답: `{allMatchable, items[{positionIndex, jobRole, headcount, expectedCandidateCount, matchable, message, suggestions[]}]}`
+`items[]` 는 **포지션별**이며 요청 `positions[]` 와 같은 순서·개수다. `positionIndex` 는 그 배열의 0-based 인덱스로,
+같은 직무를 두 포지션으로 나눠 등록했을 때 어느 쪽인지 구분한다. `allMatchable` 은 **전 포지션**이 매칭 가능한지다.
 후보가 부족해도 그대로 등록할 수 있다. 착수금 수수료를 결제해야 실제 추천과 매칭이 시작된다(결제는 15번 정산 API).
 
 `tab`(목록 탭 → 상태 묶음):
@@ -228,8 +233,17 @@
 | `CANCELED` | 취소됨 | CANCELED |
 
 상세 응답의 `freelancers[]` 가 "프리랜서 현황"(프로젝트 정보 탭)과 "진행 현황" 탭 목록을 같이 담당한다.
-진행 현황 탭 상단의 **프로젝트 완료 처리 / 중도 종료**는 계약 단위(`/contracts/{id}/completion`)가 아니라 프로젝트 단위다.
-`statusHistories[]` 는 관리자 상세("상태 이력" 표)에서만 채워진다.
+진행 현황 탭 상단의 **프로젝트 완료 처리**는 계약 단위가 아니라 프로젝트 단위다. 여러 명을 뽑은 프로젝트에서
+계약 1건만 완료한다는 것이 성립하지 않기 때문이다. 계약 쪽 `/completion` 은 삭제했다.
+프로젝트 **중도 종료** 엔드포인트는 없다. 계약 단위 중도 파기(`POST /contracts/{id}/termination`)도 미구현이다.
+
+`statusHistories[]` 는 **없앴다.** 관리자 상세를 포함해 어디에도 내려가지 않는다.
+`payableSettlementId` 는 지금 결제할 정산 ID 다. 결제 버튼이 있으면 값이 있고, 없으면 null 이다.
+목록(`ProjectSummaryResponse`)과 상세(`ProjectResponse`) 양쪽에 있다.
+
+프로젝트가 **[진행중]으로 넘어가는 조건은 두 가지를 모두 만족할 때다**(P47): ① 모집 인원 전원이 계약 완료,
+② 그 전원의 프리랜서 착수금 수수료 결제 완료. 계약 체결만으로는 [계약 대기]에 머문다.
+[완료 대기] 진입은 클라이언트의 완료 처리 한 번이며(P32), 산출물 제출이나 별도 검수 절차를 전제하지 않는다.
 
 관리자 목록은 탭이 **상태 하나**에 대응한다(전체/등록 완료/모집중/협상중/계약 대기/진행중/완료 대기/종료/취소됨).
 클라이언트의 묶음 탭과 다르므로 `status-counts` 를 따로 쓴다.
@@ -240,7 +254,7 @@
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
 | GET | `/api/v1/matchings/positions/{positionId}/candidates` | CLIENT | AI 추천 후보 목록 |
-| POST | `/api/v1/matchings/positions/{positionId}/rerecommendations` | CLIENT | body `{type, quantity}` 재추천 |
+| POST | `/api/v1/matchings/positions/{positionId}/rerecommendations` | CLIENT | body `{type, quantity}` 재추천. **비동기** — `202`로 즉시 응답(후보 목록 없음), 완료되면 `MATCHING_RECOMMENDED` 알림 후 후보 조회 API 재호출. 한도 초과 등 검증 실패는 즉시 응답 |
 | POST | `/api/v1/matchings/candidates/{candidateId}/rejection` | CLIENT | 추천 후보 거절 |
 | POST | `/api/v1/matchings/requests` | CLIENT | body `{positionId, candidateIds[]}` 매칭 요청 |
 | GET | `/api/v1/matchings/requests?projectId=&positionId=&status=&page=&size=` | CLIENT | 보낸 요청 |
@@ -248,7 +262,7 @@
 | GET | `/api/v1/matchings/requests/{requestId}` | O | 요청 상세. `mainTask`(프로젝트 주요 담당 업무)는 이 엔드포인트에서만 값이 채워짐(3번 요청, 2026-08-09) — 목록/발송/수락/거절 응답은 항상 null |
 | POST | `/api/v1/matchings/requests/{requestId}/acceptance` | FREELANCER | 수락 → 협상 시작 |
 | POST | `/api/v1/matchings/requests/{requestId}/rejection` | FREELANCER | body `{reason}` 거절 |
-| POST | `/api/v1/matchings/admin/embeddings/reindex` | ADMIN | 이력서 있는 프리랜서 전체 + 모집 시작한 포지션 전체 임베딩 재생성. 임베딩 모델 교체로 벡터 공간이 바뀌었을 때 씀(2026-08-10 추가) |
+| POST | `/api/v1/matchings/admin/embeddings/reindex` | ADMIN | 이력서 있는 프리랜서 전체 + 모집 시작한 포지션 전체 임베딩 재생성. 임베딩 모델 교체로 벡터 공간이 바뀌었을 때 씀(2026-08-10 추가). **비동기** — `202`로 즉시 응답하고 백그라운드 처리, 성공·실패 건수는 서버 로그에 남음 |
 
 - 후보 카드는 `fitReasons[]`(태그 칩), `payUnit`/`payAmount`, `ratingAverage`, `skills[]` 로 그린다. 적합도 점수 숫자는 화면에 노출하지 않는다.
 - 재추천 `type`: `FREE`(무료 1회) / `PAID`(유료, 후보 1명당 10,000원). 최초 추천은 `INITIAL`. 프로젝트당 총 6회.
@@ -304,16 +318,29 @@
 | GET | `/api/v1/contracts?status=&page=&size=` | O | 내 계약 목록 |
 | GET | `/api/v1/contracts/{contractId}` | O | 계약서 상세 |
 | GET | `/api/v1/contracts/{contractId}/pdf` | O | 계약서 PDF |
-| POST | `/api/v1/contracts/{contractId}/signature` | O | body `{agreed}` 전자 서명 |
-| POST | `/api/v1/contracts/{contractId}/rejection` | O | body `{reason}` 서명 거부 |
-| POST | `/api/v1/contracts/{contractId}/completion` | O | 완료 확인 |
-| POST | `/api/v1/contracts/{contractId}/termination` | O | body `{reason, workedAmount}` 중도 파기 |
+| POST | `/api/v1/contracts/{contractId}/signature` | O | body `{agreed, signatureFileId?}` 전자 서명 |
+| POST | `/api/v1/contracts/{contractId}/rejection` | O | body `{reason}` 서명 거부 (제품에 없는 기능. 제거 검토 중) |
+| POST | `/api/v1/contracts/{contractId}/termination` | O | 중도 파기 — **미구현. 501 `CT_008` 반환** |
 
 - `status`: `DRAFT` / `SIGN_PENDING` / `SIGNED` / `COMPLETED` / `REJECTED` / `TERMINATED`
+  실제로 내려가는 값은 `DRAFT` · `SIGN_PENDING` · `SIGNED` 셋뿐이다. 나머지는 아직 쓰이지 않는다.
 - 계약서는 협상 결과로 자동 생성되므로 생성 API 가 없다.
-- 서명은 이미지 업로드 없이 **전자 서명 동의**로 처리한다. 화면은 확인 모달 하나뿐이다.
-- `signDeadline` 까지 서명하지 않으면 계약이 자동 취소될 수 있다. 화면 상단 경고 배너에 쓴다.
-- `clauses[]` 가 계약서 본문(제1조~)이다. 화면에 순서대로 나열한다.
+- **`DRAFT` 는 서명할 수 없다.** 생성 직후 서버가 AI 로 업무 범위 문구를 채우는 동안의 상태다(보통 2~5초,
+  AI 타임아웃 20초). 문구가 채워지면 `SIGN_PENDING` 으로 넘어가고 `CONTRACT_CREATED` 알림이 간다.
+  `DRAFT` 에서 서명을 시도하면 `INVALID_CONTRACT_STATUS` 다.
+- 서명은 **동의 클릭만으로도 처리된다.** `signatureFileId` 는 선택이며, 화면에서 그린 서명 이미지를
+  `POST /api/v1/files?purpose=SIGNATURE` 로 올린 뒤 그 `fileId` 를 넣으면 함께 저장된다.
+- **서명 기한은 없다.** 요구사항 44행이 "계약서 생성 후 서명 기한은 무기한"이라 자동 취소도 하지 않는다.
+  `signDeadline` 필드는 존재하지 않는다.
+- `clauses[]` 가 계약서 본문(제1조~제15조)이다. `content` 는 값이 모두 채워진 완성 문장이므로 화면에서
+  조립하지 말고 순서대로 출력한다.
+- `signatures[]` 에는 **갑·을 두 건이 모두** 들어온다. 화면은 본인 것만 서명 패드로 보여주고 상대는
+  상태만 표시한다. PDF 에는 양측 서명란이 모두 그려진다.
+- PDF 는 서버가 만들어 `application/pdf` **바이트를 직접** 응답한다(파일 URL 이 아니다).
+  프론트는 `responseType: 'blob'` 으로 받아야 하며, 파일명은 `contractNo` 로 만든다
+  (`Content-Disposition` 은 CORS 노출 헤더에 없어 JS 에서 읽을 수 없다).
+- 완료 처리는 계약이 아니라 **프로젝트 단위**다. `POST /api/v1/projects/{id}/completion` 을 쓴다.
+  계약 쪽 `/completion` 은 중복이라 삭제했다.
 
 ## 15. Settlement
 
@@ -329,10 +356,15 @@
 
 - 플랫폼이 다루는 돈은 **수수료와 위약금뿐**이다. 용역비 자체는 플랫폼을 거치지 않는다.
 - 결제 모달에서 고른 `paymentMethodId` 를 함께 보낸다. 06번 결제수단 목록의 값이다.
-- 결제 완료 화면과 관리자 상세가 `paymentMethodLabel`, `approvalNo`, `failReason`, `overdueReason`,
-  `statusHistories[]` 를 쓴다. 상태 이력은 관리자 상세에서만 채워진다.
-- 요율(SILVER·GOLD 기준): 착수금 1억 미만 클라이언트 3% · 프리랜서 4%, 1억 이상 클라이언트 2%.
-  성공보수 1억 미만 클라이언트 7% · 프리랜서 6%, 1억 이상 클라이언트 6%. DIAMOND 는 각 1% 인하.
+- 결제 완료 화면과 관리자 상세가 `paymentMethodLabel`, `approvalNo`, `failReason`, `overdueReason` 을 쓴다.
+  **상태 이력(`statusHistories[]`)은 없앴다.** 응답에 내려가지 않는다.
+- 요율(할인 없는 등급 기준): 착수금 1억 미만 클라이언트 3% · 프리랜서 4%, 1억 이상 클라이언트 2% · 프리랜서 4%.
+  성공보수 1억 미만 클라이언트 7% · 프리랜서 6%, 1억 이상 클라이언트 6% · 프리랜서 6%.
+  프리랜서 착수금은 금액 구간과 무관하게 4% 고정이다.
+- 등급 할인은 **각 1%p** 이며 최상위 등급만 받는다. 클라이언트는 `DIAMOND`(SILVER·GOLD 는 할인 없음),
+  프리랜서는 `MASTER`(JUNIOR·SENIOR 는 할인 없음). 착수금과 성공보수에 각각 적용된다.
+- 프리랜서 착수금 수수료는 **계약 체결(양측 서명 완료) 시점에 생성**된다(P27·P29). 결제는 그 뒤다.
+  한 프로젝트의 프리랜서 착수금이 **전원 결제 완료**되고 인원도 다 찼을 때 프로젝트가 [진행중]으로 넘어간다(P47).
 - `phase`: `DEPOSIT`(착수금) / `SUCCESS_FEE`(성공보수), `status`: `PENDING` / `PAID` / `OVERDUE` / `FAILED`
 
 ## 16. Review

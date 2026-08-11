@@ -9,6 +9,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.pairing.global.config.SyncTaskExecutorTestConfig;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
@@ -26,6 +28,7 @@ import static org.mockito.Mockito.verify;
  * <p>이전엔 이 연결이 아예 없어서(HANDOFF 참고) freelancer_embedding 이 실환경에서 영원히
  * 비어 있는 상태였다 — Stage C(임베딩 랭킹)가 검색할 대상 자체가 없었다는 뜻이다.
  */
+@Import(SyncTaskExecutorTestConfig.class)
 @SpringBootTest
 class ResumeUpdatedEventListenerTest {
 

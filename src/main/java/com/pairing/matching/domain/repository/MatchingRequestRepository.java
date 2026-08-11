@@ -49,4 +49,13 @@ public interface MatchingRequestRepository {
 
     /** 응답 기한(3일)이 지났는데 아직 응답 대기(REQUEST_PENDING)인 요청. 자동 만료 스케줄러가 쓴다(정책 P45). */
     List<MatchingRequest> findExpiredPending(LocalDateTime now);
+
+    /**
+     * 프로젝트 안에서 특정 상태인 요청들. 계약·정산 이벤트로 단계를 옮길 때 쓴다.
+     *
+     * <p>상태로 좁혀 조회하는 게 중요하다. 프로젝트에는 거절·만료된 요청도 같이 있는데,
+     * 그것까지 {@code advanceStatus}에 넣으면 종결 상태라 예외가 나고, 이벤트가 발행 도메인의
+     * 트랜잭션 안에서 처리되므로 계약 체결·결제까지 통째로 롤백된다.
+     */
+    List<MatchingRequest> findByProjectIdAndStatus(Long projectId, MatchingStatus status);
 }

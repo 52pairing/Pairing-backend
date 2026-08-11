@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.contract.application.usecase.ContractCreationUseCase;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCase;
 import com.pairing.negotiation.application.event.NegotiationEvent;
@@ -17,8 +18,11 @@ import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
+import com.pairing.negotiation.domain.service.NegotiationAgreedValueNormalizer;
+import com.pairing.negotiation.domain.service.NegotiationFloorGuard;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +33,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -42,19 +47,40 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final NegotiationProposalPort proposalPort;
     // 협상 결과(타결/결렬)를 매칭 요청 건에 반영하는 인바운드 포트(방향: negotiation → matching).
     private final MatchingNegotiationOutcomeUseCase matchingOutcomeUseCase;
+    // 타결 시 표준계약서를 생성하는 인바운드 포트(방향: negotiation → contract).
+    private final ContractCreationUseCase contractCreationUseCase;
 
+    /**
+     * 마지노선 제출. <b>양측이 모두 낸 뒤에야</b> 대리인 협상(라운드 1)이 시작된다.
+     *
+     * <p>먼저 낸 쪽은 저장만 하고 상대를 기다린다. 한쪽 마지노선만으로 돌리면 선을 안 그은 쪽
+     * 대리인이 지킬 게 없어 그대로 양보하고, 상대는 동의한 적도 없는데 조건이 확정된다.
+     */
     @Override
     public void start(Long negotiationId, Long accountId, List<FloorInput> floors) {
         Negotiation negotiation = load(negotiationId);
         PartyRole role = resolveRole(negotiation, accountId);
         ensureInProgress(negotiation);
-
-        // 요청자 본인 쪽 마지노선 저장(쟁점별).
-        for (FloorInput floor : floors) {
-            findByType(negotiation, floor.conditionType()).submitFloor(role, floor.value());
+        if (negotiation.hasFloorsFrom(role)) {
+            throw new BusinessException(NegotiationErrorCode.FLOOR_ALREADY_SUBMITTED);
         }
 
-        // 초기 제안(라운드 1) 생성.
+        // 요청자 본인 쪽 마지노선 저장(쟁점별). 저장 전에 계약 표기로 정규화한다 —
+        // 화면이 "4"(단위 없음)나 "재택"(코드 아닌 라벨)을 보내면 대리인이 비교조차 못 한다.
+        for (FloorInput floor : floors) {
+            NegotiationCondition condition = findByType(negotiation, floor.conditionType());
+            condition.submitFloor(role, normalizeFloor(condition, floor.value()));
+        }
+
+        // 상대가 아직 안 냈으면 여기서 멈춘다. 상대 화면에는 '내 응답 필요'로 뜬다.
+        if (!negotiation.bothFloorsSubmitted()) {
+            persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
+                    "마지노선이 저장되었습니다. 상대방이 조건을 입력하면 AI 대리인 협상이 시작됩니다.")));
+            publish(negotiation, NegotiationEventType.STARTED);
+            return;
+        }
+
+        // 양측 마지노선이 모두 모였다 → 초기 제안(라운드 1) 생성.
         negotiation.incrementRound();
         List<NegotiationMessage> messages = proposeForPending(negotiation);
 
@@ -80,14 +106,18 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                 condition.lock(lockValue);
                 messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
                         negotiation.getTotalRound(), sender, "제안을 수락했습니다.", "YES", accountId));
+            } else if (answer.proposedValue() == null || answer.proposedValue().isBlank()) {
+                // 1단계 — 거절만 표시한다. 화면은 이때 재지시 입력(새 마지노선)을 띄운다.
+                condition.reject();
+                messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
+                        negotiation.getTotalRound(), sender, "제안을 거절했습니다.", "NO", accountId));
             } else {
-                if (answer.proposedValue() == null || answer.proposedValue().isBlank()) {
-                    throw new BusinessException(NegotiationErrorCode.INVALID_CONDITION);
-                }
-                condition.redirect(role, answer.proposedValue());
+                // 2단계 — 새 마지노선을 받아 재협상으로 되돌린다. 값은 /start 와 같은 규칙으로 정규화한다.
+                String normalized = normalizeFloor(condition, answer.proposedValue());
+                condition.redirect(role, normalized);
                 messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
                         negotiation.getTotalRound(), sender, "제안을 거절하고 재지시했습니다.",
-                        answer.proposedValue(), accountId));
+                        normalized, accountId));
             }
         }
 
@@ -98,11 +128,20 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
             // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
             messages.add(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
                     "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
-        } else {
+        } else if (!negotiation.awaitingRedirect()) {
             advanceOrFail(negotiation, messages);
         }
+        // 거절만 들어온 경우(awaitingRedirect)는 여기서 멈춘다. 사람이 새 마지노선을 낼 때까지
+        // 라운드를 태우지 않는다 — 다음 요청의 재지시가 들어오면 그때 라운드가 오른다.
 
         persist(negotiation, messages);
+
+        // 타결 → 표준계약서 자동 생성(요구사항 44행). persist 뒤여야 한다 — 계약 쪽이
+        // getAgreedForContract 로 협상을 다시 읽으므로 저장 전에 부르면 못 찾는다.
+        // 같은 트랜잭션이라 계약 생성이 실패하면 타결도 함께 롤백된다(멱등이라 재시도 안전).
+        if (negotiation.getStatus() == NegotiationStatus.AGREED) {
+            contractCreationUseCase.createFromNegotiation(negotiation.getId());
+        }
 
         // 사람 채팅방은 타결이 아니라 계약 체결 시 열린다(계약 도메인이 ChatActivationUseCase 로 호출).
         publish(negotiation, switch (negotiation.getStatus()) {
@@ -189,9 +228,19 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                 .collect(Collectors.toMap(NegotiationCondition::getId, Function.identity(), (a, b) -> a));
         for (NegotiationProposalPort.ConditionOutcome o : result.outcomes()) {
             NegotiationCondition condition = pendingById.get(o.conditionId());
-            if (condition != null && o.agreed() && !condition.isAgreed()) {
-                condition.lock(o.proposedValue());
+            if (condition == null || !o.agreed() || condition.isAgreed()) {
+                continue;
             }
+            // 대리인이 사람이 그은 선을 넘겨 합의했으면 락하지 않는다. 미합의로 남겨 승인 패널로 넘긴다.
+            // (프롬프트로 유도하지만 LLM 이 지킨다는 보장이 없어 여기서 최종 확인한다)
+            if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), o.proposedValue(),
+                    condition.getClientFloor(), condition.getFreelancerFloor())) {
+                log.warn("마지노선을 넘은 합의라 락하지 않음(사람 승인으로 이관): negotiationId={}, conditionId={}, "
+                                + "type={}, value={}", negotiation.getId(), condition.getId(),
+                        condition.getConditionType(), o.proposedValue());
+                continue;
+            }
+            condition.lock(o.proposedValue());
         }
         return messages;
     }
@@ -226,6 +275,23 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         return negotiation.getConditions().stream()
                 .filter(c -> c.getConditionType() == type)
                 .findFirst()
+                .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
+    }
+
+    /** PERIOD 처럼 단위가 빠졌을 때 복원 기준이 되는 기존 값(희망값). */
+    private String reference(NegotiationCondition condition) {
+        return condition.getClientValue() != null ? condition.getClientValue() : condition.getFreelancerValue();
+    }
+
+    /**
+     * 마지노선을 계약 표기로 정규화한다. 해석 불가하면 NG_004 로 거부한다.
+     *
+     * <p>최초 제출(/start)과 재지시(/answers)가 같은 규칙을 써야 한다. 한쪽만 정규화하면
+     * 재지시로 들어온 {@code "재택"} 같은 값이 대리인 비교에서 그대로 깨진다.
+     */
+    private String normalizeFloor(NegotiationCondition condition, String value) {
+        return NegotiationAgreedValueNormalizer
+                .normalize(condition.getConditionType(), value, reference(condition))
                 .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
     }
 
