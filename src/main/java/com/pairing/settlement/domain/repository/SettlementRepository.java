@@ -16,8 +16,13 @@ public interface SettlementRepository {
 
     Optional<Settlement> findById(Long settlementId);
 
-    /** 계약에 걸린 정산. 프리랜서 착수금은 계약 1건당 1건이라 중복 생성을 여기서 막는다. */
-    Optional<Settlement> findByContractId(Long contractId);
+    /**
+     * 계약에 걸린 특정 단계의 정산. 중복 생성을 여기서 막는다.
+     *
+     * <p><b>{@code phase} 를 반드시 함께 건다.</b> 계약 1건에 착수금과 성공보수가 각각 붙으므로
+     * {@code contractId} 만으로 찾으면 2건이 잡혀 단건 조회가 깨진다.
+     */
+    Optional<Settlement> findByContractIdAndPhase(Long contractId, SettlementPhase phase);
 
     /** 내 정산 목록. projectId / phase / status 는 null 이면 필터하지 않는다. */
     Page<Settlement> findByPayer(Long payerAccountId, Long projectId, SettlementPhase phase,
