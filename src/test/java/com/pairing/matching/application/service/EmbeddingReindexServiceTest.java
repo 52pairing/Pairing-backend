@@ -9,6 +9,8 @@ import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.model.SnapshotType;
 import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
+import com.pairing.matching.exception.MatchingErrorCode;
+import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.PeriodUnit;
 import org.junit.jupiter.api.DisplayName;
@@ -35,7 +37,8 @@ class EmbeddingReindexServiceTest {
             Mockito.mock(MatchingSnapshotRepository.class);
 
     private final EmbeddingReindexService service = new EmbeddingReindexService(
-            freelancerDirectoryPort, projectDirectoryPort, matchingPort, matchingSnapshotRepository);
+            freelancerDirectoryPort, projectDirectoryPort, matchingPort, matchingSnapshotRepository,
+            new FreelancerEmbeddingRefresher(freelancerDirectoryPort, matchingPort));
 
     @Test
     @DisplayName("이력서 있는 프리랜서 전체 + 모집 시작한 포지션 전체를 다시 임베딩한다")
@@ -45,6 +48,9 @@ class EmbeddingReindexServiceTest {
                 .thenReturn(new FreelancerResumeSummary("자기소개1", List.of()));
         when(freelancerDirectoryPort.findResumeSummary(2L))
                 .thenReturn(new FreelancerResumeSummary("자기소개2", List.of()));
+        // 조건 미등록 프리랜서(findCondition이 던짐)도 이력서만으로 재색인돼야 한다.
+        when(freelancerDirectoryPort.findCondition(Mockito.anyLong()))
+                .thenThrow(new BusinessException(MatchingErrorCode.FREELANCER_NOT_FOUND));
 
         when(matchingSnapshotRepository.findAllBySnapshotType(SnapshotType.POSITION)).thenReturn(List.of(
                 MatchingSnapshot.create(10L, 100L, null, SnapshotType.POSITION, "{}"),
@@ -74,6 +80,8 @@ class EmbeddingReindexServiceTest {
                 .thenReturn(new FreelancerResumeSummary("자기소개1", List.of()));
         when(freelancerDirectoryPort.findResumeSummary(2L))
                 .thenThrow(new RuntimeException("조회 실패"));
+        when(freelancerDirectoryPort.findCondition(Mockito.anyLong()))
+                .thenThrow(new BusinessException(MatchingErrorCode.FREELANCER_NOT_FOUND));
 
         when(matchingSnapshotRepository.findAllBySnapshotType(SnapshotType.POSITION))
                 .thenReturn(List.of(MatchingSnapshot.create(10L, 100L, null, SnapshotType.POSITION, "{}")));

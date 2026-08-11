@@ -1,11 +1,13 @@
 package com.pairing.freelancer.application.service;
 
 import com.pairing.freelancer.application.command.UpsertConditionCommand;
+import com.pairing.freelancer.application.event.ConditionUpdatedEvent;
 import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.freelancer.domain.model.ConditionSkill;
 import com.pairing.freelancer.domain.model.FreelancerCondition;
 import com.pairing.freelancer.domain.repository.FreelancerConditionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,6 +20,7 @@ import java.util.Optional;
 public class FreelancerConditionService implements FreelancerConditionUseCase {
 
     private final FreelancerConditionRepository freelancerConditionRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional(readOnly = true)
@@ -46,13 +49,13 @@ public class FreelancerConditionService implements FreelancerConditionUseCase {
                         command.availableFrom(), command.startNegotiable(), command.periodValue(),
                         command.periodUnit(), command.hasFreelanceExperience(), command.careerYears(), skills));
 
-        // 임베딩 재생성은 하지 않는다(예전 TODO 삭제, 2026-08-11).
-        // 임베딩 대상 텍스트는 자기소개+경력사항뿐이고(`.ai/STATE.md` "확정된 설계 결정 1"),
-        // 여기서 바꾸는 직군·직무·스킬·단가·연차는 그 텍스트에 안 들어간다 — 다시 만들어도 같은 벡터다.
-        // 이 값들은 AI 서버가 매칭할 때 freelancer_condition 을 직접 조인해서 읽으므로
-        // (Pairing-python: embedding/repository.py 하드필터, matching/repository.py Stage E 프롬프트)
-        // 저장하는 즉시 반영된다. 자기소개·경력을 고치는 쪽은 ResumeService 가 ResumeUpdatedEvent 를
-        // 발행해서 matching.ResumeUpdatedEventListener 가 임베딩을 다시 만든다.
-        return freelancerConditionRepository.save(condition);
+        FreelancerCondition saved = freelancerConditionRepository.save(condition);
+
+        // 직무·스킬·경력·근무방식·기간이 프리랜서 임베딩 텍스트에 들어가므로(2026-08-11부터),
+        // 조건을 고치면 저장된 벡터가 낡는다. 이력서 저장(ResumeService)과 같은 방식으로 신호만
+        // 보내고, 실제 재생성은 매칭이 커밋 후 비동기로 처리한다 — 임베딩 생성은 외부 AI 호출이라
+        // 여기서 기다리면 조건 저장 API 응답이 그만큼 늦어진다.
+        eventPublisher.publishEvent(new ConditionUpdatedEvent(command.accountId()));
+        return saved;
     }
 }

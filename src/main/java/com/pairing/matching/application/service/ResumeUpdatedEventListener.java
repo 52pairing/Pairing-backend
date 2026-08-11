@@ -1,9 +1,6 @@
 package com.pairing.matching.application.service;
 
 import com.pairing.freelancer.application.event.ResumeUpdatedEvent;
-import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
-import com.pairing.matching.application.port.out.MatchingPort;
-import com.pairing.matching.application.result.FreelancerResumeSummary;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -21,29 +18,22 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * <p><b>{@code @Async}인 이유.</b> AFTER_COMMIT 리스너는 커밋한 스레드에서 그대로 이어 실행되므로,
  * 이대로 두면 <b>프리랜서의 이력서 저장 API 응답이 임베딩 생성(외부 AI 호출)까지 기다린다</b>.
  * 임베딩은 저장 결과와 무관하게 뒤에서 만들면 되는 값이라 별도 스레드로 넘긴다.
+ *
+ * <p>실제 조립·전송은 {@link FreelancerEmbeddingRefresher}가 한다 — 조건 저장
+ * ({@link ConditionUpdatedEventListener})도 같은 벡터를 다시 만들기 때문이다.
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 class ResumeUpdatedEventListener {
 
-    private final FreelancerDirectoryPort freelancerDirectoryPort;
-    private final MatchingPort matchingPort;
+    private final FreelancerEmbeddingRefresher freelancerEmbeddingRefresher;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onResumeUpdated(ResumeUpdatedEvent event) {
         try {
-            Long freelancerId = freelancerDirectoryPort.resolveFreelancerId(event.accountId());
-            FreelancerResumeSummary summary = freelancerDirectoryPort.findResumeSummary(freelancerId);
-            String text = FreelancerEmbeddingTextBuilder.buildText(summary);
-            if (text.isBlank()) {
-                // AI 서버가 빈 문자열을 422로 거절한다. 여기서 걸러 "왜 실패했는지 모르는 422" 대신
-                // 원인이 분명한 로그를 남긴다(자기소개·경력이 비면 임베딩할 내용 자체가 없다).
-                log.warn("[이력서 저장 → 임베딩 생략] 임베딩할 텍스트가 비어 있음. accountId={}", event.accountId());
-                return;
-            }
-            matchingPort.upsertFreelancerEmbedding(freelancerId, text);
+            freelancerEmbeddingRefresher.refreshByAccountId(event.accountId());
         } catch (Exception e) {
             log.error("[이력서 저장 → 임베딩 재생성 실패] accountId={}", event.accountId(), e);
         }
