@@ -69,10 +69,7 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         // 화면이 "4"(단위 없음)나 "재택"(코드 아닌 라벨)을 보내면 대리인이 비교조차 못 한다.
         for (FloorInput floor : floors) {
             NegotiationCondition condition = findByType(negotiation, floor.conditionType());
-            String normalized = NegotiationAgreedValueNormalizer
-                    .normalize(floor.conditionType(), floor.value(), reference(condition))
-                    .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
-            condition.submitFloor(role, normalized);
+            condition.submitFloor(role, normalizeFloor(condition, floor.value()));
         }
 
         // 상대가 아직 안 냈으면 여기서 멈춘다. 상대 화면에는 '내 응답 필요'로 뜬다.
@@ -109,14 +106,18 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
                 condition.lock(lockValue);
                 messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
                         negotiation.getTotalRound(), sender, "제안을 수락했습니다.", "YES", accountId));
+            } else if (answer.proposedValue() == null || answer.proposedValue().isBlank()) {
+                // 1단계 — 거절만 표시한다. 화면은 이때 재지시 입력(새 마지노선)을 띄운다.
+                condition.reject();
+                messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
+                        negotiation.getTotalRound(), sender, "제안을 거절했습니다.", "NO", accountId));
             } else {
-                if (answer.proposedValue() == null || answer.proposedValue().isBlank()) {
-                    throw new BusinessException(NegotiationErrorCode.INVALID_CONDITION);
-                }
-                condition.redirect(role, answer.proposedValue());
+                // 2단계 — 새 마지노선을 받아 재협상으로 되돌린다. 값은 /start 와 같은 규칙으로 정규화한다.
+                String normalized = normalizeFloor(condition, answer.proposedValue());
+                condition.redirect(role, normalized);
                 messages.add(NegotiationMessage.response(negotiationId, condition.getId(),
                         negotiation.getTotalRound(), sender, "제안을 거절하고 재지시했습니다.",
-                        answer.proposedValue(), accountId));
+                        normalized, accountId));
             }
         }
 
@@ -127,9 +128,11 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
             // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
             messages.add(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
                     "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
-        } else {
+        } else if (!negotiation.awaitingRedirect()) {
             advanceOrFail(negotiation, messages);
         }
+        // 거절만 들어온 경우(awaitingRedirect)는 여기서 멈춘다. 사람이 새 마지노선을 낼 때까지
+        // 라운드를 태우지 않는다 — 다음 요청의 재지시가 들어오면 그때 라운드가 오른다.
 
         persist(negotiation, messages);
 
@@ -278,6 +281,18 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     /** PERIOD 처럼 단위가 빠졌을 때 복원 기준이 되는 기존 값(희망값). */
     private String reference(NegotiationCondition condition) {
         return condition.getClientValue() != null ? condition.getClientValue() : condition.getFreelancerValue();
+    }
+
+    /**
+     * 마지노선을 계약 표기로 정규화한다. 해석 불가하면 NG_004 로 거부한다.
+     *
+     * <p>최초 제출(/start)과 재지시(/answers)가 같은 규칙을 써야 한다. 한쪽만 정규화하면
+     * 재지시로 들어온 {@code "재택"} 같은 값이 대리인 비교에서 그대로 깨진다.
+     */
+    private String normalizeFloor(NegotiationCondition condition, String value) {
+        return NegotiationAgreedValueNormalizer
+                .normalize(condition.getConditionType(), value, reference(condition))
+                .orElseThrow(() -> new BusinessException(NegotiationErrorCode.INVALID_CONDITION));
     }
 
     private PartyRole resolveRole(Negotiation negotiation, Long accountId) {
