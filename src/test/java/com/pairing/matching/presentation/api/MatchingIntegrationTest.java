@@ -488,6 +488,13 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.content[0].mainTask").doesNotExist());
     }
 
+    /** 특정 계정에게 실제로 저장된 알림 제목들. 알림 도메인 API를 거치지 않고 테이블을 직접 본다. */
+    private List<String> notificationTitles(Long ownerAccountId, String type) {
+        return jdbcTemplate.queryForList(
+                "SELECT title FROM notification WHERE owner_account_id = ? AND type = ?",
+                String.class, ownerAccountId, type);
+    }
+
     private Long sendRequestAndGetId(Long candidateId) throws Exception {
         Map<String, Object> body = Map.of("positionId", POSITION_ID, "candidateIds", List.of(candidateId));
         MvcResult result = mockMvc.perform(post("/api/v1/matchings/requests")
@@ -515,6 +522,20 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.currentRound").isNotEmpty());
 
         assertThat(projectQueryUseCase.findStatus(PROJECT_ID)).isEqualTo(ProjectStatus.NEGOTIATING);
+        // 수락 사실은 클라이언트에게 알림으로 가야 한다(요청을 보낸 쪽이 결과를 알아야 하므로).
+        assertThat(notificationTitles(clientAccountId, "MATCHING_ACCEPTED"))
+                .anyMatch(title -> title.contains("수락"));
+    }
+
+    @Test
+    @DisplayName("매칭 요청을 보내면 받은 프리랜서에게 알림이 간다")
+    void sendingRequestNotifiesFreelancer() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+
+        sendRequestAndGetId(candidate.getId());
+
+        assertThat(notificationTitles(freelancerAccountId, "MATCHING_REQUESTED")).isNotEmpty();
     }
 
     @Test
@@ -532,6 +553,31 @@ class MatchingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("REJECTED"))
                 .andExpect(jsonPath("$.data.rejectReason").value("DIRECT_REJECT"));
+
+        assertThat(notificationTitles(clientAccountId, "MATCHING_REJECTED"))
+                .anyMatch(title -> title.contains("거절"));
+    }
+
+    @Test
+    @DisplayName("계약 후 중도 종료(TERMINATED)된 요청은 무료 재추천을 막지 않는다")
+    void terminatedRequestDoesNotBlockFreeRerecommend() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 종결 상태(TERMINATED/CLOSED)는 "아직 진행 중"이 아니므로 무료 재추천을 막으면 안 된다.
+        // NON_ACTIVE_STATUSES에 빠져 있으면 여기서 MT_008로 거부된다.
+        jdbcTemplate.update("UPDATE matching_request SET status = 'TERMINATED' WHERE id = ?", requestId);
+
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash", List.of()));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"FREE"}"""))
+                .andExpect(status().isAccepted());
     }
 
     @Test
