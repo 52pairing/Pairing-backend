@@ -27,4 +27,12 @@ public record ApiResponse<T>(
     public static ApiResponse<Void> success(String code, String message) {
         return new ApiResponse<>(Instant.now(), 200, code, message, null);
     }
+
+    /**
+     * 요청은 접수했지만 처리는 아직 끝나지 않았을 때(비동기 처리). 완료를 기다리지 않고 바로
+     * 응답하므로 결과 데이터가 없다 — 호출자는 "시작됐다"까지만 알 수 있다.
+     */
+    public static ApiResponse<Void> accepted(String code, String message) {
+        return new ApiResponse<>(Instant.now(), 202, code, message, null);
+    }
 }

@@ -200,3 +200,36 @@ Pairing-python 담당 팀원이 임베딩 모델을 `text-embedding-004` → `ge
 - 대상 목록을 고르려고 두 군데 추가: `ResumeRepository.findAllAccountIds()`(freelancer 도메인, 이력서 있는 계정 전체) → `FreelancerDirectoryPort.findAllFreelancerIdsWithResume()`, `MatchingSnapshotRepository.findAllBySnapshotType(POSITION)`(매칭 자신의 도메인이라 새 포트 불필요).
 - 테스트는 `@SpringBootTest` 대신 순수 Mockito 단위테스트(`EmbeddingReindexServiceTest`)로 작성 — 이 서비스는 포트 호출만 반복하는 얇은 오케스트레이션이라 실제 DB/Gemini 없이도 충분히 검증되고, 안 그래도 알려진 풀스위트 전용 flaky 이슈(`.ai/HANDOFF.md` 참고)에 컨텍스트를 더 안 보태려는 목적도 있음.
 - `feature/matching-embedding-reindex` 브랜치. `.ai/API.md`(11. Matching 표), `.ai/STATE.md`(임베딩 모델명 갱신 + 재색인 API 언급) 동기화.
+
+## 2026-08-10 (계속) — LLM 호출 비동기 처리 (강사 요구사항)
+
+강사 요구사항: "AI쪽 LLM 돌릴 때 프론트 화면에서 기다리게 하지 말고 비동기로 처리". 확인해보니
+`AsyncConfig`(`@EnableAsync` + 스레드풀 core 5/max 10/queue 500)는 이미 있는데 `@Async`를 쓰는 곳이
+코드 전체에 한 곳도 없었다. 그래서 LLM 호출이 전부 요청 스레드를 붙잡고 있었다.
+
+**문제가 컸던 이유**: `@TransactionalEventListener(AFTER_COMMIT)`는 커밋한 스레드에서 그대로 이어
+실행된다. 즉 매칭이 남의 도메인 API 응답을 붙잡고 있었다 — 결제(정산 도메인), 이력서 저장(freelancer),
+프로젝트 수정(project). LLM 읽기 타임아웃이 60초라 포지션이 여러 개면 결제 화면이 1분 넘게 멈춘다.
+
+- `RecruitingStartedEventListener`(결제 완료 → 최초 추천), `ResumeUpdatedEventListener`(이력서 저장 →
+  프리랜서 임베딩), `ProjectUpdatedEventListener`(프로젝트 수정 → 포지션 임베딩) 3곳에 `@Async` 추가.
+  전부 결과를 응답에 안 싣는 후처리라 스레드만 분리하면 되고, 각 리스너가 이미 예외를 잡아 로그로
+  남기고 있어서 비동기로 바뀌어도 실패가 묻히지 않는다.
+- 관리자 재색인 API(`POST /admin/embeddings/reindex`)를 **202 즉시 응답 + 백그라운드 처리**로 변경.
+  대상 1건마다 외부 AI 호출이라 전체가 몇 분씩 걸리는데, 동기로 두면 관리자 화면이 멈추고 그 전에
+  프록시 타임아웃에 먼저 끊긴다. `EmbeddingReindexUseCase.startReindexAll()`(`@Async`) 신규,
+  기존 `reindexAll()`은 결과를 돌려주는 동기 버전으로 남겨 테스트/배치용으로 유지.
+  결과 건수는 응답 대신 완료 로그로 남긴다 — 응답 DTO(`EmbeddingReindexResponse`)는 쓰는 곳이
+  없어져서 삭제하고 `docs/api-dto.csv` 행도 제거.
+- `ApiResponse.accepted(code, message)` 추가(202). 기존 `success`(200)/`created`(201)와 같은 패턴.
+- **테스트 5개가 깨졌다** — 비동기로 바뀌니 검증이 백그라운드 작업보다 먼저 실행됨. sleep이나
+  Mockito `timeout()`으로 때우면 느리고 CI에서 간헐적으로 깨지므로, `SyncTaskExecutorTestConfig`
+  (테스트 전용 `@Primary` `SyncTaskExecutor`)를 만들어 해당 3개 테스트 클래스에서 `@Import`.
+  검증 대상은 리스너의 처리 내용이지 스프링의 비동기 동작 자체가 아니라, 실행 스레드만 동기로
+  바꿔 결정적으로 만들었다.
+- `feature/matching-async-llm-processing` 브랜치. `./gradlew clean build` 전체 통과.
+
+**남은 것(2번, 팀 협의 중)**: 재추천 API(`POST /rerecommendations`)는 사용자가 결과를 기다리는
+화면이라 그냥 비동기로 던지면 보여줄 게 없다. (a) 현행 유지 + 프론트 로딩 UI, (b) 202 응답 후
+WebSocket 알림(이 프로젝트에 STOMP·알림 도메인이 이미 있음) 중 선택 필요 — 프론트 작업이 같이
+필요해서 사용자가 팀과 협의하기로 함.

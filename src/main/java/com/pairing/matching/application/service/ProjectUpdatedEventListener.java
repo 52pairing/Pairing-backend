@@ -6,6 +6,7 @@ import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.project.application.event.ProjectUpdatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -24,6 +25,10 @@ import java.util.List;
  * <p>수정 트랜잭션이 이미 커밋된 뒤에 도착하므로 AFTER_COMMIT에서 받는다. 포지션 하나가
  * 실패해도(AI 서버 문제 등) 같은 프로젝트의 다른 포지션 처리는 계속돼야 해서 포지션 단위로
  * 예외를 잡는다(실패해도 프로젝트 수정 자체는 이미 커밋된 뒤라 영향 없음).
+ *
+ * <p><b>{@code @Async}인 이유.</b> AFTER_COMMIT 리스너는 커밋한 스레드에서 그대로 이어 실행되므로,
+ * 이대로 두면 <b>클라이언트의 프로젝트 수정 API 응답이 포지션 수만큼의 임베딩 생성을 다 기다린다</b>.
+ * 임베딩 갱신은 수정 결과와 무관하게 뒤에서 처리하면 되는 값이라 별도 스레드로 넘긴다.
  */
 @Slf4j
 @Component
@@ -33,6 +38,7 @@ class ProjectUpdatedEventListener {
     private final ProjectDirectoryPort projectDirectoryPort;
     private final MatchingPort matchingPort;
 
+    @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onProjectUpdated(ProjectUpdatedEvent event) {
         List<Long> positionIds = projectDirectoryPort.findPositionIds(event.projectId());

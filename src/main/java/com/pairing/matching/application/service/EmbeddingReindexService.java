@@ -10,6 +10,7 @@ import com.pairing.matching.domain.model.SnapshotType;
 import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -30,6 +31,20 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
     private final ProjectDirectoryPort projectDirectoryPort;
     private final MatchingPort matchingPort;
     private final MatchingSnapshotRepository matchingSnapshotRepository;
+
+    /**
+     * 컨트롤러가 부르는 진입점. 프록시를 거쳐야 {@code @Async}가 실제로 적용되므로 자기 자신을
+     * 호출하지 않고 컨트롤러 → 이 메서드 순서로만 들어온다.
+     */
+    @Override
+    @Async
+    public void startReindexAll() {
+        log.info("[임베딩 재색인 시작]");
+        EmbeddingReindexResult result = reindexAll();
+        log.info("[임베딩 재색인 완료] 프리랜서 성공={} 실패={}, 포지션 성공={} 실패={}",
+                result.freelancerSuccessCount(), result.freelancerFailCount(),
+                result.positionSuccessCount(), result.positionFailCount());
+    }
 
     @Override
     public EmbeddingReindexResult reindexAll() {
