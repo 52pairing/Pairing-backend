@@ -33,4 +33,14 @@ public class FileQueryService implements FileQueryUseCase {
         }
         return fileRepository.findById(fileId).map(UploadedFile::getObjectKey);
     }
+
+    @Override
+    public boolean isOwnedBy(Long fileId, Long accountId) {
+        if (fileId == null || accountId == null) {
+            return false;
+        }
+        return fileRepository.findById(fileId)
+                .map(file -> accountId.equals(file.getOwnerAccountId()))
+                .orElse(false);
+    }
 }

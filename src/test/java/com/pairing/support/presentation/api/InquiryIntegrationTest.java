@@ -523,4 +523,41 @@ class InquiryIntegrationTest {
                 .andExpect(jsonPath("$.data.files[0].fileId").value(fileId))
                 .andExpect(jsonPath("$.data.files[0].originalName").value("오류화면.png"));
     }
+
+    @Test
+    @DisplayName("없는 fileId 를 첨부하면 400 으로 끊긴다")
+    void createInquiryWithUnknownFileIsRejected() throws Exception {
+        // 검증하지 않으면 inquiry_file 의 FK 에서 걸려 500 이 난다. 잘못 보낸 요청이므로 400 이어야 한다.
+        mockMvc.perform(post("/api/v1/support/inquiries")
+                        .cookie(writerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(inquiryCreateBody(List.of(999_999L)))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("IQ_004"));
+    }
+
+    @Test
+    @DisplayName("남이 올린 파일은 내 문의에 첨부할 수 없다")
+    void createInquiryWithOthersFileIsRejected() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "남의파일.png", "image/png",
+                "fake-image-bytes".getBytes());
+
+        // 관리자가 올린 파일 id 를 문의 작성자가 자기 문의에 붙이려 한다.
+        Cookie adminAccessToken = loginAsAdmin();
+        MvcResult uploadResult = mockMvc.perform(multipart("/api/v1/files")
+                        .file(file)
+                        .param("purpose", "INQUIRY_ATTACHMENT")
+                        .cookie(adminAccessToken))
+                .andExpect(status().isCreated())
+                .andReturn();
+        Long othersFileId = objectMapper.readTree(uploadResult.getResponse().getContentAsString())
+                .path("data").path("fileId").asLong();
+
+        mockMvc.perform(post("/api/v1/support/inquiries")
+                        .cookie(writerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(inquiryCreateBody(List.of(othersFileId)))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("IQ_004"));
+    }
 }
