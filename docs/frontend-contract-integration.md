@@ -3,6 +3,9 @@
 협상이 타결된 뒤부터 프로젝트가 종료될 때까지의 화면입니다.
 **계약서 조회 · 전자서명 · PDF · 수수료 결제** 를 다룹니다.
 
+**피그마 화면 하나를 붙이는 중이라면 [frontend-screen-api-guide.md](frontend-screen-api-guide.md)
+를 먼저 보세요.** 화면 → API → 필드가 정리돼 있고, 이 문서는 그 안에서 참조하는 심화편입니다.
+
 계정·인증 공통 규약은 [frontend-auth-integration.md](frontend-auth-integration.md),
 프로젝트 등록·모집은 [frontend-project-integration.md](frontend-project-integration.md) 를 보세요.
 
@@ -80,13 +83,14 @@ GET /api/v1/codes/work-conditions   { workStyles, workForms, payUnits, periodUni
 ## 3. 계약 목록
 
 ```
-GET /api/v1/contracts?projectId={projectId}&status=&page=0&size=10
+GET /api/v1/contracts?projectId={projectId}&tab=&status=&page=0&size=10
 ```
 
 | 파라미터 | 필수 | 설명 |
 |---|---|---|
 | `projectId` | 선택 | 그 프로젝트 계약만. 프로젝트 상세의 계약 탭에서 사용 |
-| `status` | 선택 | 탭 필터 |
+| `tab` | 선택 | 화면의 탭. 아래 [탭 매핑](#탭-매핑) 참고 |
+| `status` | 선택 | 계약 상태 단건 필터. 탭으로 안 되는 조합에만 |
 | `page` / `size` | 선택 | 기본 `0` / `10`. **최신순 고정** |
 
 `data.content[]` 한 건이 카드 한 장입니다.
@@ -99,18 +103,30 @@ GET /api/v1/contracts?projectId={projectId}&status=&page=0&size=10
   "projectTitle": "B2B 주문 관리 서비스 리뉴얼",
   "jobRole": "FRONTEND",
   "counterpartName": "김개발",
+  "clientBusinessField": "IT/소프트웨어",
   "status": "SIGN_PENDING",
   "totalAmount": 24800000,
   "payUnit": "MONTHLY",
   "payAmount": 6200000,
   "startDate": "2026-09-01",
   "endDate": "2026-12-31",
+  "workStyle": "REMOTE",
+  "workForm": "FULL_TIME",
+  "createdAt": "2026-08-03T14:12:07",
   "signatureRequired": true,
   "clientSigned": false,
   "freelancerSigned": true,
-  "depositPaid": false
+  "depositPaid": false,
+  "payableSettlementId": null
 }
 ```
+
+`clientBusinessField` 는 **프리랜서가 볼 때만** 채웁니다. 클라이언트 화면에서는 항상 `null` 이
+정상입니다. 자기 회사 업종을 자기 카드에 보여줄 일이 없어서 조회 자체를 건너뜁니다.
+
+`payableSettlementId` 는 **지금 내가 결제할 정산 ID** 입니다. 결제 버튼이 이 값을 그대로 씁니다.
+계약에 걸린 정산은 전부 프리랜서 몫이라 **클라이언트가 보면 항상 `null`** 입니다.
+`null` 이면 버튼을 숨기세요 — 낼 게 없다는 뜻입니다.
 
 `counterpartName` 은 **보는 사람의 반대편**입니다. 클라이언트가 보면 프리랜서명, 프리랜서가 보면 기업명입니다.
 
@@ -135,13 +151,37 @@ status === 'COMPLETED'                 → '완료'
 
 ### 탭 매핑
 
+`tab` 한 개로 끝납니다. **기준이 "내 서명"이라 클라이언트·프리랜서가 같은 값을 씁니다.**
+
 ```
-전체        status 없이 호출
-서명 대기    status=SIGN_PENDING
-진행 중      status=IN_PROGRESS
-정산 대기    status=COMPLETION_PENDING
-완료        status=COMPLETED
+클라이언트 계약관리
+  전체            tab=ALL
+  서명 대기        tab=AWAITING_ME
+  상대방 서명 대기   tab=AWAITING_COUNTERPART
+  체결 완료        tab=CONCLUDED
+
+프리랜서 내 계약
+  전체            tab=ALL
+  서명 대기        tab=AWAITING_ME
+  진행 중          tab=IN_PROGRESS
+  정산 대기        tab=SETTLEMENT_PENDING
+  완료            tab=COMPLETED
 ```
+
+**`status` 로는 못 가르는 조합이 둘 있습니다.**
+
+- `AWAITING_ME` 와 `AWAITING_COUNTERPART` 는 계약 상태가 **둘 다 `SIGN_PENDING`** 입니다.
+  갈리는 건 내 서명 행의 상태라 서버만 압니다.
+- `IN_PROGRESS` 탭은 `SIGNED`(착수금 미납) + `IN_PROGRESS` **두 상태**를 담습니다.
+  화면상 "결제하면 시작됩니다" 카드가 진행 중 탭에 놓이기 때문입니다.
+
+`AWAITING_ME` 는 **상대가 서명했든 안 했든** 내 서명만 안 됐으면 들어옵니다.
+"아무도 서명 안 함" 으로 거르면 상대가 먼저 서명한 계약이 내 할 일에서 사라집니다.
+
+`DRAFT` 는 `ALL` 에만 나옵니다. AI 가 계약서 문구를 채우는 2~5초 구간이라 눌러도 서명이 안 됩니다.
+
+> **탭 옆 건수 배지는 아직 없습니다.** 현재 탭의 `totalElements` 만 나옵니다.
+> 다른 탭 숫자를 알려면 탭 수만큼 호출해야 하므로, 전용 API 가 생기기 전까지는 숫자를 빼두세요.
 
 ---
 
