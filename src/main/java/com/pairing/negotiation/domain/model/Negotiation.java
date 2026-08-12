@@ -43,6 +43,8 @@ public class Negotiation {
     private String endReason;
     private LocalDateTime clientLastReadAt;       // 클라가 마지막으로 협상을 읽은 시각(안 읽은 제안 배지 기준선)
     private LocalDateTime freelancerLastReadAt;   // 프리가 마지막으로 협상을 읽은 시각
+    private NegotiationAgentState agentState;     // 대리인(A2A) 실행 상태. 비동기라 저장이 필요하다
+    private LocalDateTime agentStartedAt;         // RUNNING 이 된 시각. 죽은 실행(stuck) 판정 기준
     private List<NegotiationCondition> conditions;
 
     private Negotiation(Long requestId, Long projectId, Long positionId, Long freelancerId,
@@ -58,6 +60,7 @@ public class Negotiation {
         this.status = NegotiationStatus.IN_PROGRESS;
         this.totalRound = 0;
         this.startedAt = LocalDateTime.now();
+        this.agentState = NegotiationAgentState.IDLE;
         this.conditions = conditions == null ? List.of() : List.copyOf(conditions);
     }
 
@@ -66,6 +69,7 @@ public class Negotiation {
                         Long freelancerMonthlyPay, Long floorAmount, LocalDateTime aiOutAt,
                         LocalDateTime startedAt, LocalDateTime endedAt, String endReason,
                         LocalDateTime clientLastReadAt, LocalDateTime freelancerLastReadAt,
+                        NegotiationAgentState agentState, LocalDateTime agentStartedAt,
                         List<NegotiationCondition> conditions) {
         this.id = id;
         this.requestId = requestId;
@@ -84,6 +88,9 @@ public class Negotiation {
         this.endReason = endReason;
         this.clientLastReadAt = clientLastReadAt;
         this.freelancerLastReadAt = freelancerLastReadAt;
+        // 컬럼을 새로 붙이기 전에 만들어진 협상은 null 이다. 옛 협상은 대리인이 도는 중일 수 없다.
+        this.agentState = agentState == null ? NegotiationAgentState.IDLE : agentState;
+        this.agentStartedAt = agentStartedAt;
         this.conditions = conditions == null ? List.of() : conditions;
     }
 
@@ -106,10 +113,70 @@ public class Negotiation {
                                            Long floorAmount, LocalDateTime aiOutAt, LocalDateTime startedAt,
                                            LocalDateTime endedAt, String endReason,
                                            LocalDateTime clientLastReadAt, LocalDateTime freelancerLastReadAt,
+                                           NegotiationAgentState agentState, LocalDateTime agentStartedAt,
                                            List<NegotiationCondition> conditions) {
         return new Negotiation(id, requestId, projectId, positionId, freelancerId, status, totalRound,
                 agreedAmount, budgetCap, freelancerMonthlyPay, floorAmount, aiOutAt, startedAt, endedAt,
-                endReason, clientLastReadAt, freelancerLastReadAt, conditions);
+                endReason, clientLastReadAt, freelancerLastReadAt, agentState, agentStartedAt, conditions);
+    }
+
+    /**
+     * 대리인 실행을 예약한다. <b>이미 도는 중이면 {@code false}</b> 를 돌려주고 아무것도 바꾸지 않는다.
+     *
+     * <p>중복 실행 방지가 여기 있다. 비동기가 되면 사용자가 응답을 기다리지 않으므로 버튼을 두 번
+     * 누르거나 두 당사자가 동시에 제출하는 일이 실제로 생긴다. 그대로 두면 같은 라운드에 대리인이
+     * 두 번 돌아 제안이 겹치고 A2A 비용도 두 배가 된다.
+     *
+     * <p>{@link NegotiationAgentState#FAILED} 에서도 다시 예약할 수 있다 — 그게 재시도 경로다.
+     */
+    public boolean beginAgentRun() {
+        ensureInProgress();
+        if (this.agentState == NegotiationAgentState.RUNNING) {
+            return false;
+        }
+        this.agentState = NegotiationAgentState.RUNNING;
+        this.agentStartedAt = LocalDateTime.now();
+        return true;
+    }
+
+    /**
+     * 대리인 실행이 끝났다(성공). 타결로 끝났더라도 대리인은 더 이상 돌지 않으므로 IDLE 이다.
+     *
+     * <p>{@link #ensureInProgress} 를 부르지 않는다 — 이 호출 직전에 타결/결렬로 상태가 바뀌었을 수
+     * 있는데, 그때 예외가 나면 방금 만든 제안과 계약이 통째로 롤백된다.
+     */
+    public void finishAgentRun() {
+        this.agentState = NegotiationAgentState.IDLE;
+        this.agentStartedAt = null;
+    }
+
+    /**
+     * 대리인 호출이 실패했다. 라운드는 오르지 않았고 제안도 없다.
+     *
+     * <p>이 상태를 남기지 않으면 화면이 "협상 중"에 영원히 멈춘다 — 비동기라 예외가 사용자 요청
+     * 쪽으로 가지 않기 때문이다. 같은 문제로 계약이 DRAFT 에 갇힌 적이 있다
+     * ({@code ContractDraftListener} 주석 참고).
+     */
+    public void failAgentRun() {
+        this.agentState = NegotiationAgentState.FAILED;
+        this.agentStartedAt = null;
+    }
+
+    public boolean isAgentRunning() {
+        return this.agentState == NegotiationAgentState.RUNNING;
+    }
+
+    /**
+     * 돈다고 표시돼 있지만 실제로는 죽은 실행인가.
+     *
+     * <p>서버가 A2A 응답을 기다리는 도중 재배포되면 {@code RUNNING} 인 채로 남는다. 그 행을 그냥
+     * 두면 {@link #beginAgentRun} 이 계속 {@code false} 를 돌려줘 <b>그 협상만 영구히 멈춘다.</b>
+     * 타임아웃보다 오래된 실행은 실패로 본다.
+     */
+    public boolean isAgentStuck(LocalDateTime now, long timeoutSeconds) {
+        return isAgentRunning()
+                && agentStartedAt != null
+                && agentStartedAt.plusSeconds(timeoutSeconds).isBefore(now);
     }
 
     /** 대리인 왕복 1라운드 소비. 상한 도달 시 소비 불가(결렬 처리로 넘긴다). */

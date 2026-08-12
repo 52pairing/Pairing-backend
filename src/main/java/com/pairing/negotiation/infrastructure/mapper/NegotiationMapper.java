@@ -26,7 +26,8 @@ public class NegotiationMapper {
                 d.getStatus(), d.getTotalRound(), d.getAgreedAmount(), d.getBudgetCap(),
                 d.getFreelancerMonthlyPay(), d.getFloorAmount(),
                 d.getAiOutAt(), d.getStartedAt(), d.getEndedAt(), d.getEndReason(),
-                d.getClientLastReadAt(), d.getFreelancerLastReadAt(), conds);
+                d.getClientLastReadAt(), d.getFreelancerLastReadAt(),
+                d.getAgentState(), d.getAgentStartedAt(), conds);
     }
 
     public Negotiation toDomain(NegotiationJpaEntity e) {
@@ -57,7 +58,8 @@ public class NegotiationMapper {
                 e.getStatus(), e.getTotalRound(), e.getAgreedAmount(), e.getBudgetCap(),
                 e.getFreelancerMonthlyPay(), e.getFloorAmount(),
                 e.getAiOutAt(), e.getStartedAt(), e.getEndedAt(), e.getEndReason(),
-                e.getClientLastReadAt(), e.getFreelancerLastReadAt(), conds);
+                e.getClientLastReadAt(), e.getFreelancerLastReadAt(),
+                e.getAgentState(), e.getAgentStartedAt(), conds);
     }
 
     private NegotiationConditionJpaEntity toConditionJpa(NegotiationCondition c) {

@@ -3,11 +3,13 @@ package com.pairing.negotiation.application.service;
 import com.pairing.contract.application.usecase.ContractCreationUseCase;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCase;
+import com.pairing.negotiation.application.event.NegotiationAgentRequested;
 import com.pairing.negotiation.application.event.NegotiationEvent;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
 import com.pairing.negotiation.application.port.out.NegotiationEventPort;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
+import com.pairing.negotiation.application.usecase.NegotiationAgentUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
@@ -23,6 +25,7 @@ import com.pairing.negotiation.domain.service.NegotiationFloorGuard;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,7 +40,15 @@ import java.util.stream.Collectors;
 @Service
 @Transactional
 @RequiredArgsConstructor
-public class NegotiationLoopService implements NegotiationLoopUseCase {
+public class NegotiationLoopService implements NegotiationLoopUseCase, NegotiationAgentUseCase {
+
+    /**
+     * 이 시간을 넘겨 {@code RUNNING} 인 실행은 죽은 것으로 보고 회수한다.
+     *
+     * <p>A2A 타임아웃({@code AI_TIMEOUT_MS} = 120초)보다 넉넉히 커야 한다 — 아직 정상적으로 도는
+     * 실행을 실패로 뒤엎으면 같은 라운드에 제안이 두 벌 생긴다.
+     */
+    private static final long AGENT_STUCK_SECONDS = 300L;
 
     private final NegotiationRepository negotiationRepository;
     private final NegotiationMessageRepository messageRepository;
@@ -49,6 +60,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
     private final MatchingNegotiationOutcomeUseCase matchingOutcomeUseCase;
     // 타결 시 표준계약서를 생성하는 인바운드 포트(방향: negotiation → contract).
     private final ContractCreationUseCase contractCreationUseCase;
+    // 대리인 실행 예약용. 커밋 후 NegotiationAgentListener 가 별도 스레드에서 받는다.
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 마지노선 제출. <b>양측이 모두 낸 뒤에야</b> 대리인 협상(라운드 1)이 시작된다.
@@ -80,16 +93,9 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
             return;
         }
 
-        // 양측 마지노선이 모두 모였다 → 초기 제안(라운드 1) 생성.
-        negotiation.incrementRound();
-        List<NegotiationMessage> messages = new ArrayList<>(proposeForPending(negotiation));
-        // 첫 라운드에서 대리인끼리 전 조건을 합의해 버릴 수 있다. 그때 바로 타결시킨다.
-        settleIfAllAgreed(negotiation, messages);
-
-        persist(negotiation, messages);
-        createContractIfAgreed(negotiation);
-        publish(negotiation, negotiation.getStatus() == NegotiationStatus.AGREED
-                ? NegotiationEventType.AGREED : NegotiationEventType.STARTED);
+        // 양측 마지노선이 모두 모였다 → 대리인을 예약하고 바로 응답한다.
+        // 초기 제안(라운드 1) 생성은 커밋 후 리스너 스레드에서 돈다(A2A 왕복 17초).
+        scheduleAgent(negotiation, NegotiationEventType.STARTED, new ArrayList<>());
     }
 
     @Override
@@ -134,8 +140,11 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
             }
         }
 
+        // 사람의 수락만으로 전 조건이 합의됐으면 대리인을 돌릴 이유가 없다 — 여기서 끝난다.
         if (!settleIfAllAgreed(negotiation, messages) && !negotiation.awaitingRedirect()) {
-            advanceOrFail(negotiation, messages);
+            // 다음 라운드가 필요하다 → 대리인 예약. 사람 응답은 아래에서 같이 저장된다.
+            scheduleAgent(negotiation, NegotiationEventType.ANSWERED, messages);
+            return;
         }
         // 거절만 들어온 경우(awaitingRedirect)는 여기서 멈춘다. 사람이 새 마지노선을 낼 때까지
         // 라운드를 태우지 않는다 — 다음 요청의 재지시가 들어오면 그때 라운드가 오른다.
@@ -149,6 +158,90 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
             case FAILED -> NegotiationEventType.FAILED;
             default -> NegotiationEventType.ANSWERED;
         });
+    }
+
+    // ----- 대리인(A2A) 비동기 실행 -----
+
+    /**
+     * 대리인 실행을 예약하고 <b>즉시 응답한다.</b> 실제 A2A 호출은 커밋 후 리스너 스레드에서 돈다.
+     *
+     * <p>사람이 방금 한 행위(응답 메시지 등)는 <b>여기서 함께 커밋된다</b> — 대리인 결과를 기다리지
+     * 않고 화면에 바로 보여야 한다.
+     */
+    private void scheduleAgent(Negotiation negotiation, NegotiationEventType fallbackType,
+                               List<NegotiationMessage> messages) {
+        recoverIfStuck(negotiation);
+
+        if (!negotiation.beginAgentRun()) {
+            // 이미 도는 중이다. 그대로 또 돌리면 같은 라운드에 제안이 겹치고 A2A 비용도 두 배가 된다.
+            // 비동기라 사용자가 응답을 안 기다리므로 버튼 두 번 누르기가 실제로 일어난다.
+            log.info("대리인이 이미 실행 중이라 예약을 건너뛴다: negotiationId={}", negotiation.getId());
+            persist(negotiation, messages);
+            publish(negotiation, fallbackType);
+            return;
+        }
+
+        persist(negotiation, messages);
+        // 화면을 진행 표시로 바꾼다. 결과는 리스너가 끝낸 뒤 다시 이벤트로 알린다.
+        publish(negotiation, NegotiationEventType.AGENT_RUNNING);
+        eventPublisher.publishEvent(new NegotiationAgentRequested(negotiation.getId(), fallbackType));
+    }
+
+    /**
+     * 죽은 실행을 회수한다. 서버가 A2A 응답을 기다리다 재배포되면 {@code RUNNING} 인 채로 남고,
+     * 그 협상은 {@code beginAgentRun} 이 계속 거절해 <b>영구히 멈춘다.</b>
+     */
+    private void recoverIfStuck(Negotiation negotiation) {
+        if (negotiation.isAgentStuck(LocalDateTime.now(), AGENT_STUCK_SECONDS)) {
+            log.warn("이전 대리인 실행이 회수 시간을 넘겨 실패로 정리한다: negotiationId={}, 시작={}",
+                    negotiation.getId(), negotiation.getAgentStartedAt());
+            negotiation.failAgentRun();
+        }
+    }
+
+    /**
+     * {@code REQUIRES_NEW} 가 아니라 기본 전파(REQUIRED)다.
+     *
+     * <p>이 메서드는 {@code NegotiationAgentListener} 가 {@code @Async} 로 부른다 — <b>다른
+     * 스레드라 걸려 있는 트랜잭션이 애초에 없다.</b> 없는 트랜잭션을 유예해 봐야 하는 일이 없으므로
+     * REQUIRED 가 새 트랜잭션을 여는 것과 결과가 같다.
+     *
+     * <p>{@code ContractDraftListener} 는 {@code REQUIRES_NEW} 를 쓰지만 그건 안전장치다. 여기서
+     * REQUIRED 를 고른 건 <b>테스트에서 이 메서드를 직접 부를 수 있어야 하기 때문</b>이다 —
+     * {@code @Transactional} 테스트는 커밋을 안 하므로 AFTER_COMMIT 리스너가 뜨지 않아, 대리인
+     * 단계를 손으로 돌려야 한다. REQUIRES_NEW 면 그 호출이 테스트의 미커밋 데이터를 못 본다.
+     */
+    @Override
+    public void runAgent(Long negotiationId, NegotiationEventType fallbackType) {
+        Negotiation negotiation = load(negotiationId);
+        if (!negotiation.isAgentRunning()) {
+            // 예약이 이미 정리됐다(회수됐거나 다른 실행이 끝냈다). 두 번 돌리지 않는다.
+            log.warn("대리인 예약이 남아 있지 않아 실행하지 않는다: negotiationId={}", negotiationId);
+            return;
+        }
+
+        List<NegotiationMessage> messages = new ArrayList<>();
+        advanceOrFail(negotiation, messages);
+        negotiation.finishAgentRun();
+
+        persist(negotiation, messages);
+        createContractIfAgreed(negotiation);
+
+        publish(negotiation, switch (negotiation.getStatus()) {
+            case AGREED -> NegotiationEventType.AGREED;
+            case FAILED -> NegotiationEventType.FAILED;
+            default -> fallbackType;
+        });
+    }
+
+    /** 전파 속성은 {@link #runAgent} 와 같은 이유로 기본값이다. 호출 시점엔 실패한 트랜잭션이 이미 끝나 있다. */
+    @Override
+    public void markAgentFailed(Long negotiationId) {
+        Negotiation negotiation = load(negotiationId);
+        negotiation.failAgentRun();
+        persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
+                "AI 대리인 호출에 실패해 이번 라운드가 진행되지 못했습니다. 다시 시도해 주세요.")));
+        publish(negotiation, NegotiationEventType.AGENT_FAILED);
     }
 
     /**

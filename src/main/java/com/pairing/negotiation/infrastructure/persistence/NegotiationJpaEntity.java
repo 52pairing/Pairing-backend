@@ -1,5 +1,6 @@
 package com.pairing.negotiation.infrastructure.persistence;
 
+import com.pairing.negotiation.domain.model.NegotiationAgentState;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -69,6 +70,17 @@ public class NegotiationJpaEntity {
     @Column(name = "freelancer_last_read_at")
     private LocalDateTime freelancerLastReadAt;
 
+    // 대리인(A2A) 실행 상태. A2A 호출이 요청 스레드 밖에서 돌기 때문에 저장이 필요하다.
+    //
+    // nullable 이어야 한다. 배포된 RDS 에 ddl-auto: update 로 컬럼이 새로 붙는 것이라
+    // 이미 있던 협상 행에는 값이 안 들어간다. null 은 도메인이 IDLE 로 읽는다.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "agent_state", length = 20)
+    private NegotiationAgentState agentState;
+
+    @Column(name = "agent_started_at")
+    private LocalDateTime agentStartedAt;
+
     // 애그리거트: 조건은 협상과 생명주기를 함께한다(cascade + orphanRemoval).
     //
     // @OrderBy 가 없으면 DB 가 돌려주는 순서를 그대로 쓴다 — 즉 매번 달라질 수 있다.
@@ -89,6 +101,7 @@ public class NegotiationJpaEntity {
                                 LocalDateTime aiOutAt, LocalDateTime startedAt,
                                 LocalDateTime endedAt, String endReason, LocalDateTime clientLastReadAt,
                                 LocalDateTime freelancerLastReadAt,
+                                NegotiationAgentState agentState, LocalDateTime agentStartedAt,
                                 List<NegotiationConditionJpaEntity> conditions) {
         this.id = id;
         this.requestId = requestId;
@@ -107,6 +120,8 @@ public class NegotiationJpaEntity {
         this.endReason = endReason;
         this.clientLastReadAt = clientLastReadAt;
         this.freelancerLastReadAt = freelancerLastReadAt;
+        this.agentState = agentState;
+        this.agentStartedAt = agentStartedAt;
         this.conditions = conditions != null ? conditions : new ArrayList<>();
     }
 }

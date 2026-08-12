@@ -52,6 +52,7 @@ public final class NegotiationAdminResponseFactory {
                 item.status(),
                 item.totalRound(),
                 false,                      // waitingForMe: 관리자 목록엔 해당 없음
+                null,                       // agentState: 관리자 목록엔 미사용(상세에서 본다)
                 null,                       // lastProposalBy
                 null,                       // lastProposalAt
                 item.startedAt(),
