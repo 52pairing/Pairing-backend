@@ -1,6 +1,58 @@
-# 인수인계 — AI매칭(4번 파트) 3일 스프린트
+# 인수인계 — AI매칭(4번 파트)
 
-최종 갱신: 2026-08-10. 이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다.
+> ## 🔵 지금 상태 (2026-08-12) — 새 세션은 여기부터 읽는다
+>
+> **매칭 파이프라인 재설계를 코드로 옮기는 중이다.** 설계는 전부 확정됐고 남은 건 실행이다.
+>
+> **읽는 순서**
+> 1. 이 박스
+> 2. 아래 **"▶ 다음에 할 일"** 표 — 순서대로 하면 중간에 안 깨진다
+> 3. `.ai/STATE.md`의 **"2026-08-11 갱신 — 매칭 파이프라인 재설계"**(설계) +
+>    **"2026-08-12 확정 — 착수 전 결정 13건"**(왜 그렇게 정했나)
+> 4. 이 문서 맨 아래 **"주의 사항"** — 반복해서 걸린 것들
+>
+> **코드 작업은 B1~B4 전부 끝났다. 남은 건 머지와 검증(C1)뿐이다.**
+>
+> | 레포 | 브랜치 | 담긴 것 | 상태 |
+> |---|---|---|---|
+> | backend | `feature/matching-embedding-text-redesign` | B1 임베딩 텍스트, B2 budgetCap, **B4 가드 G3+G4**, 7번 similarity 수신, 수수료율 하드코딩 제거 | **PR 올림 (2026-08-12)**. develop 머지·빌드 통과, behind 0 |
+> | python | `feature/matching-condition-score` | ~~B2 budget_cap, B3 조건점수 25:75, 7번 similarity, 13번 CI pgvector~~ → **develop 머지 완료(`8275b09`)** | **문서 커밋 1개가 남았다** — 아래 참고 |
+>
+> ⚠️ **python 브랜치에 아직 안 머지된 커밋이 있다.** PR이 `0daeb5b`(README 엔드포인트 호출 시점
+> 정정) **직전에** 머지돼서 그 커밋만 빠졌다. develop의 README는 아직 옛 문구
+> ("이력서·조건 저장 시")다. 브랜치는 원격에 그대로 있고 develop보다 2커밋 앞서 있으니
+> **작은 PR을 하나 더 올리면 된다.** (이미 한 번 머지된 브랜치라 GitHub이 "Compare & pull
+> request" 배너를 다시 안 띄운다 — `Pull requests → New pull request`로 직접 만든다.)
+>
+> **핵심 숫자 (자주 헷갈린다)**
+> - 최종 점수 = 유사도 **25** + 조건점수 **75** (조건 배점 합 100을 0~1로 정규화 후 ×75)
+> - 조건 배점: 스킬 30 / 연차 20 / 단가 20 / 근무방식 10 / 근무형태 8 / 시작일 6 / 기간 6
+> - 월단가 환산: **일급 ×20, 시급 ×160, 4주 = 1개월** (협상 도메인과 같은 값이어야 한다)
+> - 후보 풀 = 모집 인원 × 3, 노출 = 모집 인원
+>
+> **DB 환경 — 로컬·배포 둘 다 준비 완료 (2026-08-12)**
+>
+> | | pgvector | 임베딩 테이블 | 데이터 |
+> |---|---|---|---|
+> | 로컬 (윈도우 네이티브 **PostgreSQL 18**) | **0.8.6** ✅ | ✅ | 0행 |
+> | 배포 | ✅ | ✅ | freelancer 1 / position 7 (2026-08-11 생성) |
+>
+> - **로컬은 도커가 아니라 네이티브 PG18을 쓴다.** 도커 `pairing-postgres`(PG16)는 5432가
+>   충돌하므로 **꺼둔다** — Redis만 띄운다: `docker compose up -d redis`
+> - 스프링 스키마(51개 테이블)와 `freelancer_profile.matching_paused`도 이미 있다
+> - `psql`은 PATH에 없다. 전체 경로로 부른다:
+>   `"C:\Program Files\PostgreSQL\18\bin\psql.exe" -U pairing -d pairing ...`
+> - 배포 벡터는 **B1 이전(옛 규칙)** 이라 B5 재색인 대상이다
+>
+> **아직 한 번도 안 해본 것**
+> - **C1 end-to-end 테스트.** 이력서 저장 → 임베딩 → 모집 시작 → 추천 → 요청 → 수락을 실제로
+>   돌려본 적이 없다. **남은 것 중 가장 큰 리스크다.** 이제 DB가 준비됐으니 막을 것은 없다.
+>
+> **사람 대기 중**
+> - **E2 회신만 남았다** — 3번이 정책 P03 제안 문구를 보내와 검토를 요청했고, 회신문은
+>   아래 "E2 회신" 절에 써뒀다. **보내면 전달 항목은 전부 종료된다.**
+
+이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다. 아래는 이력이다.
 
 **2026-08-10 배치.** `feature/freelancer-matching-settings`(freelancer `/me/matching-settings` 실구현 +
 matchingPaused 하드필터 반영, 원래 2번 담당이지만 4번이 직접 진행), `feature/matching-request-auto-expire`
@@ -118,6 +170,12 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 - `FreelancerController`의 두 엔드포인트(`GET`/`PUT /me/matching-settings`) 스텁 제거, 실구현으로 교체. `FreelancerMyPageIntegrationTest`에 H2 통합테스트 4개 추가.
 - `feature/freelancer-matching-settings` 브랜치, 코드+테스트+문서 같은 커밋으로 push.
 
+## ~~2026-08-11 — 매칭 파이프라인 재설계 (착수 전 계획)~~ ⚠️ **낡음, 따라가지 말 것**
+
+> **이 절은 착수 전에 적어둔 계획이라 체크박스가 전부 비어 있고 숫자도 옛것(30:70, 조건점수 70)이다.**
+> 실제 진행 상황과 확정 숫자는 **아래 "남은 작업 전체 목록 (2026-08-12 갱신)"** 이 최종본이다.
+> 기록으로만 남긴다.
+
 ## 2026-08-11 신규 — 매칭 파이프라인 재설계 (팀 확정, 코드 미착수)
 
 **설계 확정본은 `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)" 절이다.**
@@ -204,73 +262,261 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 
 ---
 
-# 남은 작업 전체 목록 (2026-08-11 기준)
+# 남은 작업 전체 목록 (2026-08-12 갱신)
 
-우선순위 순. 설계 확정본은 `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)".
+설계 확정본은 `.ai/STATE.md`의 **"2026-08-11 갱신 — 매칭 파이프라인 재설계"** + **"2026-08-12
+확정 — 착수 전 결정 13건"** 두 절이다. 결정 근거를 찾을 땐 후자를 먼저 볼 것.
 
-## A. 지금 바로 — PR 3개 오픈·머지 대기
+---
 
-전부 develop 최신 반영 + 빌드 통과 상태. `gh` CLI가 없어 **GitHub 웹에서 직접 생성**해야 한다.
-배너는 최근 push된 브랜치 하나에만 뜨므로 나머지는 `Pull requests → New pull request`로 만든다.
+## ▶ 다음에 할 일 (순서대로. 이 순서를 지키면 중간에 안 깨진다)
 
-| # | 레포 | 브랜치 | 내용 |
+| 순서 | 할 일 | 어디 | 예상 |
 |---|---|---|---|
-| A1 | backend | `fix/matching-settlement-response-and-policy-doc` | 즉시 타결 응답 상태 불일치 + P41 위반 + P06 등급 가중치 명시 |
-| A2 | backend | `fix/matching-candidate-selection-guard` | MT_017/018 + AI_020 오분류 + 임베딩 길이 상한 + 파이프라인 재설계 문서 |
-| A3 | python | `feature/matching-llm-retry-and-pool-relax` | 후보 0명 시 풀 확대 재검색 + LLM 응답 오류 재시도 |
+| ~~1~~ | ~~E2 회신~~ / ~~7번 similarity~~ / ~~13번 CI pgvector~~ / ~~B4 가드 교체~~ | ✅ 완료 (2026-08-12) | |
+| ~~2~~ | ~~python PR~~ — `8275b09`로 머지됨 | ✅ 완료 | |
+| **3** | **python 문서 PR 하나 더** — `0daeb5b`가 머지 타이밍에 빠졌다(위 ⚠️ 참고) | GitHub 웹 | 2분 |
+| **4** | **backend PR 머지 대기** — 올려둠. develop 머지·빌드 통과 상태 | GitHub 웹 | — |
+| **5** | **머지 후 B5 절차** — 배포 확인 → 재색인 → `REINDEX` → 반영 확인 → 추천 1회 호출 | 배포 후 | 20분 |
+| **6** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 (DB 준비됨) | 0.5~2일 |
+| **7** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
+| **8** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
 
-## B. 매칭 파이프라인 재설계 — 1~5단계 (0단계 완료)
+> **5번(B5 절차)이 이번 배포에서 제일 놓치기 쉽다.** 재색인을 빼먹으면 옛 규칙 벡터와 새 규칙
+> 벡터가 섞이는데 **에러가 안 나서 추천 품질만 조용히 나빠진다.** 명령어와 확인 쿼리는
+> 아래 "B5. 5단계" 절에 전부 적어뒀다.
 
-0단계(되돌리기)는 `e2e7ef3`으로 완료. 아래는 A2 머지 후 새 브랜치에서 진행한다.
+> ~~12번 DB 환경~~ — **2026-08-12 완료.** 로컬(네이티브 PG18 + pgvector 0.8.6)·배포 둘 다 준비됐다.
+> 위 "지금 상태" 박스 참고.
+>
+> **13번(CI pgvector)은 아직 안 했다** — 순서 3번.
+>
+> **프론트 렌더링은 4번 파트가 아니다(2026-08-12 확정).** 매칭 API는 응답 모양이 안 바뀌고
+> 프론트 전달 문서도 나가 있으므로, 여기서 할 일은 없다. 화면 구현·렌더링은 프론트 담당.
 
-### B1. 1단계 — 임베딩 텍스트 확정 (Java)
+---
 
-- [ ] `FreelancerResumeSummary`에 **학과 목록** 추가 + `FreelancerDirectoryAdapter` 매핑
-      (`resume_education.major`, 학력 여러 개면 전부)
-- [ ] `FreelancerEmbeddingTextBuilder`: 자기소개 + 학과 전부 + 경력 `jobDescription`만
-      (**회사명·부서/직급 제거**)
-- [ ] `ProjectPositionSummary`에 `currentSituation` 추가 + 어댑터 매핑
-- [ ] `PositionEmbeddingTextBuilder`: 프로젝트명 + 진행상황 + 담당업무 + 업무범위 + 우대사항
-      (**최소경력·근무조건·기간·요구스킬 제거**)
-- [ ] 테스트 갱신
+## A. PR — **전부 머지 완료 (2026-08-12)**
+
+| # | 레포 | 브랜치 | 상태 |
+|---|---|---|---|
+| A1 | backend | `fix/matching-settlement-response-and-policy-doc` | ✅ 머지 (PR #144, 충돌 2건 해소 후) |
+| A2 | backend | `fix/matching-candidate-selection-guard` | ✅ 머지 |
+| A3 | python | `feature/matching-llm-retry-and-pool-relax` | ✅ 머지 |
+
+> A3에 넣었던 "후보 0명 시 풀 확대 재검색"은 **효과가 없는 코드였다.** `LIMIT n`이 0건을
+> 돌려준 건 WHERE에 걸린 게 없다는 뜻이라 n을 키워도 결과가 같다. B3에서 **스킬 필터 완화**로
+> 교체했다(`_RELAXED_POOL_MULTIPLIER` 삭제).
+
+## B. 매칭 파이프라인 재설계 — 0~3단계 완료, 4~5단계 남음
+
+0단계(되돌리기)는 `e2e7ef3`으로 완료.
+
+**진행 중인 브랜치 2개:**
+
+| 레포 | 브랜치 | 담긴 것 |
+|---|---|---|
+| backend | `feature/matching-embedding-text-redesign` | B1 + B2(Java). **B4도 여기에 얹는다** |
+| python | `feature/matching-condition-score` | B2(Python) + B3. **7번·13번도 여기에 얹는다** |
+
+### B1. 1단계 — 임베딩 텍스트 확정 (Java) — **완료 (2026-08-12)**
+
+브랜치 `feature/matching-embedding-text-redesign`. `./gradlew clean build` 통과.
+
+- [x] `FreelancerResumeSummary`를 **임베딩에 실제로 들어가는 것만** 담도록 재정의:
+      `(selfIntroduction, majors, careerDescriptions)`. 기존 `CareerEntry`(회사명·부서/직급·
+      담당업무) 레코드는 **삭제**했다 — 필드로 남겨두면 다시 넣기 쉬워서다
+- [x] `FreelancerDirectoryAdapter`: `resume.educations()` → `major`, `resume.careers()` →
+      `jobDescription`만 뽑아 매핑
+- [x] `FreelancerEmbeddingTextBuilder`: 자기소개 + 학과 전부 + 경력 담당업무.
+      **학과를 경력보다 앞에** 둔다(경력 건수엔 상한이 없어 뒤에 두면 잘려 나간다)
+- [x] `ProjectPositionSummary`(매칭)에 `currentSituation` 추가 + `ProjectDirectoryAdapter` 매핑.
+      project 쪽 DTO엔 이미 있어서 옮기기만 하면 됐다
+- [x] `PositionEmbeddingTextBuilder`: 프로젝트명 + 진행상황 + 담당업무 + 업무범위 + 우대사항.
+      직무·요구스킬·최소경력·근무조건·기간 **제거**
+- [x] 양쪽 다 **값 없는 항목은 줄째로 뺀다** — 빈 줄이 남으면 그 자리에 의미 없는 토큰이 들어가,
+      항목 수가 적은 프로젝트끼리 서로 비슷해 보이는 쪽으로 벡터가 밀린다
+- [x] `FreelancerEmbeddingTextBuilderTest` 5건으로 확장, `PositionEmbeddingTextBuilderTest`
+      **신규 4건**(원래 포지션 쪽엔 테스트가 없었다 — 이번 재설계의 발단이 된 "포지션에만 스킬이
+      있어서 짝이 어긋난" 버그를 회귀로 고정)
 
 > `preferred_note`(포지션별 우대사항)는 **쓸 수 없다** — 우대사항이 프로젝트 단위로 통일되며
 > 폐기됐다(3번 확인). `extra_note`만 쓴다.
 
-### B2. 2단계 — budgetCap 전달 (Java → Python)
+### B2. 2단계 — budgetCap 전달 (Java → Python) — **완료 (2026-08-12)**
 
-- [ ] Java: `BudgetCapCalculator` 결과(월단가)를 `/recommendations` 요청에 추가
-- [ ] Python: 요청 스키마에 `budget_cap` 추가
+Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3도 여기서 이어간다).
+
+- [x] `MatchingPort.recommend(..., long budgetCap)` 파라미터 추가.
+      `PythonMatchingAdapter`가 `budget_cap`으로 실어 보낸다
+- [x] `MatchingRoundCreationService.fillCandidates`에서 **포지션 조회를 추천 호출보다 앞으로**
+      옮기고 `BudgetCapCalculator`로 계산해 넘긴다
+- [x] `@CircuitBreaker` 폴백(`recommendFallback`) 시그니처도 같이 맞춤 — **어긋나면 컴파일은
+      통과하고 서킷이 열릴 때만 터진다**
+- [x] Python: `MatchingRequest.budget_cap`(선택) → `service.recommend` → `_build_prompt`.
+      값이 있으면 후보 희망급여를 월단가로 환산(**시급 ×160h / 일급 ×20d**)해 상한과 직접 비교시키고,
+      **없으면 단가 비교를 금지**한다(총예산은 전체 인원×전체 기간이라 1인 월급과 자릿수가 달라,
+      비교시키면 멀쩡한 후보가 전부 예산 초과로 감점된다 — 옛 배포와 섞여 도는 동안 실제로 난다)
+- [x] 테스트: Java 2건(값 관통 + 통합테스트 verify), Python 3건
 
 > 단가는 SQL 혼자 계산 못 한다. 프리랜서는 시급/일급→월단가 환산이, 포지션은 순예산
 > (수수료율에 **클라이언트 등급** 필요 = account 도메인) ÷ 인원 ÷ 개월이 필요하다.
 
-### B3. 3단계 — 조건점수 SQL + 30:70 합산 (Python) ← **본 작업**
+### B3. 3단계 — 조건점수 + 25:75 합산 (Python) — **완료 (2026-08-12)**
 
-- [ ] `search_similar_freelancers` 하드필터에 **요구 스킬 1개 이상** 추가
-- [ ] 조건점수 70 계산 (채점식은 `.ai/STATE.md` [3] 표 그대로)
-- [ ] **유사도 컷 제거** — 하드필터 통과자 전원에 대해 `PERCENT_RANK`로 0~30 정규화 후
-      `+ 조건점수×70` → **그 합계로** 상위 (인원×3)
-      - 유사도로 먼저 자르면 조건 좋고 유사도 낮은 사람이 잘려 처음 문제로 돌아간다
-      - 수만 명 규모가 되면 성능 재검토 필요
-- [ ] 테스트
+브랜치 `feature/matching-condition-score`. 81 passed + 1 skipped, ruff 통과.
 
-### B4. 4단계 — 가드 교체 (Java)
+- [x] `search_scored_candidates` 신규 — 하드필터에 **요구 스킬 1개 이상** 추가, **LIMIT 없음**
+      (유사도로 자르지 않는다). 이력서 원문은 안 읽고 채점용 값만 가져온다
+- [x] `matching/scoring.py` 신규 — **순수 함수만** 둔다(DB·세션 안 받음). 채점식은 DB 없이
+      검증할 수 있어야 하고 이 파일이 그 경계다
+- [x] 배점 합 100 → `× 75`, 유사도는 `PERCENT_RANK` → `× 25`. **합산한 뒤** 상위 (인원×3)
+- [x] 후보 0명 시 **스킬 필터 완화 재검색**(옛 "풀 확대"는 무의미해서 교체)
+- [x] 테스트 24건(채점 전 항목 + 25:75 경계) + 리포지토리 4건(파라미터·매핑·실DB)
 
-- [ ] `evaluateGuard`에서 **직무·스킬 재검증 제거**
-- [ ] G3 예산 조합: `Σ(노출 후보 월단가) ≤ budgetCap × 노출 인원 × 1.2`
-      - 분모는 모집 인원이 아니라 **노출 인원**
+**7번·13번도 같은 브랜치에 얹어 완료 (2026-08-12). 84 passed + 1 skipped, ruff 통과.**
+
+- [x] **7번**: `RankedCandidate.similarity`(기본 `None`) 추가. **LLM 이 만드는 값이 아니라 서버가
+      채우는 값**이라 `_RANKING_SCHEMA` 에 넣지 않고, 풀 밖 후보를 걸러낸 뒤 1차 추림에서 계산한
+      코사인 유사도로 덮어쓴다. **프롬프트에는 안 넣는다** — 넣으면 LLM 이 원문을 읽는 대신 그
+      숫자를 베낀다. 테스트 3건(값 전달 / 프롬프트 미노출 / 지어낸 ID 는 유사도 조회 전에 제거)
+- [x] **13번**: CI 에 `pgvector/pgvector:pg16` 서비스 + `AI_TEST_DB_URL` 주입.
+      **PR 마다 실제 pgvector 로 SQL 이 돈다.** 서비스가 없으면 그 테스트만 skip 된다
+- [x] ⚠️ **통합 테스트가 `public` 스키마에 `DROP TABLE` 하던 것을 전용 스키마로 격리했다.**
+      `AI_TEST_DB_URL` 에 개발 DB 를 넣으면 `account`·`freelancer_profile` 등 스프링 테이블이
+      통째로 날아가는 구조였다. 실제 개발 DB(테이블 51개)로 돌려 무손상·잔여물 없음을 확인했다
+
+> **→ python 브랜치는 PR 올릴 준비 완료.** 담긴 것: B2(budget_cap) + B3(조건점수 25:75) +
+> 7번(similarity) + 13번(CI) + 단가 환산 정책 정렬(×160/×20) + README 갱신.
+
+### B4. 4단계 — 가드 교체 (Java) — **완료 (2026-08-12)**
+
+브랜치는 `feature/matching-embedding-text-redesign`에 **이어서 얹는다**(B1+B2와 한 PR).
+상세 규칙은 `.ai/STATE.md` "[5] 가드"의 **G3 세부 / G4 세부** 절이 최종본이다.
+
+- [x] `evaluateGuard`에서 **직무·스킬 재검증 제거**
+- [x] **판정 시점을 옮긴다.** 지금은 후보를 한 명씩 보고 **노출 전에** 판정하는데, G3는
+      "노출 후보 전원의 합계"라 **노출이 확정된 뒤**에 판정해야 한다. `persistCandidates` 루프 구조가 바뀐다
+- [x] G3 예산 조합 — `Σ(노출 후보 월단가) ≤ 남은 1인 상한 × 노출 인원 × 1.2`
+      - **남은 1인 상한** = (`budgetCap` × 모집 인원 − 이미 자리를 차지한 사람들의 월단가 합) ÷ 남은 자리
+      - 그 사람들의 월단가는 **협상 타결가 우선**(`NegotiationPort` 신규 메서드), 없으면 희망 단가
+      - `getAgreedForContract`는 **타결 전이면 예외를 던진다** — 상태가 `CONTRACT_PENDING` 이상일 때만 호출
       - **탈락시키지 말 것.** `guardPassed=true` 유지, `guardReason`에 기록만
-- [ ] G4 LLM 응답 이상: 중복 ID / 요청 인원 초과 / `reason` 누락 — **여기만 실제로 거른다**
-- [ ] 테스트
+- [x] G4 LLM 응답 이상 — 중복 ID(뒤엣것 버림) / 인원 초과(상위 N만) / `reason` 누락(탈락,
+      빈자리는 다음 순위가 채움). **여기만 실제로 거른다**
+- [x] **7번 자바 쪽**: `RankedFreelancer`에 `similarity` 추가 → `PythonMatchingAdapter` 파싱 →
+      `createFromEmbedding(..., 0.0)`의 하드코딩 `0.0`을 실제 값으로 교체
+- [x] 신규 리포지토리 메서드: 자리를 차지 중인 프리랜서 ID 목록
+      (`countByPositionIdAndStatusNotIn`의 목록 버전)
+- [x] 테스트 — 기존 가드 테스트(`MatchingIntegrationTest`의 스킬 미달 시나리오 등)가 깨지므로 같이 고친다
 
-### B5. 5단계 — 배포 후
+### B5. 5단계 — 배포 후 (**자바 머지 직후 해야 하는 것. 순서대로**)
 
-- [ ] **`POST /api/v1/matchings/admin/embeddings/reindex` 1회 실행 (필수)**
-      임베딩 텍스트 규칙이 바뀌므로 기존 벡터가 전부 낡는다. 옛 규칙 벡터와 새 규칙 벡터가
-      섞이면 비교 자체가 무의미해진다
-- [ ] 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`) 갱신 — API 응답 모양은 안 바뀌지만
-      후보 순서 산출 방식이 달라진 것을 공유
+`develop` 머지 = 자동 배포다. 배포가 끝나면 아래를 순서대로 한다. **①을 빼먹으면 추천 품질이
+조용히 나빠진다** — 에러가 안 나서 발견이 어렵다.
+
+**① 배포가 끝났는지 확인**
+
+GitHub Actions의 `deploy` 워크플로가 초록이 될 때까지 기다린다(약 5~10분). 그 전에 재색인을
+부르면 옛 코드가 옛 규칙으로 벡터를 다시 만든다.
+
+**② 재색인 1회 — 필수**
+
+```bash
+curl -X POST https://<배포주소>/api/v1/matchings/admin/embeddings/reindex \
+     -H "Cookie: accessToken=<관리자 토큰>"
+```
+
+응답으로 `freelancerSuccessCount / freelancerFailCount / positionSuccessCount / positionFailCount`
+가 온다. **fail이 0이 아니면 로그를 봐야 한다.**
+
+- 지금 배포 DB에 freelancer 1건 / position 7건이 있고 **전부 2026-08-11(B1 이전) 생성**이라
+  전부 대상이다
+- 안 돌리면 **옛 규칙 벡터(회사명·스킬 포함)와 새 규칙 벡터(자유 서술만)가 섞여** 비교 자체가
+  무의미해진다
+
+**③ ivfflat 인덱스 다시 만들기**
+
+```sql
+REINDEX INDEX idx_freelancer_embedding_cosine;
+```
+
+빈 테이블에 만든 인덱스라 pgvector가 `low recall` 경고를 냈었다. 벡터가 채워진 뒤 다시 만들어야
+제대로 동작한다. (추천 본 경로는 이 인덱스를 안 쓰지만 후보 미리보기 엔드포인트가 쓴다.)
+
+**④ 재색인이 실제로 반영됐는지 확인**
+
+```sql
+SELECT count(*) AS 전체,
+       count(*) FILTER (WHERE updated_at > now() - interval '1 hour') AS 방금_갱신
+FROM freelancer_embedding;
+-- position_embedding 도 같은 쿼리로
+```
+
+**방금_갱신 = 전체**여야 한다. 다르면 재색인이 일부만 돌았다는 뜻이다.
+
+**⑤ 추천이 실제로 도는지 한 번 호출**
+
+이게 **C1의 축소판**이다. 클라이언트 계정으로 `내 프로젝트 → 추천 후보`를 열어 후보가 뜨는지
+본다. 안 뜨면 아래를 순서대로 의심한다.
+
+| 증상 | 먼저 볼 곳 |
+|---|---|
+| 후보 0명 | `position_embedding`에 그 포지션 행이 있는지 |
+| 500 에러 | AI 서버 로그 — `budget_cap` 파싱, `vector` 확장 |
+| `MT_010`(AI 서버 호출 실패) | 서킷브레이커 열렸는지, AI 서버 배포됐는지 |
+
+**⑥ 추천 결과가 나아졌는지 확인 (C2로 이어짐)**
+
+```sql
+-- 유사도가 실제로 저장되는지 (예전엔 전부 0.0이었다)
+SELECT freelancer_id, similarity, base_score, guard_reason
+FROM matching_candidate ORDER BY id DESC LIMIT 10;
+
+-- G3 예산 경고가 얼마나 자주 뜨는지 → F3(배너) 착수 판단 근거
+SELECT count(*) FILTER (WHERE guard_reason IS NOT NULL) AS 경고, count(*) AS 전체
+FROM matching_candidate WHERE is_exposed = true;
+```
+
+`similarity`가 0.0이 아니면 파이썬→자바 배선이 맞다는 뜻이다.
+
+### B5-1. 프론트 전달 문서 — **완료 (2026-08-12)**
+
+- [x] `AI매칭_API_화면매핑_최신본.md`(Desktop + `docs/personal/` 사본) 갱신 완료.
+      스킬 부분 보유 후보 노출 + `budgetWarned` 예산 경고 배너(문구·위치·포지션 탭 종속)까지 담았다
+
+### B6. 환경 — 12번 pgvector — **완료 (2026-08-12)**
+
+**팀 확정: 도커가 아니라 윈도우에 PostgreSQL을 직접 설치한다.** 절차 원본은
+`README.md` "2-1) pgvector 설치"에 있다(팀원이 볼 자리라 거기에 뒀다).
+
+| | pgvector | 임베딩 테이블 | 데이터 | 비고 |
+|---|---|---|---|---|
+| 로컬 (네이티브 **PG18**) | **0.8.6** | ✅ | 0행 | 스프링 테이블 51개, `matching_paused` 있음 |
+| 배포 | ✅ | ✅ | freelancer 1 / position 7 | 2026-08-11 생성 = **B1 이전 = 재색인 대상** |
+
+**막혔던 지점과 해결 (같은 걸 다시 겪지 않게)**
+
+- `postgres:16-alpine` 이미지엔 pgvector가 **아예 없다.** 네이티브 설치도 마찬가지라
+  **소스에서 빌드해야 한다**(`nmake /F Makefile.win`)
+- `nmake`는 **PowerShell에 없다.** 관리자 권한 cmd에서 `vcvars64.bat`을 먼저 `call` 해야
+  잡힌다. `set "VAR=..."`도 cmd 문법이라 PowerShell에선 안 먹는다
+- `psql`도 PATH에 없다 —
+  `"C:\Program Files\PostgreSQL\18\bin\psql.exe" -U pairing -d pairing -f ...`
+- pgvector를 **레포 안에 클론하지 말 것**(`git status`에 잡힌다). `C:\` 밑에 받는다
+- ⚠️ **도커 PG16과 네이티브 PG18이 둘 다 5432를 잡으면 앱이 어디에 붙는지 알 수 없다.**
+  실제로 그 상태였다. 네이티브를 쓰면 `docker compose stop postgres`, Redis만 띄운다
+
+**남은 것 하나**
+
+- [ ] 재색인(B5) **직후** `REINDEX INDEX idx_freelancer_embedding_cosine;`
+      — 빈 테이블에 만들어서 pgvector가 `ivfflat index created with little data / This will
+      cause low recall` 경고를 실제로 냈다. 데이터가 들어온 뒤 다시 만들어야 한다
+
+> ⚠️ **임베딩 테이블을 자동 생성하는 코드는 어디에도 없다.** AI 서버는 `create_all`을 안 쓰기로
+> 했고 스프링은 이 테이블을 JPA 엔티티로 갖고 있지 않다. **환경이 새로 생길 때마다 사람이
+> `Pairing-python/db/init/10-create-ai-schema.sql`을 한 번 돌려야 한다.**
+> 그 SQL은 `ALTER TABLE ... ADD CONSTRAINT` 2줄 때문에 **재실행하면 실패한다**(파괴적이진 않다).
 
 ## C. 검증 — 아직 한 번도 안 한 것
 
@@ -280,22 +526,68 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 | C2 | 실제 Gemini 호출로 추천 품질 확인 | 점수 스케일 버그(0~10으로 답하던 것)를 실호출로만 잡았던 전례가 있다 |
 | C3 | 유사도 분포 측정 | 순위 기반 정규화로 바꿔서 상수는 불필요해졌지만, 분포가 극단적이면 재검토 |
 
-## D. 교수님 요구사항 (미착수)
+## D.+ 요구사항 (미착수)
 
 | # | 항목 | 상태 |
 |---|---|---|
 | D1 | 그라파나 모니터링 지표 | 미착수 |
 | D2 | 트래픽 테스트 | 미착수 |
-| D3 | 프론트 렌더링 | 미착수 |
+| ~~D3~~ | ~~프론트 렌더링~~ | **제외 (2026-08-12).** 4번 파트가 아니다 — 매칭 API는 이번 재설계로도 응답 모양이 안 바뀌고 프론트 전달 문서도 나가 있다. 화면 구현·렌더링은 프론트 담당 |
 | D4 | ~~LLM 비동기 처리~~ | **완료** (리스너 4개 + API 2개 202 응답 + 알림) |
 
 ## E. 다른 사람에게 전달만 하면 되는 것
 
-| # | 대상 | 내용 |
-|---|---|---|
-| E1 | 3번 | `ContractDraftListener`에 `@Async`가 없다 — 계약서 생성이 결제 응답을 붙잡는다. 아직 전달 안 함 |
-| E2 | 3번 | 정책 P03 문구(임베딩 시점)를 코드에 맞춰 수정 — **3번이 해주기로 함**, 확인만 |
-| E3 | — | 프리랜서 성공보수 정산 미생성 건 — develop에 `CreateFreelancerSuccessFeeCommand`가 들어왔다(`199a961`). **해결됐는지 확인 필요** |
+**2026-08-12 — 5건 전부 회신 받음. 남은 건 E2 회신 하나뿐이다.**
+
+| # | 대상 | 한 줄 | 결과 |
+|---|---|---|---|
+| E1 | 3번 | `ContractDraftListener` `@Async` 누락 | ✅ **해결.** 이미 붙여서 develop 반영, 리스너 안에서 `log.error`도 추가. 단 **결제 트랜잭션이 아니라 협상 타결 트랜잭션**이었다(계약서는 협상 타결 시 생성) — 내 설명이 틀렸고 지적 자체는 맞았다 |
+| E2 | 3번 | 정책 P03 문구 수정 | 🔴 **3번이 수정 중. 제안 문구 검토를 요청받았다 → 아래 회신 필요** |
+| E3 | 3번 | 프리랜서 성공보수 정산 | ✅ **해결.** `199a961`이 그 작업 맞음. 요율 6% 고정, MASTER 1%p 할인, 기준 = 계약 총액 |
+| E4 | 5번 | `AgreedNegotiationView` javadoc이 월단가를 "총액"이라 표기 | ✅ **문구만 틀렸고 계약 도메인은 정상.** `Contract.java:179`가 `salaryAmount * months`로 제대로 곱한다 — 1/N 사고는 없었다. 5번이 javadoc + 예시값(`"42000000"`)을 고치기로 함 |
+| E5 | 팀 | 배포 DB pgvector | ✅ **이미 다 있음.** 확장·테이블·데이터(freelancer 1행, position 7행, 모델 1종) 확인. **할 일 없음** |
+
+> **⚠️ B4에서 지킬 것 (5번 확인, 2026-08-12)**
+> `agreedAmount`는 **월 단가**이므로 `budgetCap`(역시 월 단가 상한)과 **바로 비교한다.
+> 개월 수를 곱하지 않는다.** 곱하면 상한이 개월 수배로 부풀어 경고가 영영 안 뜬다.
+
+**보낼 문장 (그대로 복사해서 쓰면 된다)**
+
+> **E2 회신 → 3번 (아직 안 보냄)**
+>
+> 제안하신 문구 방향은 맞습니다. **두 가지만 추가**하면 코드와 정확히 맞습니다.
+>
+> **(1) 프로젝트 — 재생성 경로가 빠졌습니다**
+> 모집 시작 후 클라이언트가 프로젝트를 수정하면 임베딩을 **다시 만듭니다**
+> (`ProjectUpdatedEvent` → `ProjectUpdatedEventListener`, 결제 후에만 발행).
+> 이게 빠지면 "결제 완료 시점에 저장한다"만 남아서, 수정 후 재생성이 정책에 없는 동작이 됩니다.
+> 참고로 **요청 카드용 스냅샷은 반대로 절대 안 건드립니다**(R32, 최초 모집 시작 시점 고정).
+> 임베딩은 검색 정확도라 최신이 맞고, 카드는 계약 근거라 고정이 맞습니다.
+>
+> **(2) 프리랜서 줄도 지금 틀려 있습니다**
+> P03 첫 줄이 *"프리랜서 등록 시점에 프리랜서 정보 임베딩 저장"* 인데, 실제로는
+> **이력서를 정식 저장·수정할 때**입니다(`ResumeService` → `ResumeUpdatedEvent`).
+> 회원 등록 시점이 아니고, **임시저장(`saveDraft`)은 이벤트를 안 냅니다** — 미완성 이력서로
+> 벡터가 생기지 않게 일부러 그렇게 했습니다.
+>
+> **제안 문구**
+> > 프리랜서 정보는 **이력서를 정식 저장·수정하는 시점**에 임베딩 저장한다. 임시저장은 대상이 아니다.
+> > 프로젝트 정보는 **착수금 수수료 결제가 완료되어 모집이 시작되는 시점**에 임베딩 저장하고,
+> > 모집 시작 후 프로젝트가 수정되면 다시 만든다.
+> > 등록만 하고 결제하지 않은 프로젝트는 추천이 시작되지 않아 임베딩 비용을 쓰지 않는다.
+>
+> (관리자 일괄 재색인 API도 임베딩을 만드는 경로지만, 운영 도구라 정책 문구에는 안 넣어도 된다고 봅니다.)
+
+> **E5 → 팀 (인프라 담당) — 2026-08-12 확인 완료**
+> 배포 DB에 **pgvector 확장은 있고**, 임베딩 테이블만 SQL로 만들면 된다는 답을 받았다.
+> 남은 액션은 아래 "배포 DB 테이블 생성" 하나뿐이다.
+
+**환경 준비는 로컬·배포 둘 다 끝났다(2026-08-12).** 새 환경이 생기면 위 B6 절차를 따른다.
+
+- 참고: **B3의 새 추천 쿼리는 ivfflat 인덱스를 쓰지 않는다.** 하드필터 통과자 전원에 대해
+  유사도를 계산하는 설계라 `ORDER BY ... LIMIT`이 없어서 순차 스캔이다(의도된 동작). 인덱스는
+  내부용 후보 미리보기 엔드포인트(`GET /embeddings/positions/{id}/candidates`)가 쓴다.
+  **수만 명 규모가 되면 이 지점을 먼저 본다.**
 
 ## F. 향후 개선 (범위 밖, 기록만)
 
@@ -303,9 +595,41 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 |---|---|---|
 | F1 | 상주근무 시 주소 비교 | 컬럼은 다 있다(`project.work_location`, `resume.zip_code/address`). 시/군/구까지만, **상세주소는 개인정보라 LLM에 금지**, 거리 계산 안 함. Python `PositionRequirement`/`FreelancerProfile`에 필드 추가부터 필요 |
 | F2 | `position_skill`에 요구 숙련도 컬럼 | 있으면 숙련도를 보너스가 아니라 조건으로 쓸 수 있다 (3번 파트) |
-| F3 | 예산 경고 화면 노출 (U4) | 지금은 `guardReason` 기록만. 띄우려면 회차 플래그 + API 필드 + 프론트 작업 |
+| F3 | 예산 경고 화면 노출 (U4) | **2026-08-12 하기로 확정.** 문구까지 정했고 프론트에도 전달됨. 아래 상세 참고 |
 | F4 | LLM 호출 비용 | 포지션당 1회라 포지션 3개면 3회. 원안("프로젝트당 1회")과 다르다 |
 | F5 | 포지션별 우대사항 되살리기 | 기획 결정 사안. 지금은 불필요 |
+
+### F3 상세 — 예산 경고 배너 (2026-08-12 확정, 미구현)
+
+**`lowScoreWarned`와 완전히 같은 패턴이다.** 새로 설계할 게 없고 이미 뚫린 길을 한 번 더 쓴다.
+
+| # | 어디 | 무엇 |
+|---|---|---|
+| 1 | `MatchingRoundJpaEntity` | `budget_warned` 컬럼 (`ddl-auto`가 생성) |
+| 2 | `MatchingRound` | `warnBudget()` — `warnLowScore()` 바로 옆에 같은 모양으로 |
+| 3 | `MatchingRoundCreationService` | `evaluateBudgetCombination`이 사유를 냈으면 `round.warnBudget()` |
+| 4 | `CandidateListResponse` | `budgetWarned` 필드 |
+| 5 | `CandidateResponseAssembler` | 매핑 |
+| 6 | 프론트 | `budgetWarned=true`면 상단 배너 (기존 컴포넌트 재사용) |
+
+백엔드 약 1시간. **확정 문구:**
+
+```text
+추천된 후보들의 희망 단가 합계가 남은 예산을 넘습니다. 협상에서 조정이 필요할 수 있어요.
+```
+
+- **`guardReason`은 화면에 내보내지 않는다.** 상한 계산식이 그대로 노출되면 클라이언트가
+  역산해서 다른 후보의 희망 단가를 추정할 수 있다. 개발자용 로그로만 둔다
+- `lowScoreWarned`와 **동시에 true일 수 있다.** 배너 2개를 어떻게 보여줄지는 프론트가 정한다
+  (프론트 전달 문서에 질문으로 남겼다)
+- ⏳ **착수 시점**: C1·C2를 먼저 돌려 **경고가 실제로 얼마나 자주 뜨는지** 보고 만드는 게 낫다.
+  너무 자주 뜨면 배너가 아니라 **판정식(×1.2)부터** 손봐야 하고, 그러면 문구도 다시 쓴다.
+  아래 쿼리로 빈도를 먼저 본다:
+
+```sql
+SELECT count(*) FILTER (WHERE guard_reason IS NOT NULL) AS 경고, count(*) AS 전체
+FROM matching_candidate WHERE is_exposed = true;
+```
 
 ## 주의 사항 (반복해서 걸린 것)
 

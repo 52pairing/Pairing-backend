@@ -17,6 +17,9 @@ public interface SpringDataMatchingRequestRepository extends JpaRepository<Match
 
     long countByPositionIdAndStatusNotIn(Long positionId, List<MatchingStatus> excludedStatuses);
 
+    List<MatchingRequestJpaEntity> findByPositionIdAndStatusNotIn(Long positionId,
+                                                                 List<MatchingStatus> excludedStatuses);
+
     boolean existsByCandidateId(Long candidateId);
 
     boolean existsByProjectId(Long projectId);

@@ -43,9 +43,9 @@ class EmbeddingReindexServiceTest {
     void reindexesAllFreelancersAndPositions() {
         when(freelancerDirectoryPort.findAllFreelancerIdsWithResume()).thenReturn(List.of(1L, 2L));
         when(freelancerDirectoryPort.findResumeSummary(1L))
-                .thenReturn(new FreelancerResumeSummary("자기소개1", List.of()));
+                .thenReturn(new FreelancerResumeSummary("자기소개1", List.of(), List.of()));
         when(freelancerDirectoryPort.findResumeSummary(2L))
-                .thenReturn(new FreelancerResumeSummary("자기소개2", List.of()));
+                .thenReturn(new FreelancerResumeSummary("자기소개2", List.of(), List.of()));
 
         when(matchingSnapshotRepository.findAllBySnapshotType(SnapshotType.POSITION)).thenReturn(List.of(
                 MatchingSnapshot.create(10L, 100L, null, SnapshotType.POSITION, "{}"),
@@ -72,7 +72,7 @@ class EmbeddingReindexServiceTest {
     void continuesWhenOneItemFails() {
         when(freelancerDirectoryPort.findAllFreelancerIdsWithResume()).thenReturn(List.of(1L, 2L));
         when(freelancerDirectoryPort.findResumeSummary(1L))
-                .thenReturn(new FreelancerResumeSummary("자기소개1", List.of()));
+                .thenReturn(new FreelancerResumeSummary("자기소개1", List.of(), List.of()));
         when(freelancerDirectoryPort.findResumeSummary(2L))
                 .thenThrow(new RuntimeException("조회 실패"));
 
@@ -97,7 +97,7 @@ class EmbeddingReindexServiceTest {
         return new ProjectPositionSummary(
                 projectId, "프로젝트" + projectId, "회사명", "IT/50명", JobRole.BACKEND, List.of(),
                 3, "재택/풀타임", "4개월", 4, PeriodUnit.MONTH, null, 50_000_000L,
-                1, 1, "메인업무", "상세범위", "우대사항"
+                1, 1, "진행상황", "메인업무", "상세범위", "우대사항"
         );
     }
 }
