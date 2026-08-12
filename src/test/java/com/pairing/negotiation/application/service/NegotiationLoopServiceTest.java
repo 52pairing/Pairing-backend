@@ -287,6 +287,31 @@ class NegotiationLoopServiceTest {
     }
 
     @Test
+    @DisplayName("조건 라운드 수는 대리인이 그 쟁점을 논의할 때마다 오른다(재지시로는 안 오른다)")
+    void conditionRoundCountFollowsAgentDiscussion() {
+        startBothSides();   // 라운드 1 — 대리인이 AMOUNT 를 논의했다
+
+        assertThat(conditionRoundCount()).isEqualTo(1);
+
+        // [거절]만 눌린 상태는 아직 오간 말이 없다. 여기서 오르면 재지시 한 번이 두 라운드로 세진다.
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, false, null)));
+        assertThat(conditionRoundCount()).isEqualTo(1);
+
+        // 재지시 → 대리인이 라운드 2 를 돌면 그때 오른다.
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, false, "5,800,000")));
+        runAgent(NegotiationEventType.ANSWERED);
+
+        assertThat(conditionRoundCount()).isEqualTo(2);
+    }
+
+    private int conditionRoundCount() {
+        return negotiationRepository.findById(negotiationId).orElseThrow()
+                .getConditions().get(0).getRoundCount();
+    }
+
+    @Test
     @DisplayName("대리인끼리 전 조건을 합의하면 사람 응답 없이도 타결된다(AGREED)")
     void agentAgreementSettlesWithoutHumanAnswer() {
         // 대리인이 합의(agreed=true)를 내놓는 포트로 바꿔 끼운다.
@@ -449,6 +474,36 @@ class NegotiationLoopServiceTest {
         Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.FAILED);
         assertThat(reloaded.getEndReason()).isEqualTo("예산이 맞지 않습니다.");
+    }
+
+    @Test
+    @DisplayName("give-up: 대리인이 도는 중에 포기하면 예약이 정리돼 뒤늦은 A2A 응답이 버려진다")
+    void giveUpWhileAgentRunningDiscardsLateResult() {
+        // 양측 제출로 대리인이 예약된 상태(RUNNING). A2A 응답은 아직 안 왔다.
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4800000")));
+        loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5200000")));
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow().getAgentState())
+                .isEqualTo(NegotiationAgentState.RUNNING);
+
+        loopUseCase.giveUp(negotiationId, FREELANCER_ACCOUNT_ID, "더 기다릴 수 없습니다.");
+
+        Negotiation afterGiveUp = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(afterGiveUp.getStatus()).isEqualTo(NegotiationStatus.FAILED);
+        assertThat(afterGiveUp.getAgentState()).isEqualTo(NegotiationAgentState.IDLE);
+        assertThat(afterGiveUp.getAgentStartedAt()).isNull();
+
+        // 15초 뒤 A2A 응답이 도착한 상황. 예약이 없으므로 조용히 빠져야 한다.
+        // 예약을 안 지우면 여기서 NOT_IN_PROGRESS 가 터지고, 리스너가 그걸 대리인 실패로 오해해
+        // 이미 끝난 협상에 "다시 시도해 주세요" 안내를 붙인다(실측으로 확인한 경로).
+        runAgent(NegotiationEventType.STARTED);
+
+        Negotiation afterLateRun = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(afterLateRun.getStatus()).isEqualTo(NegotiationStatus.FAILED);
+        assertThat(afterLateRun.getTotalRound()).isZero();
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .noneMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL);
     }
 
     // ----- 대리인(A2A) 비동기 실행 -----

@@ -33,6 +33,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -265,6 +266,13 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         negotiationRepository.save(negotiation);
     }
 
+    /**
+     * 협상 포기. 누가 눌렀는지로 갈리지 않는다 — 역할은 당사자 검증에만 쓴다.
+     *
+     * <p><b>대리인이 도는 중에도 누를 수 있다.</b> 막지 않는 이유는, 막으면 A2A 가 늦어질 때
+     * 사용자가 그만둘 방법이 없어지기 때문이다. 대신 예약을 여기서 정리해 <b>뒤늦게 도착한
+     * 결과가 조용히 버려지게</b> 한다.
+     */
     @Override
     public void giveUp(Long negotiationId, Long accountId, String reason) {
         Negotiation negotiation = load(negotiationId);
@@ -272,6 +280,10 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
 
         String endReason = (reason == null || reason.isBlank()) ? "협상 포기" : reason;
         negotiation.fail(endReason);
+        // 대리인 예약을 지운다. 안 지우면 뒤늦게 온 A2A 응답이 runAgent 의 isAgentRunning() 가드를
+        // 통과해 라운드를 올리려다 NOT_IN_PROGRESS 로 터지고, 리스너가 그걸 대리인 실패로 오해해
+        // 끝난 협상에 "다시 시도해 주세요" 안내를 붙인다(실측 확인).
+        negotiation.finishAgentRun();
         // 결렬(협상 포기) → 매칭 요청을 협상 결렬(NEGOTIATION_FAILED)로 종결(같은 트랜잭션).
         matchingOutcomeUseCase.markNegotiationFailed(negotiation.getRequestId());
         persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
@@ -374,9 +386,20 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
                     senderOf(m.sender()), m.content(), m.reason(), m.proposedValue()));
         }
 
-        // 대리인끼리 합의한 조건은 자동 락(사람은 승인 패널에서 [이미 합의🔒]로 본다).
         Map<Long, NegotiationCondition> pendingById = pending.stream()
                 .collect(Collectors.toMap(NegotiationCondition::getId, Function.identity(), (a, b) -> a));
+
+        // 이 라운드에 실제로 말이 오간 쟁점만 라운드 수를 올린다. 물어본 목록(pending)이 아니라
+        // 돌아온 대화를 기준으로 세는 이유는, 파이썬이 일부 쟁점을 빠뜨리고 답할 때 논의되지도
+        // 않은 라운드가 화면에 찍히기 때문이다.
+        result.messages().stream()
+                .map(NegotiationProposalPort.AgentMessage::conditionId)
+                .distinct()
+                .map(pendingById::get)
+                .filter(Objects::nonNull)
+                .forEach(NegotiationCondition::countRound);
+
+        // 대리인끼리 합의한 조건은 자동 락(사람은 승인 패널에서 [이미 합의🔒]로 본다).
         for (NegotiationProposalPort.ConditionOutcome o : result.outcomes()) {
             NegotiationCondition condition = pendingById.get(o.conditionId());
             if (condition == null || !o.agreed() || condition.isAgreed()) {
