@@ -28,9 +28,16 @@ public class AuthCookieWriter {
                 GlobalJwtProvider.REFRESH_TOKEN_COOKIE, result.refreshToken()));
     }
 
+    /**
+     * 인증 쿠키를 만료시킨다.
+     *
+     * <p>구현은 {@link GlobalJwtProvider#expireAuthCookies}에 있다. 시큐리티 필터도 같은 일을
+     * 해야 하는데 필터(global)가 이 클래스(auth.presentation)를 참조할 수는 없어서,
+     * 만료 로직 자체는 global 쪽에 두고 여기서는 위임만 한다. 두 곳에 복사해 두면
+     * 한쪽 쿠키 속성만 바뀌어 "지운 줄 알았는데 안 지워지는" 상태가 만들어진다.
+     */
     public void clear(HttpServletResponse response) {
-        add(response, globalJwtProvider.deleteCookie(GlobalJwtProvider.ACCESS_TOKEN_COOKIE));
-        add(response, globalJwtProvider.deleteCookie(GlobalJwtProvider.REFRESH_TOKEN_COOKIE));
+        globalJwtProvider.expireAuthCookies(response);
     }
 
     private void add(HttpServletResponse response, ResponseCookie cookie) {
