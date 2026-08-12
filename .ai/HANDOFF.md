@@ -443,22 +443,27 @@ POST /api/v1/matchings/admin/embeddings/reindex
 - 안 돌리면 **옛 규칙 벡터(회사명·스킬 포함)와 새 규칙 벡터(자유 서술만)가 섞여** 비교 자체가
   무의미해진다
 
-**③ 재색인이 끝났는지 확인 — ②의 결과를 볼 수 있는 유일한 곳**
+**③ 재색인이 끝났는지 확인 — ②는 202만 주므로 여기서 봐야 한다**
 
-②는 202만 주고 끝나므로 **여기서 확인해야 한다.**
+⚠️ **`updated_at`으로 보면 안 된다.** `upsert`의 `set_`에 `updated_at`이 없어서
+(`embedding`/`model`/`source_hash`만 갱신) **벡터를 다시 만들어도 시각이 안 바뀐다.**
+2026-08-12에 이걸로 "재색인이 안 됐나?" 하고 한참 헤맸다. 아래 **B7 버그 ①** 참고.
+
+**`ai_agent_log`를 봐야 한다.**
 
 ```sql
-SELECT 'freelancer' AS kind, count(*) AS 전체,
-       count(*) FILTER (WHERE updated_at > now() - interval '10 minutes') AS 방금_갱신
-FROM freelancer_embedding
-UNION ALL
-SELECT 'position', count(*),
-       count(*) FILTER (WHERE updated_at > now() - interval '10 minutes')
-FROM position_embedding;
+SELECT ref_type, status, count(*), min(created_at) AS 처음, max(created_at) AS 마지막
+FROM ai_agent_log
+WHERE agent_type = 'EMBEDDING'
+  AND created_at > now() - interval '30 minutes'
+GROUP BY ref_type, status ORDER BY 1, 2;
 ```
 
-**방금_갱신 = 전체**가 되면 완료다. 다르면 아직 도는 중이거나 일부가 실패한 것이니 서버 로그를
-본다. (2026-08-12 기준 배포 DB에 freelancer 1건 / position 7건이라 금방 끝난다.)
+| 결과 | 해석 |
+|---|---|
+| `FREELANCER`/`POSITION` 각각 대상 수만큼 `SUCCESS` | ✅ 성공 |
+| 일부 `FAILED` | Gemini 호출 실패. `error_message` 확인 |
+| **행이 아예 없음** | 자바가 파이썬을 부르기 전에 끝났다는 뜻 — 대상이 0이거나 자바에서 예외. **서버 로그**를 봐야 한다(실패는 `log.warn`으로만 남는다) |
 
 **④ ivfflat 인덱스 다시 만들기 — ③이 끝난 뒤에**
 
@@ -499,6 +504,70 @@ FROM matching_candidate WHERE is_exposed = true;
 
 - [x] `AI매칭_API_화면매핑_최신본.md`(Desktop + `docs/personal/` 사본) 갱신 완료.
       스킬 부분 보유 후보 노출 + `budgetWarned` 예산 경고 배너(문구·위치·포지션 탭 종속)까지 담았다
+
+### B7. 재색인에서 드러난 버그 2개 — **다음 수정 때 같이 올린다 (별도 PR 만들지 말 것)**
+
+2026-08-12 배포 후 재색인을 실제로 돌려보고 발견했다. **둘 다 "에러가 안 나서 안 보이는" 종류다.**
+
+실측 결과: `ai_agent_log`에 `FREELANCER SUCCESS 1건`만 있고 **`POSITION`은 0건.**
+포지션 임베딩이 9건 있는데 하나도 다시 만들어지지 않았다.
+
+#### ① Python — `updated_at`이 갱신되지 않는다
+
+```python
+# app/domains/embedding/repository.py — upsert_freelancer / upsert_position
+set_={"embedding": vector, "model": model, "source_hash": source_hash}
+#                                                        ^ updated_at 없음
+```
+
+`updated_at`은 `server_default=func.current_timestamp()`라 **INSERT 때만** 값이 들어간다.
+upsert의 `set_`에 없으니 **UPDATE에서는 안 바뀐다.** 그래서 "이 벡터가 언제 만들어졌나"를
+알 수 없고, **재색인이 됐는지 확인할 방법이 사라진다.**
+
+```python
+set_={"embedding": vector, "model": model, "source_hash": source_hash,
+      "updated_at": func.current_timestamp()}
+```
+
+한 줄이면 된다. **다음 파이썬 수정 때 같이 올린다.**
+
+#### ② Java — 포지션 재색인 대상을 `matching_snapshot`에서 찾는다
+
+```java
+// EmbeddingReindexService.reindexPositions()
+List<MatchingSnapshot> positionSnapshots =
+        matchingSnapshotRepository.findAllBySnapshotType(SnapshotType.POSITION);
+```
+
+**임베딩을 만드는 경로가 둘인데 스냅샷을 만드는 건 하나뿐이다:**
+
+| 경로 | 스냅샷 | 임베딩 |
+|---|---|---|
+| `RecruitingStartedPositionHandler` (모집 시작) | ✅ 만듦 | ✅ 만듦 |
+| `ProjectUpdatedEventListener` (결제 후 수정) | ❌ **안 만듦**(R32 — 카드는 고정이라 일부러) | ✅ 만듦 |
+
+즉 **스냅샷 없이 임베딩만 있는 포지션이 생길 수 있고, 그 포지션은 재색인에서 통째로 빠진다.**
+스냅샷은 "요청 카드 고정용"이지 "임베딩 대상 목록"이 아닌데 그 용도로 쓴 것이 잘못이다.
+
+> ⚠️ **원인이 둘 중 어느 쪽인지는 아직 확정 못 했다.** (a) 스냅샷이 0건이라 루프가 안 돈 것과
+> (b) 스냅샷은 있는데 `findPositionSummary`가 전부 예외를 낸 것이 **둘 다 `EMBEDDING` 로그 0건**을
+> 만든다. 자바에서 예외가 나면 파이썬을 부르기 전에 끝나서 AI 로그가 안 남기 때문이다.
+> **먼저 확인할 것:**
+> ```sql
+> SELECT snapshot_type, count(*) FROM matching_snapshot GROUP BY snapshot_type;
+> ```
+> `POSITION`이 임베딩 9건보다 적으면 (a)다. 같은데도 0건이면 (b)이고 **서버 로그**를 봐야 한다.
+
+**고치는 방향**: 대상 목록을 스냅샷이 아니라 **모집이 시작된 포지션**에서 가져온다.
+`matching_round`의 distinct `position_id`가 후보다 — 모집 시작 시 라운드가 반드시 생기고,
+`ProjectUpdatedEvent`는 결제 후에만 발행되므로 라운드가 이미 있는 포지션이다.
+**다음 자바 수정 때 같이 올린다.**
+
+#### 지금 당장 급하진 않은 이유
+
+포지션 9건이 옛 규칙 벡터로 남지만, **C1에서 새 프로젝트를 결제하면 새 규칙으로 만들어진다.**
+기존 9건은 그 프로젝트들을 다시 추천할 때만 문제가 된다. **프리랜서 1건은 성공했으므로 B1 배선
+자체는 정상이다** — 대상 조회만 틀렸다.
 
 ### B6. 환경 — 12번 pgvector — **완료 (2026-08-12)**
 
