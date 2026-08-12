@@ -459,9 +459,9 @@ class ReviewIntegrationTest {
         given(completed.getId()).willReturn(CONTRACT_ID);
         given(completed.getProjectId()).willReturn(PROJECT_ID);
         given(completed.getStatus()).willReturn(ContractStatus.COMPLETED);
-        // 서명·정산 플래그는 작성 대기 판정과 무관해서 false 로 둔다.
+        // 서명·정산 플래그와 카드 표시용 값은 작성 대기 판정과 무관해서 비워 둔다.
         ContractSummary summary = new ContractSummary(completed, "페어링 웹 리뉴얼", null, "이프리",
-                false, true, true, true);
+                null, false, true, true, true, null);
         given(contractQueryUseCase.findMine(eq(clientAccountId), isNull(), isNull(), any()))
                 .willReturn(new PageImpl<>(List.of(summary)));
 

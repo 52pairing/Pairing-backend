@@ -52,9 +52,11 @@ public record SettlementResponse(
      * <p>projectTitle 은 project 도메인, payerName 은 account 도메인 값이라 조립하는 쪽이 넘긴다.
      * 정산 조회 서비스가 직접 읽으면 project -> settlement 방향과 맞물려 순환이 된다.
      *
-     * <p>paymentMethodLabel 은 아직 null 이다. 결제수단 조회 API 가 스켈레톤이다.
+     * <p>paymentMethodLabel 도 account 도메인 값이다. 미결제 정산이나 결제 후 삭제된 수단이면
+     * null 로 흘린다. 결제일시·승인번호는 그대로 남으므로 화면이 빈 칸만 감추면 된다.
      */
-    public static SettlementResponse from(SettlementResult result, String projectTitle, String payerName) {
+    public static SettlementResponse from(SettlementResult result, String projectTitle, String payerName,
+                                          String paymentMethodLabel) {
         return new SettlementResponse(
                 result.settlementId(),
                 result.settlementNo(),
@@ -69,7 +71,7 @@ public record SettlementResponse(
                 result.gradeDiscount(),
                 result.feeAmount(),
                 result.status(),
-                null,
+                paymentMethodLabel,
                 result.approvalNo(),
                 result.failReason(),
                 result.overdueReason(),

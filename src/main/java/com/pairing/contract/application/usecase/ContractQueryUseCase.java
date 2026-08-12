@@ -3,6 +3,7 @@ package com.pairing.contract.application.usecase;
 import com.pairing.contract.application.result.ContractDetail;
 import com.pairing.contract.application.result.ContractSummary;
 import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.domain.model.ContractTab;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -27,12 +28,26 @@ public interface ContractQueryUseCase {
     String pdfFileName(Long contractId, Long accountId);
 
     /**
-     * 내 계약 목록. projectId / status 가 null 이면 그 조건을 걸지 않는다.
+     * 내 계약 목록. 탭을 쓰지 않는 호출용이다.
+     *
+     * <p>계약 도메인 밖(등급·리뷰)에서 "내 계약 전부" 를 세는 데 쓴다. 탭이 늘어나도 그쪽
+     * 호출부가 바뀌지 않도록 이 형태를 남겨 둔다.
+     */
+    default Page<ContractSummary> findMine(Long accountId, Long projectId, ContractStatus status,
+                                           Pageable pageable) {
+        return findMine(accountId, projectId, status, null, pageable);
+    }
+
+    /**
+     * 내 계약 목록. projectId / status / tab 이 null 이면 그 조건을 걸지 않는다.
      *
      * <p>{@code projectId} 를 주면 그 프로젝트의 내 계약만 나온다. 프로젝트 상세의 계약 탭이 쓴다.
+     *
+     * <p>{@code tab} 은 계약관리 화면의 탭이다. 서명 대기와 상대방 서명 대기는 계약 상태가
+     * 같아서 {@code status} 로는 못 가른다.
      */
     Page<ContractSummary> findMine(Long accountId, Long projectId, ContractStatus status,
-                                   Pageable pageable);
+                                   ContractTab tab, Pageable pageable);
 
     /** 상세 조회. 없으면 CT_001, 당사자가 아니면 CT_002. */
     ContractDetail getDetail(Long contractId, Long accountId);

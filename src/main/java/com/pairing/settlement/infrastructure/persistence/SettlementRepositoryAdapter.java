@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -77,5 +78,20 @@ public class SettlementRepositoryAdapter implements SettlementRepository {
         }
         return springDataRepository.findPaidFreelancerDepositContractIds(contractIds).stream()
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    /** 계약 하나에 결제 대기가 둘 이상이면 오래된 것을 남긴다. 쿼리가 id 오름차순이라 첫 값이 그것이다. */
+    @Override
+    public Map<Long, Long> findPayableSettlementIdsByContract(Long payerAccountId,
+                                                              Collection<Long> contractIds) {
+        if (contractIds == null || contractIds.isEmpty()) {
+            return Map.of();
+        }
+        return springDataRepository
+                .findPayableByContractIds(payerAccountId, contractIds, PAYABLE_STATUSES).stream()
+                .collect(Collectors.toUnmodifiableMap(
+                        row -> (Long) row[0],
+                        row -> (Long) row[1],
+                        (first, second) -> first));
     }
 }

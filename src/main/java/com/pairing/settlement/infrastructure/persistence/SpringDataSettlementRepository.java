@@ -67,6 +67,26 @@ public interface SpringDataSettlementRepository extends JpaRepository<Settlement
             """)
     List<Long> findPaidFreelancerDepositContractIds(@Param("contractIds") Collection<Long> contractIds);
 
+    /**
+     * 계약별로 이 사람이 지금 결제할 정산.
+     *
+     * <p>계약 목록의 결제 버튼이 쓴다. 계약 1건에 착수금·성공보수가 붙는데 둘이 동시에 미결제일
+     * 일은 없다. 결제 실패로 여러 건이 남는 경우를 대비해 <b>오래된 것부터</b> 준다.
+     *
+     * <p>{@code payerAccountId} 로 좁히므로 클라이언트가 불러도 남의 정산이 나오지 않는다.
+     * 계약에 걸린 정산은 전부 프리랜서 몫이라 클라이언트에게는 빈 결과가 돌아간다.
+     */
+    @Query("""
+            SELECT s.contractId, s.id FROM SettlementJpaEntity s
+             WHERE s.contractId IN :contractIds
+               AND s.payerAccountId = :payerAccountId
+               AND s.status IN :statuses
+             ORDER BY s.id ASC
+            """)
+    List<Object[]> findPayableByContractIds(@Param("payerAccountId") Long payerAccountId,
+                                            @Param("contractIds") Collection<Long> contractIds,
+                                            @Param("statuses") List<SettlementStatus> statuses);
+
     /** 탈퇴 가능 여부 판정용. 행을 읽지 않고 존재만 확인한다. */
     boolean existsByPayerAccountIdAndStatusIn(Long payerAccountId, List<SettlementStatus> statuses);
 

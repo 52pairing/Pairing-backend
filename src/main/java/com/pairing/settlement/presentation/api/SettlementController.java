@@ -1,5 +1,7 @@
 package com.pairing.settlement.presentation.api;
 
+import com.pairing.account.application.usecase.AccountQueryUseCase;
+import com.pairing.account.domain.model.PaymentMethod;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
@@ -40,6 +42,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 수수료 정산과 위약금. (요구사항 R20, R34, R39)
@@ -47,7 +50,8 @@ import java.util.Map;
  * <p>실제 용역비는 플랫폼을 거치지 않는다. 여기서 다루는 돈은 플랫폼 수수료와 위약금뿐이다.
  * 결제는 PG 연동 없이 가상계좌 잔액을 증감하는 수동 처리다.
  *
- * <p>스켈레톤이라 고정 응답을 돌려준다.
+ * <p><b>위약금 엔드포인트만</b> 아직 고정 응답이다. Penalty 도메인이 없고, 중도 파기 자체가
+ * 수행분 산정 기준(P28 제12조) 미정으로 막혀 있어 발생할 일이 없다. 정산은 실제로 동작한다.
  */
 @RestController
 @RequestMapping("/api/v1/settlements")
@@ -58,6 +62,7 @@ public class SettlementController {
     private final SettlementQueryUseCase settlementQueryUseCase;
     private final SettlementPaymentUseCase settlementPaymentUseCase;
     private final ProjectQueryUseCase projectQueryUseCase;
+    private final AccountQueryUseCase accountQueryUseCase;
 
     @GetMapping("/mine")
     @Operation(summary = "내 정산 목록",
@@ -73,10 +78,11 @@ public class SettlementController {
     ) {
         // 여러 정산이 같은 프로젝트를 가리키는 경우가 많아 요청 단위로 이름 조회를 모은다.
         Map<Long, String> titleCache = new HashMap<>();
+        Map<Long, String> methodLabels = paymentMethodLabels(accountId);
 
         Page<SettlementResponse> data = settlementQueryUseCase
                 .findMine(accountId, projectId, phase, status, PageRequest.of(page, size))
-                .map(result -> toResponse(result, titleCache));
+                .map(result -> toResponse(result, titleCache, methodLabels));
 
         return ResponseEntity.ok(ApiResponse.success("SETTLEMENTS_FOUND", "조회에 성공했습니다.",
                 PageResponse.from(data)));
@@ -90,7 +96,7 @@ public class SettlementController {
             @CurrentAccountId Long accountId
     ) {
         return ResponseEntity.ok(ApiResponse.success("SETTLEMENT_FOUND", "조회에 성공했습니다.",
-                toResponse(settlementQueryUseCase.getByIdForPayer(settlementId, accountId))));
+                toResponse(settlementQueryUseCase.getByIdForPayer(settlementId, accountId), accountId)));
     }
 
     @PostMapping("/{settlementId}/payment")
@@ -110,21 +116,39 @@ public class SettlementController {
                 settlementPaymentUseCase.pay(settlementId, accountId, request.paymentMethodId());
 
         return ResponseEntity.ok(ApiResponse.success("SETTLEMENT_PAID", "결제가 완료되었습니다.",
-                toResponse(result)));
+                toResponse(result, accountId)));
     }
 
-    private SettlementResponse toResponse(SettlementResult result) {
-        return toResponse(result, new HashMap<>());
+    private SettlementResponse toResponse(SettlementResult result, Long accountId) {
+        return toResponse(result, new HashMap<>(), paymentMethodLabels(accountId));
     }
 
     /**
-     * 프로젝트명을 붙여 응답을 조립한다.
+     * 프로젝트명·결제수단 표기를 붙여 응답을 조립한다.
      *
      * <p>정산 서비스가 project 를 직접 읽으면 project -> settlement 방향과 맞물려 순환이 되므로
-     * 프레젠테이션에서 두 인바운드 포트를 조합한다. payerName 은 결제수단 조회와 함께 뒤에 채운다.
+     * 프레젠테이션에서 인바운드 포트를 조합한다. payerName 은 아직 채우지 않는다.
      */
-    private SettlementResponse toResponse(SettlementResult result, Map<Long, String> titleCache) {
-        return SettlementResponse.from(result, resolveProjectTitle(result.projectId(), titleCache), null);
+    private SettlementResponse toResponse(SettlementResult result, Map<Long, String> titleCache,
+                                          Map<Long, String> methodLabels) {
+        return SettlementResponse.from(result,
+                resolveProjectTitle(result.projectId(), titleCache),
+                null,
+                methodLabels.get(result.paymentMethodId()));
+    }
+
+    /**
+     * 이 사람의 결제수단 id -&gt; 표기("신한카드 **** 1234").
+     *
+     * <p>정산마다 되물으면 목록 크기만큼 조회가 늘어난다. 한 사람이 가진 수단은 많아야 몇 개라
+     * 요청 시작에 통째로 읽어 둔다. 조회 대상이 <b>본인 것뿐</b>이라 남의 카드가 섞이지 않는다.
+     *
+     * <p>삭제된 수단은 목록에서 빠져 표기가 null 이 된다. 결제 이력 자체는 승인번호로 남으므로
+     * 화면이 그 칸만 감추면 된다.
+     */
+    private Map<Long, String> paymentMethodLabels(Long accountId) {
+        return accountQueryUseCase.findMyPaymentMethods(accountId).stream()
+                .collect(Collectors.toMap(PaymentMethod::getId, PaymentMethod::getDisplayName));
     }
 
     /**
