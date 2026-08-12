@@ -21,6 +21,14 @@ public interface MatchingRequestRepository {
     /** 포지션에 지금 자리를 차지하고 있는(거절/결렬/중도종료가 아닌) 요청 수. 모집 인원 초과 검증(R04)에 쓴다. */
     long countByPositionIdAndStatusNotIn(Long positionId, List<MatchingStatus> excludedStatuses);
 
+    /**
+     * 위 count와 같은 기준의 <b>목록</b> 버전. 가드 G3(예산 조합)가 "이미 자리를 차지한 사람들이
+     * 얼마를 쓰고 있는지"를 알아야 해서 개수만으로는 부족하다.
+     *
+     * <p>각 요청의 상태로 단가 출처가 갈린다 — 타결 이후면 협상 타결가, 그 전이면 희망 단가다.
+     */
+    List<MatchingRequest> findByPositionIdAndStatusNotIn(Long positionId, List<MatchingStatus> excludedStatuses);
+
     /** 이 후보에게 이미 매칭 요청을 보냈는지(CandidateResponse.requested). */
     boolean existsByCandidateId(Long candidateId);
 

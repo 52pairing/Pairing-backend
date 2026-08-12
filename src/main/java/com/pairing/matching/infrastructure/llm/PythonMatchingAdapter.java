@@ -74,12 +74,13 @@ public class PythonMatchingAdapter implements MatchingPort {
     @Override
     @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "recommendFallback")
     public MatchingRecommendation recommend(Long positionId, int recruitCount, int poolMultiplier,
-                                            List<Long> excludedFreelancerIds) {
+                                            List<Long> excludedFreelancerIds, long budgetCap) {
         Map<String, Object> requestBody = Map.of(
                 "position_id", positionId,
                 "recruit_count", recruitCount,
                 "pool_multiplier", poolMultiplier,
-                "excluded_freelancer_ids", excludedFreelancerIds
+                "excluded_freelancer_ids", excludedFreelancerIds,
+                "budget_cap", budgetCap
         );
 
         PythonApiResponse<RecommendationData> response;
@@ -106,7 +107,8 @@ public class PythonMatchingAdapter implements MatchingPort {
 
         RecommendationData data = requireData(response);
         List<RankedFreelancer> candidates = data.candidates().stream()
-                .map(item -> new RankedFreelancer(item.freelancerId(), item.score(), item.reason()))
+                .map(item -> new RankedFreelancer(item.freelancerId(), item.score(), item.reason(),
+                        item.similarity() != null ? item.similarity() : 0.0))
                 .toList();
         return new MatchingRecommendation(data.positionId(), data.model(), candidates);
     }
@@ -168,8 +170,11 @@ public class PythonMatchingAdapter implements MatchingPort {
         return e.getResponseBodyAsString().contains(CANDIDATE_POOL_EMPTY_CODE);
     }
 
+    // 파라미터가 원본 메서드와 정확히 같아야(+ 끝에 Throwable) resilience4j가 폴백으로 인식한다.
+    // 어긋나면 컴파일은 통과하고 서킷이 열릴 때만 터진다.
     private MatchingRecommendation recommendFallback(Long positionId, int recruitCount, int poolMultiplier,
-                                                      List<Long> excludedFreelancerIds, Throwable t) {
+                                                      List<Long> excludedFreelancerIds, long budgetCap,
+                                                      Throwable t) {
         log.error("[Pairing-python] 추천 실패/서킷 오픈 (positionId={}, 원인: {})", positionId, t.getMessage());
         throw new BusinessException(MatchingErrorCode.AI_SERVER_CALL_FAILED);
     }
@@ -214,10 +219,15 @@ public class PythonMatchingAdapter implements MatchingPort {
     ) {
     }
 
+    /**
+     * {@code similarity}는 LLM이 아니라 <b>AI 서버가 1차 추림에서 계산해</b> 실어 보내는 값이다.
+     * 옛 배포와 섞여 도는 동안 안 올 수 있어 {@code Double}(nullable)로 받고, 없으면 0.0으로 채운다.
+     */
     private record RankedItem(
             @JsonProperty("freelancer_id") Long freelancerId,
             double score,
-            String reason
+            String reason,
+            Double similarity
     ) {
     }
 }

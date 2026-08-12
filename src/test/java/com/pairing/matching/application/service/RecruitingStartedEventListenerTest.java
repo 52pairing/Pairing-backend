@@ -67,6 +67,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -286,9 +287,9 @@ class RecruitingStartedEventListenerTest {
     @Test
     @DisplayName("모집 시작 이벤트를 받으면 스냅샷을 얼리고 임베딩을 올리고 최초 추천 라운드를 만든다")
     void recruitingStartedEventCreatesSnapshotEmbeddingAndInitialRound() {
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
-                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치|경력 조건 충족"))));
+                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치|경력 조건 충족", 0.82))));
 
         new TransactionTemplate(transactionManager).executeWithoutResult(status ->
                 eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));
@@ -306,11 +307,25 @@ class RecruitingStartedEventListenerTest {
     }
 
     @Test
+    @DisplayName("추천 호출에 budgetCap(순예산 1인 월단가)을 같이 넘긴다")
+    void recommendCarriesBudgetCap() {
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));
+
+        // 총예산 6000만 - 수수료 10%(1억 미만, SILVER) = 5400만 ÷ 총인원 2 = 2700만 ÷ 6개월 = 450만.
+        // AI 서버는 이 값을 스스로 못 구한다 — 수수료율이 클라이언트 등급(account 도메인)에 걸려 있다.
+        verify(matchingPort).recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), eq(4_500_000L));
+    }
+
+    @Test
     @DisplayName("이미 라운드가 있는 포지션은 이벤트를 다시 받아도 새 라운드를 또 만들지 않는다(멱등)")
     void recruitingStartedEventIsIdempotentPerPosition() {
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
-                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치"))));
+                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치", 0.82))));
 
         new TransactionTemplate(transactionManager).executeWithoutResult(status ->
                 eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));
