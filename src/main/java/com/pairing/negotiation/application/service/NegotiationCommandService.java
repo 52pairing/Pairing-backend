@@ -83,10 +83,15 @@ public class NegotiationCommandService implements NegotiationCommandUseCase {
         return negotiationId;
     }
 
-    /** 무협상 즉시 타결도 최종 조건을 해시체인에 봉인한다. 이 협상의 첫(그리고 유일한) 로그다. */
+    /**
+     * 무협상 즉시 타결도 최종 조건을 해시체인에 봉인한다. 이 협상의 첫(그리고 유일한) 로그다.
+     *
+     * <p>audit 이라 당사자 화면에는 안 보인다. 기계가 파싱할 증거이고, 사람에게는 화면의
+     * 합의 결과 카드가 같은 내용을 보여 준다.
+     */
     private void sealAgreementSnapshot(Long negotiationId, Negotiation negotiation) {
-        NegotiationMessage snapshot = NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
-                "협상 없이 즉시 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot());
+        NegotiationMessage snapshot = NegotiationMessage.audit(negotiationId, negotiation.getTotalRound(),
+                "최종 조건 봉인: " + negotiation.finalTermsSnapshot());
         snapshot.seal(messageRepository.findLatestHash(negotiationId).orElse(NegotiationMessage.GENESIS_HASH));
         messageRepository.save(snapshot);
     }

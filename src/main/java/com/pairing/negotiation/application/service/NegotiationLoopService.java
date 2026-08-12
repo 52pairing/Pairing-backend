@@ -236,8 +236,10 @@ public class NegotiationLoopService implements NegotiationLoopUseCase {
         // 타결 → 매칭 요청을 계약 대기(CONTRACT_PENDING)로 전환(같은 트랜잭션).
         matchingOutcomeUseCase.markNegotiationAgreed(negotiation.getRequestId());
         // 타결 시점 최종 조건을 해시체인 로그에 봉인한다(분쟁 대비 증거).
-        messages.add(NegotiationMessage.system(negotiation.getId(), negotiation.getTotalRound(),
-                "모든 조건이 합의되어 협상이 타결되었습니다. 최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
+        // audit 이라 당사자 화면에는 안 보인다 — 사람에겐 화면의 "모든 조건에 합의했습니다" 카드가
+        // 같은 내용을 이미 보여 준다. 이 줄은 기계가 파싱할 증거다.
+        messages.add(NegotiationMessage.audit(negotiation.getId(), negotiation.getTotalRound(),
+                "최종 조건 봉인: " + negotiation.finalTermsSnapshot()));
         return true;
     }
 
