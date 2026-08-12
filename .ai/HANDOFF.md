@@ -422,38 +422,53 @@ GitHub Actions의 `deploy` 워크플로가 초록이 될 때까지 기다린다(
 
 **② 재색인 1회 — 필수**
 
-```bash
-curl -X POST https://<배포주소>/api/v1/matchings/admin/embeddings/reindex \
-     -H "Cookie: accessToken=<관리자 토큰>"
+```
+POST /api/v1/matchings/admin/embeddings/reindex
 ```
 
-응답으로 `freelancerSuccessCount / freelancerFailCount / positionSuccessCount / positionFailCount`
-가 온다. **fail이 0이 아니면 로그를 봐야 한다.**
+**Swagger UI 에서 하면 된다** — `https://<배포주소>/swagger-ui/index.html` → `11. Matching` 태그 →
+`[관리자] 임베딩 일괄 재색인`.
+
+⚠️ **ADMIN 계정이 필요하다.** 경로에 `/admin/` 이 들어가서
+`GlobalSecurityConfig` 의 `.requestMatchers("/api/v1/*/admin/**").hasRole("ADMIN")` 에 걸린다 —
+클라이언트·프리랜서 계정으로는 **403**이다. Swagger 에서 `POST /auth/login` 으로 관리자 로그인을
+먼저 하면 쿠키가 붙어 그대로 호출된다. (curl 로 할 거면 `-H "Cookie: accessToken=<토큰>"`)
+
+⚠️ **결과가 응답에 안 온다.** 즉시 `202`(본문 없음)만 돌아오고 실제 작업은 **백그라운드에서**
+돈다 — 대상 1건마다 Gemini 호출이 일어나 몇 분씩 걸릴 수 있어서다.
+**성공·실패 건수는 서버 로그에만 남는다.** 끝났는지는 아래 ④의 DB 쿼리로 확인한다.
 
 - 지금 배포 DB에 freelancer 1건 / position 7건이 있고 **전부 2026-08-11(B1 이전) 생성**이라
   전부 대상이다
 - 안 돌리면 **옛 규칙 벡터(회사명·스킬 포함)와 새 규칙 벡터(자유 서술만)가 섞여** 비교 자체가
   무의미해진다
 
-**③ ivfflat 인덱스 다시 만들기**
+**③ 재색인이 끝났는지 확인 — ②의 결과를 볼 수 있는 유일한 곳**
+
+②는 202만 주고 끝나므로 **여기서 확인해야 한다.**
+
+```sql
+SELECT 'freelancer' AS kind, count(*) AS 전체,
+       count(*) FILTER (WHERE updated_at > now() - interval '10 minutes') AS 방금_갱신
+FROM freelancer_embedding
+UNION ALL
+SELECT 'position', count(*),
+       count(*) FILTER (WHERE updated_at > now() - interval '10 minutes')
+FROM position_embedding;
+```
+
+**방금_갱신 = 전체**가 되면 완료다. 다르면 아직 도는 중이거나 일부가 실패한 것이니 서버 로그를
+본다. (2026-08-12 기준 배포 DB에 freelancer 1건 / position 7건이라 금방 끝난다.)
+
+**④ ivfflat 인덱스 다시 만들기 — ③이 끝난 뒤에**
 
 ```sql
 REINDEX INDEX idx_freelancer_embedding_cosine;
 ```
 
-빈 테이블에 만든 인덱스라 pgvector가 `low recall` 경고를 냈었다. 벡터가 채워진 뒤 다시 만들어야
-제대로 동작한다. (추천 본 경로는 이 인덱스를 안 쓰지만 후보 미리보기 엔드포인트가 쓴다.)
-
-**④ 재색인이 실제로 반영됐는지 확인**
-
-```sql
-SELECT count(*) AS 전체,
-       count(*) FILTER (WHERE updated_at > now() - interval '1 hour') AS 방금_갱신
-FROM freelancer_embedding;
--- position_embedding 도 같은 쿼리로
-```
-
-**방금_갱신 = 전체**여야 한다. 다르면 재색인이 일부만 돌았다는 뜻이다.
+빈 테이블에 만든 인덱스라 pgvector가 `low recall` 경고를 냈었다. **벡터가 다 채워진 뒤에** 다시
+만들어야 클러스터를 제대로 잡는다 — ③보다 먼저 하면 의미가 없다.
+(추천 본 경로는 이 인덱스를 안 쓰지만 후보 미리보기 엔드포인트가 쓴다.)
 
 **⑤ 추천이 실제로 도는지 한 번 호출**
 
