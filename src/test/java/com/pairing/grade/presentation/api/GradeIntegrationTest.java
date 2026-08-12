@@ -3,6 +3,8 @@ package com.pairing.grade.presentation.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.contract.application.result.ContractDetail;
 import com.pairing.contract.application.usecase.ContractQueryUseCase;
+import com.pairing.global.config.SettlementResultStub;
+import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import com.pairing.global.config.ContractDetailStub;
 import com.pairing.account.infrastructure.persistence.SpringDataAccountRepository;
 import com.pairing.account.infrastructure.persistence.SpringDataClientProfileRepository;
@@ -33,6 +35,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -98,6 +101,10 @@ class GradeIntegrationTest {
     @MockitoBean
     private ContractQueryUseCase contractQueryUseCase;
 
+    // 리뷰 작성 조건 중 '본인 성공보수 납부' 확인용. 정산 도메인을 세우지 않고 결과만 대신한다.
+    @MockitoBean
+    private SettlementQueryUseCase settlementQueryUseCase;
+
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
     @MockitoBean
@@ -151,6 +158,9 @@ class GradeIntegrationTest {
         given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
         // 완료 계약이 없는 상태가 기본값이다. 스텁하지 않으면 mock 이 null 을 돌려줘 등급 조회가 NPE 로 죽는다.
         given(contractQueryUseCase.findMine(any(), any(), any(), any())).willReturn(Page.empty());
+        // 리뷰 작성은 본인 성공보수 납부까지 본다. 등급 검증이 목적이라 "냈다"로 고정한다.
+        given(settlementQueryUseCase.findMine(any(), any(), any(), any(), any()))
+                .willReturn(new PageImpl<>(List.of(SettlementResultStub.paidSuccessFee())));
 
         signUpAndLoginClient();
         signUpAndLoginFreelancer();

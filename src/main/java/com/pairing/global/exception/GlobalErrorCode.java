@@ -17,7 +17,13 @@ public enum GlobalErrorCode implements BaseErrorCode {
     INVALID_FILE_TYPE(HttpStatus.BAD_REQUEST, "GLOBAL_008", "허용되지 않는 파일 형식입니다."),
     TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "GLOBAL_009", "토큰이 만료되었습니다. 다시 로그인해주세요."),
     TOKEN_INVALID(HttpStatus.UNAUTHORIZED, "GLOBAL_010", "유효하지 않은 토큰입니다."),
-    SESSION_TERMINATED(HttpStatus.UNAUTHORIZED, "GLOBAL_011", "다른 기기에서 로그인되어 로그아웃되었습니다.");
+    SESSION_TERMINATED(HttpStatus.UNAUTHORIZED, "GLOBAL_011", "다른 기기에서 로그인되어 로그아웃되었습니다."),
+    // 중복 등록·참조 중인 데이터 삭제처럼 사용자가 요청을 바꾸면 풀리는 충돌.
+    DATA_CONFLICT(HttpStatus.CONFLICT, "GLOBAL_012", "이미 존재하거나 다른 데이터가 참조 중입니다."),
+    // CHECK/NOT NULL 위반. 사용자가 어떻게 해도 안 풀리는 서버·스키마 문제라 500으로 둔다.
+    DATA_INTEGRITY_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "GLOBAL_013", "데이터 제약 조건을 만족하지 못했습니다."),
+    PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "GLOBAL_014", "요청 크기가 서버 허용치를 초과했습니다."),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "GLOBAL_015", "지원하지 않는 Content-Type 입니다.");
 
     private final HttpStatus status;
     private final String code;
