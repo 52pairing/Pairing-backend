@@ -1224,3 +1224,31 @@ C1 의 "요청 → 상세 조회" 구간을 지나갈 수 없으므로 **C1 전�
 **세 개 다 "에러가 안 나서 안 보이는" 종류였다.** 재색인은 202 를 줬고 예외도 없었다.
 `ai_agent_log` 를 뒤지고 테이블 카운트를 세고 나서야 드러났다. B5 절차에 확인 단계를 넣어두지
 않았다면 "재색인 했으니 됐겠지"로 넘어갔을 것이고, C1 에서 원인 모를 실패로 만났을 것이다.
+
+---
+
+## 2026-08-12 추가 확인 및 후속 수정
+
+### C1 end-to-end 확인 완료
+
+배포 DB에서 신규 프로젝트 `23`, 포지션 `33` 기준으로 결제 완료 후 모집 시작 이벤트가 정상 처리되는 것을 확인했다.
+후보 조회에서 freelancer `9`가 노출됐고, 매칭 요청 `3` 발송 후 프리랜서 수락으로 협상 `26`이 생성됐다.
+협상은 1라운드에서 `3,750,000`원으로 타결됐고, 계약 `27`(`CT-2026-000027`)이 `SIGN_PENDING` 상태로 생성됐다.
+
+### B7 수정
+
+- Python 임베딩 upsert 시 `updated_at`이 갱신되지 않아 재색인 여부를 시간 기준으로 확인하기 어려웠다.
+  `freelancer_embedding`, `position_embedding` upsert update 절에 `updated_at = current_timestamp`를 추가했다.
+- Java 관리자 포지션 재색인 대상이 `matching_snapshot` 기준이라 스냅샷이 없는 포지션은 재색인되지 않았다.
+  실제 모집 라운드가 생성된 `matching_round`의 distinct position 기준으로 최신 라운드를 찾아 포지션 임베딩을 다시 생성하도록 바꿨다.
+
+### F3 수정
+
+후보 조회 응답에 `budgetWarned`를 추가했다. 노출 후보 중 예산 조합 가드 사유가 남아 있으면 `true`로 내려준다.
+`guardReason` 원문은 화면에 직접 노출하지 않고, 프론트는 이 boolean으로 예산 경고 UI만 분기하면 된다.
+
+### 검증
+
+- Backend: `./gradlew test --tests "com.pairing.matching.*"` 통과
+- Python: `ruff check app/domains/embedding/repository.py tests/test_embedding_repository.py` 통과
+- Python: `pytest tests/test_embedding_repository.py` 5 passed, 1 skipped

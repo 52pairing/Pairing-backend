@@ -5,9 +5,8 @@ import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.EmbeddingReindexResult;
 import com.pairing.matching.application.usecase.EmbeddingReindexUseCase;
-import com.pairing.matching.domain.model.MatchingSnapshot;
-import com.pairing.matching.domain.model.SnapshotType;
-import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
+import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -30,7 +29,7 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
     private final FreelancerDirectoryPort freelancerDirectoryPort;
     private final ProjectDirectoryPort projectDirectoryPort;
     private final MatchingPort matchingPort;
-    private final MatchingSnapshotRepository matchingSnapshotRepository;
+    private final MatchingRoundRepository matchingRoundRepository;
     private final FreelancerEmbeddingRefresher freelancerEmbeddingRefresher;
 
     /**
@@ -74,14 +73,13 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
     }
 
     private int[] reindexPositions() {
-        List<MatchingSnapshot> positionSnapshots =
-                matchingSnapshotRepository.findAllBySnapshotType(SnapshotType.POSITION);
+        List<MatchingRound> rounds = matchingRoundRepository.findLatestRoundsByDistinctPosition();
         int success = 0;
         int fail = 0;
-        for (MatchingSnapshot snapshot : positionSnapshots) {
-            Long positionId = snapshot.getPositionId();
+        for (MatchingRound round : rounds) {
+            Long positionId = round.getPositionId();
             try {
-                var summary = projectDirectoryPort.findPositionSummary(snapshot.getProjectId(), positionId);
+                var summary = projectDirectoryPort.findPositionSummary(round.getProjectId(), positionId);
                 matchingPort.upsertPositionEmbedding(positionId, PositionEmbeddingTextBuilder.buildText(summary));
                 success++;
             } catch (Exception e) {

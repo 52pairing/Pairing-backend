@@ -45,9 +45,11 @@ class CandidateResponseAssembler {
             throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
         }
 
-        List<CandidateResponse> candidates = matchingCandidateRepository
-                .findByRoundIdAndExposedTrueOrderByRankNo(round.getId())
-                .stream()
+        List<MatchingCandidate> exposedCandidates = matchingCandidateRepository
+                .findByRoundIdAndExposedTrueOrderByRankNo(round.getId());
+        boolean budgetWarned = exposedCandidates.stream()
+                .anyMatch(CandidateResponseAssembler::hasGuardReason);
+        List<CandidateResponse> candidates = exposedCandidates.stream()
                 .map(this::toCandidateResponse)
                 .toList();
 
@@ -62,7 +64,7 @@ class CandidateResponseAssembler {
 
         return new CandidateListResponse(round.getPositionId(), round.getId(), round.getRoundNo(),
                 round.getRoundType(), round.getExposeCount(), freeAvailable, paidRemaining,
-                round.isLowScoreWarned(), candidates);
+                round.isLowScoreWarned(), budgetWarned, candidates);
     }
 
     private CandidateResponse toCandidateResponse(MatchingCandidate candidate) {
@@ -102,5 +104,9 @@ class CandidateResponseAssembler {
                 .map(String::trim)
                 .filter(reason -> !reason.isEmpty())
                 .toList();
+    }
+
+    private static boolean hasGuardReason(MatchingCandidate candidate) {
+        return candidate.getGuardReason() != null && !candidate.getGuardReason().isBlank();
     }
 }

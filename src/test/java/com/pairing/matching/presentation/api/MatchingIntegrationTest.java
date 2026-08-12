@@ -398,11 +398,15 @@ class MatchingIntegrationTest {
     }
 
     private MatchingCandidate seedExposedCandidate(Long roundId, int rank) {
+        return seedExposedCandidate(roundId, rank, null);
+    }
+
+    private MatchingCandidate seedExposedCandidate(Long roundId, int rank, String guardReason) {
         MatchingCandidate candidate = MatchingCandidate.createFromEmbedding(roundId, POSITION_ID,
                 freelancerAccountId, 0.8);
         candidate.applyLlmResult(88.0, "요구 스킬 3개 중 3개 일치|경력 조건 충족");
         candidate.applyGradeWeight(0.0);
-        candidate.applyGuard(true, null);
+        candidate.applyGuard(true, guardReason);
         candidate.expose(rank);
         return matchingCandidateRepository.save(candidate);
     }
@@ -421,7 +425,20 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.candidates[0].grade").value("SENIOR"))
                 .andExpect(jsonPath("$.data.candidates[0].skills[0]").value("JAVA"))
                 .andExpect(jsonPath("$.data.candidates[0].requested").value(false))
-                .andExpect(jsonPath("$.data.candidates[0].rejected").value(false));
+                .andExpect(jsonPath("$.data.candidates[0].rejected").value(false))
+                .andExpect(jsonPath("$.data.budgetWarned").value(false));
+    }
+
+    @Test
+    @DisplayName("노출 후보에 예산 가드 사유가 있으면 예산 경고를 표시한다")
+    void candidateListMarksBudgetWarnedWhenExposedCandidateHasGuardReason() throws Exception {
+        MatchingRound round = seedRound(2);
+        seedExposedCandidate(round.getId(), 1, "예산 조합 초과");
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.budgetWarned").value(true));
     }
 
     @Test
