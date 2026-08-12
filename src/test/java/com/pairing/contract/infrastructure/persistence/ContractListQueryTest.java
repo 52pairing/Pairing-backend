@@ -1,6 +1,7 @@
 package com.pairing.contract.infrastructure.persistence;
 
 import com.pairing.contract.domain.model.Contract;
+import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.contract.domain.model.ContractTab;
 import com.pairing.contract.domain.repository.ContractRepository;
 import com.pairing.meta.domain.model.WorkForm;
@@ -165,6 +166,66 @@ class ContractListQueryTest {
         Long concluded = concludedContract(2L);
 
         assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.CONCLUDED)).containsExactly(concluded);
+    }
+
+    /**
+     * 체결 뒤 프로젝트를 따라 상태를 옮긴 계약.
+     *
+     * <p>운영에서는 {@code ContractLifecycleListener} 가 프로젝트 이벤트를 받아 옮긴다.
+     * 여기서는 목록 쿼리만 보면 되므로 도메인 메서드를 직접 부른다.
+     */
+    private Long advancedContract(Long positionId, ContractStatus target) {
+        Contract contract = draft(positionId);
+        contract.sign(CLIENT_ACCOUNT_ID, "SESSION", null, null, null, null);
+        contract.sign(FREELANCER_ACCOUNT_ID, "SESSION", null, null, null, null);
+
+        if (target != ContractStatus.SIGNED) {
+            contract.startProgress();
+        }
+        if (target == ContractStatus.COMPLETION_PENDING || target == ContractStatus.COMPLETED) {
+            contract.requestCompletion();
+        }
+        if (target == ContractStatus.COMPLETED) {
+            contract.complete();
+        }
+        return contractRepository.save(contract).getId();
+    }
+
+    @Test
+    @DisplayName("진행 중 탭은 착수금 미납(SIGNED)까지 담는다 — 상태 하나로는 못 가른다")
+    void inProgressTabHoldsSignedAndInProgress() {
+        // 화면에서 "결제하면 시작됩니다" 카드가 진행 중 탭에 놓인다. 그 계약은 아직 SIGNED 다.
+        Long depositUnpaid = advancedContract(1L, ContractStatus.SIGNED);
+        Long running = advancedContract(2L, ContractStatus.IN_PROGRESS);
+        advancedContract(3L, ContractStatus.COMPLETION_PENDING);
+        advancedContract(4L, ContractStatus.COMPLETED);
+
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.IN_PROGRESS))
+                .containsExactlyInAnyOrder(depositUnpaid, running);
+    }
+
+    @Test
+    @DisplayName("정산 대기와 완료 탭은 상태 하나씩만 담는다")
+    void settlementAndCompletedTabsHoldOneStatusEach() {
+        advancedContract(1L, ContractStatus.IN_PROGRESS);
+        Long settling = advancedContract(2L, ContractStatus.COMPLETION_PENDING);
+        Long done = advancedContract(3L, ContractStatus.COMPLETED);
+
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.SETTLEMENT_PENDING))
+                .containsExactly(settling);
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.COMPLETED))
+                .containsExactly(done);
+    }
+
+    @Test
+    @DisplayName("프리랜서 탭에도 서명 전 계약은 안 들어간다")
+    void freelancerTabsExcludeUnsigned() {
+        createContract(PROJECT_A, 1L);
+        signPendingContract(2L);
+
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.IN_PROGRESS)).isEmpty();
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.SETTLEMENT_PENDING)).isEmpty();
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.COMPLETED)).isEmpty();
     }
 
     @Test

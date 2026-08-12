@@ -17,6 +17,14 @@ import java.util.List;
  *
  * <p>{@code DRAFT} 는 {@link #ALL} 에만 들어간다. AI 가 계약서 문구를 채우는 2~5초짜리
  * 과도기라 서명할 수 없는데, 서명 대기 탭에 넣으면 눌러도 아무 일이 일어나지 않는다.
+ *
+ * <p><b>화면 둘이 이 목록을 나눠 쓴다.</b> 클라이언트 계약관리는 서명 진행 상황을 보고,
+ * 프리랜서 내 계약은 계약이 어느 단계까지 갔는지를 본다. 그래서 값이 겹치지 않는다.
+ *
+ * <pre>
+ * 클라이언트  ALL · AWAITING_ME · AWAITING_COUNTERPART · CONCLUDED
+ * 프리랜서    ALL · AWAITING_ME · IN_PROGRESS · SETTLEMENT_PENDING · COMPLETED
+ * </pre>
  */
 @Getter
 @RequiredArgsConstructor
@@ -35,7 +43,22 @@ public enum ContractTab {
     /** 양측 서명이 끝났다. 체결 이후 단계를 모두 포함한다. */
     CONCLUDED("체결 완료", null,
             List.of(ContractStatus.SIGNED, ContractStatus.IN_PROGRESS,
-                    ContractStatus.COMPLETION_PENDING, ContractStatus.COMPLETED));
+                    ContractStatus.COMPLETION_PENDING, ContractStatus.COMPLETED)),
+
+    /**
+     * 진행 중. 체결됐고 아직 안 끝났다.
+     *
+     * <p>{@code SIGNED} 를 함께 넣는 이유는, 체결만 되고 착수금 수수료를 아직 안 낸 계약이
+     * 화면상 "결제하면 시작됩니다" 로 이 탭에 놓이기 때문이다. 상태 하나로는 못 가른다.
+     */
+    IN_PROGRESS("진행 중", null,
+            List.of(ContractStatus.SIGNED, ContractStatus.IN_PROGRESS)),
+
+    /** 정산 대기. 클라이언트가 완료 처리했고 성공보수 수수료가 남았다. */
+    SETTLEMENT_PENDING("정산 대기", null, List.of(ContractStatus.COMPLETION_PENDING)),
+
+    /** 완료. 양측 성공보수까지 끝나 프로젝트가 닫혔다. */
+    COMPLETED("완료", null, List.of(ContractStatus.COMPLETED));
 
     private final String label;
 
