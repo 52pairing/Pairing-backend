@@ -41,15 +41,22 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
      * 통째로 버리고 stub 으로 폴백하는데, 그 폴백이 조용해서 화면상으로는 협상이 정상으로 보인다.
      *
      * <table>
-     *   <tr><th>시점</th><th>조건 수</th><th>실측</th><th>당시 설정</th><th>결과</th></tr>
-     *   <tr><td>08-11 낮</td><td>3</td><td>평균 15.0초 / 최대 22.8초</td><td>20초</td><td>최대치가 이미 초과</td></tr>
-     *   <tr><td>08-11 밤</td><td>5</td><td>33초</td><td>20초</td><td>전량 stub</td></tr>
-     *   <tr><td>08-12</td><td>5</td><td><b>64초</b></td><td>60초</td><td>3.6초 차로 전량 stub</td></tr>
+     *   <tr><th>시점</th><th>조건 수</th><th>모델 호출</th><th>총 왕복</th><th>당시 설정</th><th>결과</th></tr>
+     *   <tr><td>08-11 낮</td><td>3</td><td>평균 15.0초 / 최대 22.8초</td><td>미측정</td><td>20초</td><td>최대치가 이미 초과</td></tr>
+     *   <tr><td>08-11 밤</td><td>5</td><td>미확인</td><td>33초</td><td>20초</td><td>전량 stub</td></tr>
+     *   <tr><td>08-12 실패</td><td>5</td><td><b>23.4초</b></td><td><b>60초 초과</b></td><td>60초</td><td>전량 stub</td></tr>
+     *   <tr><td>08-12 성공</td><td>5</td><td>16.7초</td><td>여유 있음</td><td>120초</td><td>정상</td></tr>
      * </table>
      *
-     * <p>마지막 건은 프롬프트에 규칙 3개를 추가한 직후다(Pairing-python#35). <b>프롬프트가 길어지면
-     * 응답도 느려진다</b> — 조건 수뿐 아니라 지시문 길이도 이 값에 영향을 준다. 그래서 실측의
-     * 단순 2배가 아니라 여유를 크게 둔다.
+     * <p><b>모델이 느려서가 아니다.</b> 08-12 실패 건은 파이썬의 {@code ai_agent_log.latency_ms} 가
+     * 23.4초인데 총 왕복이 60초를 넘겼다 — 모델 호출 바깥에서 <b>약 40초가 더 붙었고 원인은 아직
+     * 모른다.</b> 바로 다음 성공 건이 같은 조건 5개로 16.7초였으므로 상시 현상도 아니다.
+     *
+     * <p>그 40초를 특정하려면 <b>스프링 쪽 왕복 시간</b>이 필요해서 {@link #callPython} 에 로그를
+     * 남긴다. 지금까지는 파이썬의 모델 호출 구간만 기록돼 있어서, 어디서 시간이 새는지 알 방법이
+     * 로그 기록 시각을 역산하는 것뿐이었다(그렇게 추정했다가 실제로 틀렸다).
+     *
+     * <p>타임아웃을 키우는 건 <b>정상 응답을 버리지 않기 위한 것이지 원인 해결이 아니다.</b>
      *
      * <p>근본 해결은 아니다. 동기로 기다리는 한 사람은 그만큼 빈 화면을 본다. 64초는 이미
      * 사람이 기다릴 수 있는 시간이 아니고, <b>이 값을 올리는 것으로 버티는 건 여기까지다.</b>
@@ -114,8 +121,16 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
         return new A2AResult(messages, outcomes);
     }
 
-    /** 파이썬 호출. 실패 시 null(→ 전량 stub 폴백). */
+    /**
+     * 파이썬 호출. 실패 시 null(→ 전량 stub 폴백).
+     *
+     * <p><b>왕복 시간을 성공·실패 모두 남긴다.</b> 파이썬은 모델 호출 구간({@code latency_ms})만
+     * 기록하므로, 그 바깥에서 시간이 새면 지금까지는 알 방법이 없었다. 실제로 모델이 23.4초인데
+     * 왕복이 60초를 넘겨 타임아웃 난 적이 있고, 그때 원인을 로그 기록 시각으로 역산했다가 틀렸다.
+     * 여기 한 줄이면 다음엔 "파이썬이 느렸나 / 그 앞뒤가 느렸나"가 바로 갈린다.
+     */
     private ProposeData callPython(ProposalContext context) {
+        long startedAt = System.nanoTime();
         try {
             ProposeApiResponse response = restClient.post()
                     .uri(PROPOSE_PATH)
@@ -131,15 +146,24 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
                     .body(ProposeApiResponse.class);
 
             if (response == null || response.data() == null || response.data().outcomes() == null) {
-                log.warn("협상 A2A 응답이 비어 stub 폴백: negotiationId={}", context.negotiationId());
+                log.warn("협상 A2A 응답이 비어 stub 폴백: negotiationId={}, 왕복={}ms",
+                        context.negotiationId(), elapsedMs(startedAt));
                 return null;
             }
+            log.info("협상 A2A 응답 수신: negotiationId={}, round={}, 조건={}건, 왕복={}ms",
+                    context.negotiationId(), context.round(), context.conditions().size(),
+                    elapsedMs(startedAt));
             return response.data();
         } catch (Exception e) {
-            log.warn("협상 A2A 파이썬 호출 실패 → stub 폴백: negotiationId={}, cause={}",
-                    context.negotiationId(), e.toString());
+            // 왕복 시간을 같이 남긴다. 타임아웃이면 설정값에 가깝게, 그 밖의 실패면 훨씬 짧게 찍힌다.
+            log.warn("협상 A2A 파이썬 호출 실패 → stub 폴백: negotiationId={}, 왕복={}ms, cause={}",
+                    context.negotiationId(), elapsedMs(startedAt), e.toString());
             return null;
         }
+    }
+
+    private long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
     }
 
     /**
