@@ -107,7 +107,8 @@ public class PythonMatchingAdapter implements MatchingPort {
 
         RecommendationData data = requireData(response);
         List<RankedFreelancer> candidates = data.candidates().stream()
-                .map(item -> new RankedFreelancer(item.freelancerId(), item.score(), item.reason()))
+                .map(item -> new RankedFreelancer(item.freelancerId(), item.score(), item.reason(),
+                        item.similarity() != null ? item.similarity() : 0.0))
                 .toList();
         return new MatchingRecommendation(data.positionId(), data.model(), candidates);
     }
@@ -218,10 +219,15 @@ public class PythonMatchingAdapter implements MatchingPort {
     ) {
     }
 
+    /**
+     * {@code similarity}는 LLM이 아니라 <b>AI 서버가 1차 추림에서 계산해</b> 실어 보내는 값이다.
+     * 옛 배포와 섞여 도는 동안 안 올 수 있어 {@code Double}(nullable)로 받고, 없으면 0.0으로 채운다.
+     */
     private record RankedItem(
             @JsonProperty("freelancer_id") Long freelancerId,
             double score,
-            String reason
+            String reason,
+            Double similarity
     ) {
     }
 }

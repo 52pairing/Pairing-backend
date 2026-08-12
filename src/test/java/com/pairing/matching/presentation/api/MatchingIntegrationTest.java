@@ -806,7 +806,7 @@ class MatchingIntegrationTest {
         given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
                         List.of(new RankedFreelancer(freelancerAccountId, 91.0,
-                                "요구 스킬 3개 중 3개 일치|경력 조건 충족"))));
+                                "요구 스킬 3개 중 3개 일치|경력 조건 충족", 0.82))));
 
         mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
                         .cookie(clientAccessToken)
@@ -844,33 +844,69 @@ class MatchingIntegrationTest {
     }
 
     @Test
-    @DisplayName("가드에서 요구 스킬이 부족한 후보는 노출되지 않고 다음 순위 후보가 그 자리를 채운다")
-    void rerecommendSkipsGuardFailingCandidateAndExposesNextRanked() throws Exception {
-        seedRound(1);
-        long guardFailFreelancerId = 7_009_001L;
-        seedGuardFailingFreelancer(guardFailFreelancerId);
+    @DisplayName("스킬이 부족해도 가드는 후보를 떨어뜨리지 않는다 — 직무·스킬 재검증은 뺐다")
+    void guardNoLongerRejectsCandidatesOnSkillMismatch() throws Exception {
+        seedRound(2);
+        long partialSkillFreelancerId = 7_009_001L;
+        seedFreelancerWithoutRequiredSkill(partialSkillFreelancerId);
 
-        given(matchingPort.recommend(eq(POSITION_ID), eq(1), eq(3), eq(List.of()), anyLong())).willReturn(
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong())).willReturn(
                 new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
-                        new RankedFreelancer(guardFailFreelancerId, 95.0, "경력 우수"),
-                        new RankedFreelancer(freelancerAccountId, 80.0, "요구 스킬 3개 중 3개 일치"))));
+                        new RankedFreelancer(partialSkillFreelancerId, 95.0, "경력 우수", 0.90),
+                        new RankedFreelancer(freelancerAccountId, 80.0, "요구 스킬 3개 중 3개 일치", 0.75))));
 
         mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
                         .cookie(clientAccessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"type":"PAID","quantity":1}"""))
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isAccepted());
+
+        // 하드필터를 통과한 사람만 LLM에 가므로 가드에서 또 볼 필요가 없다. 둘 다 노출돼야 한다.
+        // 스킬 부족은 조건점수 30점이 이미 깎았고, 부분 일치 후보 노출은 정책 P09가 허용한다.
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("가드 G4: 중복 후보와 추천 근거 없는 후보를 버리고, 유사도는 그대로 저장한다")
+    void guardDropsDuplicateAndReasonlessCandidates() throws Exception {
+        seedRound(2);
+        long otherFreelancerId = 7_009_002L;
+        seedFreelancerWithoutRequiredSkill(otherFreelancerId);
+
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong())).willReturn(
+                new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
+                        new RankedFreelancer(freelancerAccountId, 91.0, "요구 스킬 일치", 0.8125),
+                        // 같은 사람을 두 번 — 뒤엣것은 버려야 한다.
+                        new RankedFreelancer(freelancerAccountId, 70.0, "중복", 0.8125),
+                        // 추천 근거가 비어 있으면 화면에 근거 없는 후보가 뜬다.
+                        new RankedFreelancer(otherFreelancerId, 88.0, "  ", 0.70))));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
                 .andExpect(status().isAccepted());
 
         mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
                         .cookie(clientAccessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.candidates.length()").value(1))
-                .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
+                .andExpect(jsonPath("$.data.candidates.length()").value(1));
+
+        // AI 서버가 준 유사도가 그대로 저장돼야 한다. 예전엔 이 자리에 0.0이 박혀 있어서
+        // "이 후보가 왜 뽑혔나"를 되짚을 수 없었다.
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT similarity FROM matching_candidate WHERE freelancer_id = ? ORDER BY id DESC LIMIT 1",
+                Double.class, freelancerAccountId))
+                .isEqualTo(0.8125);
     }
 
-    /** 포지션이 요구하는 SPRING_BOOT를 안 갖춘 프리랜서 — 가드의 스킬 재검증에서 떨어져야 한다. */
-    private void seedGuardFailingFreelancer(long freelancerId) {
+    /** 포지션이 요구하는 SPRING_BOOT를 안 갖춘 프리랜서. 하드필터(파이썬)를 통과했다고 가정한다. */
+    private void seedFreelancerWithoutRequiredSkill(long freelancerId) {
         jdbcTemplate.update(
                 "INSERT INTO account (id, email, role, name, phone, signup_type, status, email_verified, "
                         + "login_fail_count, is_temp_password) "
@@ -938,7 +974,7 @@ class MatchingIntegrationTest {
         // 실패한 회차는 한도를 쓴 게 아니므로 유료 재추천을 다시 시도할 수 있어야 한다.
         given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash",
-                        List.of(new RankedFreelancer(freelancerAccountId, 91.0, "경력 조건 충족"))));
+                        List.of(new RankedFreelancer(freelancerAccountId, 91.0, "경력 조건 충족", 0.82))));
 
         mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
                         .cookie(clientAccessToken)

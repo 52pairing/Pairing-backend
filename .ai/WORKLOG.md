@@ -974,3 +974,44 @@ pgvector 에 쿼리가 돈다. 어제 "스키마 드리프트 때문에 안 하�
 
 **→ python 브랜치(`feature/matching-condition-score`)는 PR 올릴 준비가 끝났다.**
 84 passed + 1 skipped, ruff 통과.
+
+## 2026-08-12 (계속) — B4 가드 교체 (G1·G2 제거 → G3·G4)
+
+**구조가 바뀐 지점: 노출을 먼저 정하고 그다음 가드를 본다.** 옛 코드는 후보를 한 명씩 돌면서
+가드를 보고 통과한 사람만 노출했는데, G3는 "노출 후보 전원의 합계"를 보는 포지션 단위 검증이라
+한 명씩으로는 판정이 안 된다. `persistCandidates` 루프를 둘로 갈랐다.
+
+**G4(`LlmResponseGuard`)를 순위 계산보다 먼저 부른다.** 중복 ID가 남아 있으면 등급 조회의
+`Collectors.toMap`이 키 충돌로 터진다. 실제로 순서를 잘못 두면 500이 난다.
+
+**G3는 탈락시키지 않는다.** `guardPassed=true`를 유지하고 `guardReason`에만 사유를 남긴다.
+여기서 배제하면 Stage B 폐기 사유(단가로 거르면 사전검수 안내 인원과 어긋난다)가 되살아난다.
+노출된 후보에게만 사유를 붙인다 — 대기 순번은 아직 조합의 일부가 아니다.
+
+**재추천에서 이미 자리를 차지한 사람의 단가를 센다.** `findByPositionIdAndStatusNotIn`
+(기존 count 메서드의 목록 버전)으로 가져와서, 타결 이후 상태면 협상 타결가를, 그 전이면 희망
+단가를 쓴다. 안 세면 자리가 찰수록 "항상 여유 있음"으로 나와 경고가 무의미해진다.
+
+`NegotiationPort.findAgreedMonthlyPay`를 새로 뚫었다. 협상 도메인의 기존 인바운드 유스케이스
+두 개(`findProgressByRequestId` → `getAgreedForContract`)를 위임할 뿐이라 5번에게 요청할 게
+없었다. `getAgreedForContract`는 타결 전이면 예외를 던지므로 **매칭 요청 상태로 먼저 거르고**,
+그래도 데이터가 어긋난 경우를 대비해 어댑터에서 예외를 잡아 empty로 바꾼다(가드가 통째로
+실패하면 안 된다).
+
+**`agreedAmount`에 개월 수를 곱하지 않는다.** 이미 월 단가라 budgetCap과 단위가 같다(5번 확인).
+포트 javadoc에 경고로 박아뒀다.
+
+**`MonthlyPayConverter` 신규.** 협상 쪽 `FreelancerConditionSnapshot.monthlyPay()`를 그대로 못
+쓰는 이유는 그게 협상 생성용 레코드라 매칭이 안 갖고 있는 필드(minAcceptAmount 등)까지
+요구해서다. 환산식을 다시 쓰되 **협상 도메인의 실제 계산과 직접 대조하는 테스트**로 고정했다 —
+상수를 테스트에 다시 적으면 같이 틀려도 통과하기 때문이다.
+
+**7번 자바 쪽 완료.** `RankedFreelancer.similarity` 추가, 어댑터가 `similarity`를 파싱해
+`createFromEmbedding`의 하드코딩 `0.0`을 실제 값으로 교체. 옛 배포와 섞여 도는 동안 값이 안 올
+수 있어 `Double`(nullable)로 받고 없으면 0.0으로 채운다.
+
+**옛 가드 테스트를 교체했다.** "요구 스킬이 부족한 후보는 노출되지 않는다"는 이제 성립하지
+않는다(직무·스킬 재검증을 뺐다). 반대로 **"스킬이 부족해도 떨어뜨리지 않는다"**를 검증하도록
+뒤집고, G4(중복·근거 누락)와 similarity 저장을 확인하는 통합 테스트를 추가했다.
+
+**검증**: `./gradlew clean build` 통과. 신규 단위 테스트 10건(G4 5 + 월단가 환산 4 + budgetCap 5).

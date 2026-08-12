@@ -289,7 +289,7 @@ class RecruitingStartedEventListenerTest {
     void recruitingStartedEventCreatesSnapshotEmbeddingAndInitialRound() {
         given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
-                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치|경력 조건 충족"))));
+                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치|경력 조건 충족", 0.82))));
 
         new TransactionTemplate(transactionManager).executeWithoutResult(status ->
                 eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));
@@ -325,7 +325,7 @@ class RecruitingStartedEventListenerTest {
     void recruitingStartedEventIsIdempotentPerPosition() {
         given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
-                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치"))));
+                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치", 0.82))));
 
         new TransactionTemplate(transactionManager).executeWithoutResult(status ->
                 eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));

@@ -57,6 +57,14 @@ public class MatchingRequestRepositoryAdapter implements MatchingRequestReposito
     }
 
     @Override
+    public List<MatchingRequest> findByPositionIdAndStatusNotIn(Long positionId,
+                                                               List<MatchingStatus> excludedStatuses) {
+        return springDataRepository.findByPositionIdAndStatusNotIn(positionId, excludedStatuses).stream()
+                .map(matchingRequestMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public boolean existsByCandidateId(Long candidateId) {
         return springDataRepository.existsByCandidateId(candidateId);
     }
