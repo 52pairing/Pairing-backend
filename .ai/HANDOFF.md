@@ -11,12 +11,18 @@
 >    **"2026-08-12 확정 — 착수 전 결정 13건"**(왜 그렇게 정했나)
 > 4. 이 문서 맨 아래 **"주의 사항"** — 반복해서 걸린 것들
 >
-> **작업 중인 브랜치 2개** (둘 다 push 완료, PR 아직 안 올림)
+> **코드 작업은 B1~B4 전부 끝났다. 남은 건 머지와 검증(C1)뿐이다.**
 >
-> | 레포 | 브랜치 | 담긴 것 | 남은 것 |
+> | 레포 | 브랜치 | 담긴 것 | 상태 |
 > |---|---|---|---|
-> | backend | `feature/matching-embedding-text-redesign` | B1 임베딩 텍스트, B2 budgetCap, 수수료율 하드코딩 제거 | **B4 가드 교체** + 7번 자바 수신 |
-> | python | `feature/matching-condition-score` | B2 budget_cap, B3 조건점수 25:75, 7번 similarity, 13번 CI pgvector | **없음 — PR 올리면 된다** |
+> | backend | `feature/matching-embedding-text-redesign` | B1 임베딩 텍스트, B2 budgetCap, **B4 가드 G3+G4**, 7번 similarity 수신, 수수료율 하드코딩 제거 | **PR 올림 (2026-08-12)**. develop 머지·빌드 통과, behind 0 |
+> | python | `feature/matching-condition-score` | ~~B2 budget_cap, B3 조건점수 25:75, 7번 similarity, 13번 CI pgvector~~ → **develop 머지 완료(`8275b09`)** | **문서 커밋 1개가 남았다** — 아래 참고 |
+>
+> ⚠️ **python 브랜치에 아직 안 머지된 커밋이 있다.** PR이 `0daeb5b`(README 엔드포인트 호출 시점
+> 정정) **직전에** 머지돼서 그 커밋만 빠졌다. develop의 README는 아직 옛 문구
+> ("이력서·조건 저장 시")다. 브랜치는 원격에 그대로 있고 develop보다 2커밋 앞서 있으니
+> **작은 PR을 하나 더 올리면 된다.** (이미 한 번 머지된 브랜치라 GitHub이 "Compare & pull
+> request" 배너를 다시 안 띄운다 — `Pull requests → New pull request`로 직접 만든다.)
 >
 > **핵심 숫자 (자주 헷갈린다)**
 > - 최종 점수 = 유사도 **25** + 조건점수 **75** (조건 배점 합 100을 0~1로 정규화 후 ×75)
@@ -267,16 +273,18 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 
 | 순서 | 할 일 | 어디 | 예상 |
 |---|---|---|---|
-| **1** | **E2 회신 보내기** (아래 "E2 회신" 절 그대로) — 나머지 4건은 종료됨 | 슬랙/이슈 | 2분 |
-| ~~2~~ | ~~7번 `similarity` 응답 필드~~ | ✅ 완료 (2026-08-12) | |
-| ~~3~~ | ~~13번 CI에 pgvector~~ | ✅ 완료 (2026-08-12) | |
-| **4** | **python PR 올리고 머지** (10번: python 먼저) ← **여기** | GitHub 웹 | — |
-| **5** | **B4 가드 교체** (G3+G4) + 7번 자바 수신 | backend `feature/matching-embedding-text-redesign` | 4시간 |
-| **6** | **backend PR 올리고 머지** | GitHub 웹 | — |
-| **7** | 11번 재색인 API 1회 + `REINDEX` | 배포 후 | 10분 |
-| **8** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 (DB 준비됨) | 0.5~2일 |
-| **9** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
-| **10** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
+| ~~1~~ | ~~E2 회신~~ / ~~7번 similarity~~ / ~~13번 CI pgvector~~ / ~~B4 가드 교체~~ | ✅ 완료 (2026-08-12) | |
+| ~~2~~ | ~~python PR~~ — `8275b09`로 머지됨 | ✅ 완료 | |
+| **3** | **python 문서 PR 하나 더** — `0daeb5b`가 머지 타이밍에 빠졌다(위 ⚠️ 참고) | GitHub 웹 | 2분 |
+| **4** | **backend PR 머지 대기** — 올려둠. develop 머지·빌드 통과 상태 | GitHub 웹 | — |
+| **5** | **머지 후 B5 절차** — 배포 확인 → 재색인 → `REINDEX` → 반영 확인 → 추천 1회 호출 | 배포 후 | 20분 |
+| **6** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 (DB 준비됨) | 0.5~2일 |
+| **7** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
+| **8** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
+
+> **5번(B5 절차)이 이번 배포에서 제일 놓치기 쉽다.** 재색인을 빼먹으면 옛 규칙 벡터와 새 규칙
+> 벡터가 섞이는데 **에러가 안 나서 추천 품질만 조용히 나빠진다.** 명령어와 확인 쿼리는
+> 아래 "B5. 5단계" 절에 전부 적어뒀다.
 
 > ~~12번 DB 환경~~ — **2026-08-12 완료.** 로컬(네이티브 PG18 + pgvector 0.8.6)·배포 둘 다 준비됐다.
 > 위 "지금 상태" 박스 참고.
@@ -381,37 +389,101 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 > **→ python 브랜치는 PR 올릴 준비 완료.** 담긴 것: B2(budget_cap) + B3(조건점수 25:75) +
 > 7번(similarity) + 13번(CI) + 단가 환산 정책 정렬(×160/×20) + README 갱신.
 
-### B4. 4단계 — 가드 교체 (Java) ← **다음 작업**
+### B4. 4단계 — 가드 교체 (Java) — **완료 (2026-08-12)**
 
 브랜치는 `feature/matching-embedding-text-redesign`에 **이어서 얹는다**(B1+B2와 한 PR).
 상세 규칙은 `.ai/STATE.md` "[5] 가드"의 **G3 세부 / G4 세부** 절이 최종본이다.
 
-- [ ] `evaluateGuard`에서 **직무·스킬 재검증 제거**
-- [ ] **판정 시점을 옮긴다.** 지금은 후보를 한 명씩 보고 **노출 전에** 판정하는데, G3는
+- [x] `evaluateGuard`에서 **직무·스킬 재검증 제거**
+- [x] **판정 시점을 옮긴다.** 지금은 후보를 한 명씩 보고 **노출 전에** 판정하는데, G3는
       "노출 후보 전원의 합계"라 **노출이 확정된 뒤**에 판정해야 한다. `persistCandidates` 루프 구조가 바뀐다
-- [ ] G3 예산 조합 — `Σ(노출 후보 월단가) ≤ 남은 1인 상한 × 노출 인원 × 1.2`
+- [x] G3 예산 조합 — `Σ(노출 후보 월단가) ≤ 남은 1인 상한 × 노출 인원 × 1.2`
       - **남은 1인 상한** = (`budgetCap` × 모집 인원 − 이미 자리를 차지한 사람들의 월단가 합) ÷ 남은 자리
       - 그 사람들의 월단가는 **협상 타결가 우선**(`NegotiationPort` 신규 메서드), 없으면 희망 단가
       - `getAgreedForContract`는 **타결 전이면 예외를 던진다** — 상태가 `CONTRACT_PENDING` 이상일 때만 호출
       - **탈락시키지 말 것.** `guardPassed=true` 유지, `guardReason`에 기록만
-- [ ] G4 LLM 응답 이상 — 중복 ID(뒤엣것 버림) / 인원 초과(상위 N만) / `reason` 누락(탈락,
+- [x] G4 LLM 응답 이상 — 중복 ID(뒤엣것 버림) / 인원 초과(상위 N만) / `reason` 누락(탈락,
       빈자리는 다음 순위가 채움). **여기만 실제로 거른다**
-- [ ] **7번 자바 쪽**: `RankedFreelancer`에 `similarity` 추가 → `PythonMatchingAdapter` 파싱 →
+- [x] **7번 자바 쪽**: `RankedFreelancer`에 `similarity` 추가 → `PythonMatchingAdapter` 파싱 →
       `createFromEmbedding(..., 0.0)`의 하드코딩 `0.0`을 실제 값으로 교체
-- [ ] 신규 리포지토리 메서드: 자리를 차지 중인 프리랜서 ID 목록
+- [x] 신규 리포지토리 메서드: 자리를 차지 중인 프리랜서 ID 목록
       (`countByPositionIdAndStatusNotIn`의 목록 버전)
-- [ ] 테스트 — 기존 가드 테스트(`MatchingIntegrationTest`의 스킬 미달 시나리오 등)가 깨지므로 같이 고친다
+- [x] 테스트 — 기존 가드 테스트(`MatchingIntegrationTest`의 스킬 미달 시나리오 등)가 깨지므로 같이 고친다
 
-### B5. 5단계 — 배포 후
+### B5. 5단계 — 배포 후 (**자바 머지 직후 해야 하는 것. 순서대로**)
 
-- [ ] **`POST /api/v1/matchings/admin/embeddings/reindex` 1회 실행 (필수)**
-      임베딩 텍스트 규칙이 바뀌므로 기존 벡터가 전부 낡는다. 옛 규칙 벡터와 새 규칙 벡터가
-      섞이면 비교 자체가 무의미해진다
-- [ ] 재색인 **직후** `REINDEX INDEX idx_freelancer_embedding_cosine;`
-      ivfflat 은 빈 테이블에 만들면 클러스터를 못 잡아서, 데이터가 들어온 뒤 다시 만들어야
-      제대로 동작한다. (추천 본 경로는 이 인덱스를 안 쓰지만 후보 미리보기 엔드포인트가 쓴다)
-- [ ] 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`) 갱신 — API 응답 모양은 안 바뀌지만
-      후보 순서 산출 방식이 달라진 것을 공유
+`develop` 머지 = 자동 배포다. 배포가 끝나면 아래를 순서대로 한다. **①을 빼먹으면 추천 품질이
+조용히 나빠진다** — 에러가 안 나서 발견이 어렵다.
+
+**① 배포가 끝났는지 확인**
+
+GitHub Actions의 `deploy` 워크플로가 초록이 될 때까지 기다린다(약 5~10분). 그 전에 재색인을
+부르면 옛 코드가 옛 규칙으로 벡터를 다시 만든다.
+
+**② 재색인 1회 — 필수**
+
+```bash
+curl -X POST https://<배포주소>/api/v1/matchings/admin/embeddings/reindex \
+     -H "Cookie: accessToken=<관리자 토큰>"
+```
+
+응답으로 `freelancerSuccessCount / freelancerFailCount / positionSuccessCount / positionFailCount`
+가 온다. **fail이 0이 아니면 로그를 봐야 한다.**
+
+- 지금 배포 DB에 freelancer 1건 / position 7건이 있고 **전부 2026-08-11(B1 이전) 생성**이라
+  전부 대상이다
+- 안 돌리면 **옛 규칙 벡터(회사명·스킬 포함)와 새 규칙 벡터(자유 서술만)가 섞여** 비교 자체가
+  무의미해진다
+
+**③ ivfflat 인덱스 다시 만들기**
+
+```sql
+REINDEX INDEX idx_freelancer_embedding_cosine;
+```
+
+빈 테이블에 만든 인덱스라 pgvector가 `low recall` 경고를 냈었다. 벡터가 채워진 뒤 다시 만들어야
+제대로 동작한다. (추천 본 경로는 이 인덱스를 안 쓰지만 후보 미리보기 엔드포인트가 쓴다.)
+
+**④ 재색인이 실제로 반영됐는지 확인**
+
+```sql
+SELECT count(*) AS 전체,
+       count(*) FILTER (WHERE updated_at > now() - interval '1 hour') AS 방금_갱신
+FROM freelancer_embedding;
+-- position_embedding 도 같은 쿼리로
+```
+
+**방금_갱신 = 전체**여야 한다. 다르면 재색인이 일부만 돌았다는 뜻이다.
+
+**⑤ 추천이 실제로 도는지 한 번 호출**
+
+이게 **C1의 축소판**이다. 클라이언트 계정으로 `내 프로젝트 → 추천 후보`를 열어 후보가 뜨는지
+본다. 안 뜨면 아래를 순서대로 의심한다.
+
+| 증상 | 먼저 볼 곳 |
+|---|---|
+| 후보 0명 | `position_embedding`에 그 포지션 행이 있는지 |
+| 500 에러 | AI 서버 로그 — `budget_cap` 파싱, `vector` 확장 |
+| `MT_010`(AI 서버 호출 실패) | 서킷브레이커 열렸는지, AI 서버 배포됐는지 |
+
+**⑥ 추천 결과가 나아졌는지 확인 (C2로 이어짐)**
+
+```sql
+-- 유사도가 실제로 저장되는지 (예전엔 전부 0.0이었다)
+SELECT freelancer_id, similarity, base_score, guard_reason
+FROM matching_candidate ORDER BY id DESC LIMIT 10;
+
+-- G3 예산 경고가 얼마나 자주 뜨는지 → F3(배너) 착수 판단 근거
+SELECT count(*) FILTER (WHERE guard_reason IS NOT NULL) AS 경고, count(*) AS 전체
+FROM matching_candidate WHERE is_exposed = true;
+```
+
+`similarity`가 0.0이 아니면 파이썬→자바 배선이 맞다는 뜻이다.
+
+### B5-1. 프론트 전달 문서 — **완료 (2026-08-12)**
+
+- [x] `AI매칭_API_화면매핑_최신본.md`(Desktop + `docs/personal/` 사본) 갱신 완료.
+      스킬 부분 보유 후보 노출 + `budgetWarned` 예산 경고 배너(문구·위치·포지션 탭 종속)까지 담았다
 
 ### B6. 환경 — 12번 pgvector — **완료 (2026-08-12)**
 
