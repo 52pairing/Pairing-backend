@@ -6,9 +6,10 @@ import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.EmbeddingReindexResult;
 import com.pairing.matching.application.result.FreelancerResumeSummary;
 import com.pairing.matching.application.result.ProjectPositionSummary;
-import com.pairing.matching.domain.model.MatchingSnapshot;
-import com.pairing.matching.domain.model.SnapshotType;
-import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
+import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingRoundStatus;
+import com.pairing.matching.domain.model.RecommendationType;
+import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.PeriodUnit;
 import org.junit.jupiter.api.DisplayName;
@@ -31,11 +32,10 @@ class EmbeddingReindexServiceTest {
     private final FreelancerDirectoryPort freelancerDirectoryPort = Mockito.mock(FreelancerDirectoryPort.class);
     private final ProjectDirectoryPort projectDirectoryPort = Mockito.mock(ProjectDirectoryPort.class);
     private final MatchingPort matchingPort = Mockito.mock(MatchingPort.class);
-    private final MatchingSnapshotRepository matchingSnapshotRepository =
-            Mockito.mock(MatchingSnapshotRepository.class);
+    private final MatchingRoundRepository matchingRoundRepository = Mockito.mock(MatchingRoundRepository.class);
 
     private final EmbeddingReindexService service = new EmbeddingReindexService(
-            freelancerDirectoryPort, projectDirectoryPort, matchingPort, matchingSnapshotRepository,
+            freelancerDirectoryPort, projectDirectoryPort, matchingPort, matchingRoundRepository,
             new FreelancerEmbeddingRefresher(freelancerDirectoryPort, matchingPort));
 
     @Test
@@ -47,9 +47,9 @@ class EmbeddingReindexServiceTest {
         when(freelancerDirectoryPort.findResumeSummary(2L))
                 .thenReturn(new FreelancerResumeSummary("자기소개2", List.of(), List.of()));
 
-        when(matchingSnapshotRepository.findAllBySnapshotType(SnapshotType.POSITION)).thenReturn(List.of(
-                MatchingSnapshot.create(10L, 100L, null, SnapshotType.POSITION, "{}"),
-                MatchingSnapshot.create(20L, 200L, null, SnapshotType.POSITION, "{}")
+        when(matchingRoundRepository.findLatestRoundsByDistinctPosition()).thenReturn(List.of(
+                round(1L, 10L, 100L),
+                round(2L, 20L, 200L)
         ));
         when(projectDirectoryPort.findPositionSummary(10L, 100L)).thenReturn(positionSummary(10L));
         when(projectDirectoryPort.findPositionSummary(20L, 200L)).thenReturn(positionSummary(20L));
@@ -76,8 +76,8 @@ class EmbeddingReindexServiceTest {
         when(freelancerDirectoryPort.findResumeSummary(2L))
                 .thenThrow(new RuntimeException("조회 실패"));
 
-        when(matchingSnapshotRepository.findAllBySnapshotType(SnapshotType.POSITION))
-                .thenReturn(List.of(MatchingSnapshot.create(10L, 100L, null, SnapshotType.POSITION, "{}")));
+        when(matchingRoundRepository.findLatestRoundsByDistinctPosition())
+                .thenReturn(List.of(round(1L, 10L, 100L)));
         when(projectDirectoryPort.findPositionSummary(10L, 100L))
                 .thenThrow(new RuntimeException("조회 실패"));
 
@@ -99,5 +99,10 @@ class EmbeddingReindexServiceTest {
                 3, "재택/풀타임", "4개월", 4, PeriodUnit.MONTH, null, 50_000_000L,
                 1, 1, "진행상황", "메인업무", "상세범위", "우대사항"
         );
+    }
+
+    private static MatchingRound round(Long id, Long projectId, Long positionId) {
+        return MatchingRound.reconstitute(id, projectId, positionId, 1, RecommendationType.INITIAL,
+                null, 0L, 1, 3, false, MatchingRoundStatus.COMPLETED);
     }
 }

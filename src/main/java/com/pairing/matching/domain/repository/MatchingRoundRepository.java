@@ -3,6 +3,7 @@ package com.pairing.matching.domain.repository;
 import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.domain.model.RecommendationType;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface MatchingRoundRepository {
@@ -16,6 +17,9 @@ public interface MatchingRoundRepository {
 
     /** 다음 회차 번호를 정하기 위한 현재까지의 회차 수. */
     long countByPositionId(Long positionId);
+
+    /** 관리자 재색인 대상. 스냅샷이 아니라 실제 모집 라운드가 생긴 포지션별 최신 라운드를 기준으로 삼는다. */
+    List<MatchingRound> findLatestRoundsByDistinctPosition();
 
     /**
      * 프로젝트 전체(포지션 불문)에서 지금까지 <b>실제로 쓴</b> 특정 종류의 회차 수.

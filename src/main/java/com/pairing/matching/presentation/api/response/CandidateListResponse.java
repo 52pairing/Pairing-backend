@@ -38,6 +38,9 @@ public record CandidateListResponse(
                 + "지금 노출된 후보의 점수는 보지 않는다.", example = "false")
         boolean lowScoreWarned,
 
+        @Schema(description = "예산 조합 경고. 노출 후보들의 희망 단가 합계가 남은 예산을 넘으면 true.", example = "false")
+        boolean budgetWarned,
+
         @Schema(description = "후보 목록. 조건에 맞는 후보가 부족하면 모집 인원보다 적을 수 있다.")
         List<CandidateResponse> candidates
 ) {

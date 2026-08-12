@@ -11,7 +11,7 @@
 >    **"2026-08-12 확정 — 착수 전 결정 13건"**(왜 그렇게 정했나)
 > 4. 이 문서 맨 아래 **"주의 사항"** — 반복해서 걸린 것들
 >
-> **코드 작업은 B1~B4 전부 끝났다. 남은 건 머지와 검증(C1)뿐이다.**
+> **C1 end-to-end 검증까지 배포 DB에서 성공했다.** 이후 B7/F3 후속 수정이 현재 작업 트리에 들어가 있다.
 >
 > | 레포 | 브랜치 | 담긴 것 | 상태 |
 > |---|---|---|---|
@@ -44,9 +44,20 @@
 >   `"C:\Program Files\PostgreSQL\18\bin\psql.exe" -U pairing -d pairing ...`
 > - 배포 벡터는 **B1 이전(옛 규칙)** 이라 B5 재색인 대상이다
 >
-> **아직 한 번도 안 해본 것**
-> - **C1 end-to-end 테스트.** 이력서 저장 → 임베딩 → 모집 시작 → 추천 → 요청 → 수락을 실제로
->   돌려본 적이 없다. **남은 것 중 가장 큰 리스크다.** 이제 DB가 준비됐으니 막을 것은 없다.
+> **✅ C1 확인 완료, 이후 수정된 것 (2026-08-12 배포 후 발견)**
+>
+> 배포 DB에서 신규 프로젝트 `23`, 포지션 `33`으로 후보 조회 → 요청 발송 → 프리랜서 수락 →
+> 협상 타결 → 계약 생성까지 확인했다.
+>
+> - **B7-①** Python 임베딩 upsert 시 `updated_at` 갱신 누락 수정.
+> - **B7-②** Java 관리자 포지션 재색인 대상을 `matching_snapshot`이 아니라
+>   `matching_round` distinct position 기준으로 수정.
+> - **F3** 후보 조회 응답에 `budgetWarned` 추가. 예산 조합 가드 사유가 있으면 true.
+>
+> **최근 검증**
+> - Backend: `./gradlew test --tests "com.pairing.matching.*"` 통과
+> - Python: `ruff check app/domains/embedding/repository.py tests/test_embedding_repository.py` 통과
+> - Python: `pytest tests/test_embedding_repository.py` 5 passed, 1 skipped
 >
 > **사람 대기 중**
 > - **E2 회신만 남았다** — 3번이 정책 P03 제안 문구를 보내와 검토를 요청했고, 회신문은
@@ -277,14 +288,14 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 | ~~2~~ | ~~python PR~~ — `8275b09`로 머지됨 | ✅ 완료 | |
 | **3** | **python 문서 PR 하나 더** — `0daeb5b`가 머지 타이밍에 빠졌다(위 ⚠️ 참고) | GitHub 웹 | 2분 |
 | **4** | **backend PR 머지 대기** — 올려둠. develop 머지·빌드 통과 상태 | GitHub 웹 | — |
-| **5** | **머지 후 B5 절차** — 배포 확인 → 재색인 → `REINDEX` → 반영 확인 → 추천 1회 호출 | 배포 후 | 20분 |
-| **6** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 (DB 준비됨) | 0.5~2일 |
-| **7** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
-| **8** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
+| ~~5~~ | ~~머지 후 B5 절차~~ — 배포 DB에서 재색인/임베딩 로그 확인 | ✅ 완료 | |
+| ~~6~~ | ~~B7-③ 정리~~ — 기존 데이터 문제는 새 프로젝트로 재검증했고 C1 통과 | ✅ 완료 | |
+| ~~7~~ | ~~C1 통합 테스트~~ — 후보 조회 → 요청 → 수락 → 협상 타결 → 계약 생성 확인 | ✅ 완료 (project 23 / position 33) | |
+| **8** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
+| ~~9~~ | ~~B7-①② 재색인 버그 2개~~ — Python `updated_at`, Java 포지션 재색인 대상 수정 | ✅ 코드 반영 | |
+| **10** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
 
-> **5번(B5 절차)이 이번 배포에서 제일 놓치기 쉽다.** 재색인을 빼먹으면 옛 규칙 벡터와 새 규칙
-> 벡터가 섞이는데 **에러가 안 나서 추천 품질만 조용히 나빠진다.** 명령어와 확인 쿼리는
-> 아래 "B5. 5단계" 절에 전부 적어뒀다.
+> 지금 제일 먼저 볼 것은 **8번 C2**다. C1은 배포 DB에서 통과했고, B7-①②/F3는 코드 반영과 테스트까지 끝났다.
 
 > ~~12번 DB 환경~~ — **2026-08-12 완료.** 로컬(네이티브 PG18 + pgvector 0.8.6)·배포 둘 다 준비됐다.
 > 위 "지금 상태" 박스 참고.
@@ -422,38 +433,77 @@ GitHub Actions의 `deploy` 워크플로가 초록이 될 때까지 기다린다(
 
 **② 재색인 1회 — 필수**
 
-```bash
-curl -X POST https://<배포주소>/api/v1/matchings/admin/embeddings/reindex \
-     -H "Cookie: accessToken=<관리자 토큰>"
+```
+POST /api/v1/matchings/admin/embeddings/reindex
 ```
 
-응답으로 `freelancerSuccessCount / freelancerFailCount / positionSuccessCount / positionFailCount`
-가 온다. **fail이 0이 아니면 로그를 봐야 한다.**
+**Swagger UI 에서 하면 된다** — `https://<배포주소>/swagger-ui/index.html` → `11. Matching` 태그 →
+`[관리자] 임베딩 일괄 재색인`.
+
+⚠️ **ADMIN 계정이 필요하다.** 경로에 `/admin/` 이 들어가서
+`GlobalSecurityConfig` 의 `.requestMatchers("/api/v1/*/admin/**").hasRole("ADMIN")` 에 걸린다 —
+클라이언트·프리랜서 계정으로는 **403**이다.
+
+**관리자 계정 만드는 법 (관리자 서버가 따로라 계정이 없다, 2026-08-12에 실제로 이렇게 했다)**
+
+DB에 직접 INSERT 하면 비밀번호 해시·약관 동의·프로필을 다 맞춰야 한다. **정상 회원가입으로
+만들고 역할만 바꾸는 게 훨씬 안전하다.**
+
+1. 배포 Swagger 에서 **새 이메일로 평범하게 회원가입**(CLIENT 로). 가입이 해시·약관·프로필을 다 처리한다
+2. DB 에서 역할만 바꾼다 — `Role` enum 에 `ADMIN` 이 이미 있다
+
+```sql
+UPDATE account SET role = 'ADMIN' WHERE email = 'admin@pairing.com';
+```
+
+3. **그 계정으로 로그인.** `POST /auth/login` 의 `role` 을 **`ADMIN`** 으로 보내야 한다 —
+   로그인이 `findByEmailAndRole(email, role)` 로 찾아서 `CLIENT` 로 보내면 계정을 못 찾는다
+4. ⚠️ **2번 전에 로그인해뒀다면 반드시 재로그인.** 권한은 **JWT 의 `role` 클레임**에서 읽으므로
+   (`GlobalJwtAuthenticationFilter`: `"ROLE_" + role`) 옛 토큰엔 `ROLE_CLIENT` 가 박혀 있다
+
+> 기존 본인 계정을 바꾸지 말고 새 계정으로 하면 되돌릴 필요가 없고, 관리자 서버 붙일 때 그대로 쓴다.
+> (curl 로 할 거면 `-H "Cookie: accessToken=<토큰>"`)
+
+⚠️ **결과가 응답에 안 온다.** 즉시 `202`(본문 없음)만 돌아오고 실제 작업은 **백그라운드에서**
+돈다 — 대상 1건마다 Gemini 호출이 일어나 몇 분씩 걸릴 수 있어서다.
+**성공·실패 건수는 서버 로그에만 남는다.** 끝났는지는 아래 ④의 DB 쿼리로 확인한다.
 
 - 지금 배포 DB에 freelancer 1건 / position 7건이 있고 **전부 2026-08-11(B1 이전) 생성**이라
   전부 대상이다
 - 안 돌리면 **옛 규칙 벡터(회사명·스킬 포함)와 새 규칙 벡터(자유 서술만)가 섞여** 비교 자체가
   무의미해진다
 
-**③ ivfflat 인덱스 다시 만들기**
+**③ 재색인이 끝났는지 확인 — ②는 202만 주므로 여기서 봐야 한다**
+
+⚠️ **`updated_at`으로 보면 안 된다.** `upsert`의 `set_`에 `updated_at`이 없어서
+(`embedding`/`model`/`source_hash`만 갱신) **벡터를 다시 만들어도 시각이 안 바뀐다.**
+2026-08-12에 이걸로 "재색인이 안 됐나?" 하고 한참 헤맸다. 아래 **B7 버그 ①** 참고.
+
+**`ai_agent_log`를 봐야 한다.**
+
+```sql
+SELECT ref_type, status, count(*), min(created_at) AS 처음, max(created_at) AS 마지막
+FROM ai_agent_log
+WHERE agent_type = 'EMBEDDING'
+  AND created_at > now() - interval '30 minutes'
+GROUP BY ref_type, status ORDER BY 1, 2;
+```
+
+| 결과 | 해석 |
+|---|---|
+| `FREELANCER`/`POSITION` 각각 대상 수만큼 `SUCCESS` | ✅ 성공 |
+| 일부 `FAILED` | Gemini 호출 실패. `error_message` 확인 |
+| **행이 아예 없음** | 자바가 파이썬을 부르기 전에 끝났다는 뜻 — 대상이 0이거나 자바에서 예외. **서버 로그**를 봐야 한다(실패는 `log.warn`으로만 남는다) |
+
+**④ ivfflat 인덱스 다시 만들기 — ③이 끝난 뒤에**
 
 ```sql
 REINDEX INDEX idx_freelancer_embedding_cosine;
 ```
 
-빈 테이블에 만든 인덱스라 pgvector가 `low recall` 경고를 냈었다. 벡터가 채워진 뒤 다시 만들어야
-제대로 동작한다. (추천 본 경로는 이 인덱스를 안 쓰지만 후보 미리보기 엔드포인트가 쓴다.)
-
-**④ 재색인이 실제로 반영됐는지 확인**
-
-```sql
-SELECT count(*) AS 전체,
-       count(*) FILTER (WHERE updated_at > now() - interval '1 hour') AS 방금_갱신
-FROM freelancer_embedding;
--- position_embedding 도 같은 쿼리로
-```
-
-**방금_갱신 = 전체**여야 한다. 다르면 재색인이 일부만 돌았다는 뜻이다.
+빈 테이블에 만든 인덱스라 pgvector가 `low recall` 경고를 냈었다. **벡터가 다 채워진 뒤에** 다시
+만들어야 클러스터를 제대로 잡는다 — ③보다 먼저 하면 의미가 없다.
+(추천 본 경로는 이 인덱스를 안 쓰지만 후보 미리보기 엔드포인트가 쓴다.)
 
 **⑤ 추천이 실제로 도는지 한 번 호출**
 
@@ -484,6 +534,117 @@ FROM matching_candidate WHERE is_exposed = true;
 
 - [x] `AI매칭_API_화면매핑_최신본.md`(Desktop + `docs/personal/` 사본) 갱신 완료.
       스킬 부분 보유 후보 노출 + `budgetWarned` 예산 경고 배너(문구·위치·포지션 탭 종속)까지 담았다
+
+### B7. 재색인에서 드러난 버그 2개 — **다음 수정 때 같이 올린다 (별도 PR 만들지 말 것)**
+
+2026-08-12 배포 후 재색인을 실제로 돌려보고 발견했다. **둘 다 "에러가 안 나서 안 보이는" 종류다.**
+
+실측 결과: `ai_agent_log`에 `FREELANCER SUCCESS 1건`만 있고 **`POSITION`은 0건.**
+포지션 임베딩이 9건 있는데 하나도 다시 만들어지지 않았다.
+
+#### ① Python — `updated_at`이 갱신되지 않는다
+
+```python
+# app/domains/embedding/repository.py — upsert_freelancer / upsert_position
+set_={"embedding": vector, "model": model, "source_hash": source_hash}
+#                                                        ^ updated_at 없음
+```
+
+`updated_at`은 `server_default=func.current_timestamp()`라 **INSERT 때만** 값이 들어간다.
+upsert의 `set_`에 없으니 **UPDATE에서는 안 바뀐다.** 그래서 "이 벡터가 언제 만들어졌나"를
+알 수 없고, **재색인이 됐는지 확인할 방법이 사라진다.**
+
+```python
+set_={"embedding": vector, "model": model, "source_hash": source_hash,
+      "updated_at": func.current_timestamp()}
+```
+
+한 줄이면 된다. **다음 파이썬 수정 때 같이 올린다.**
+
+#### ② Java — 포지션 재색인 대상을 `matching_snapshot`에서 찾는다
+
+```java
+// EmbeddingReindexService.reindexPositions()
+List<MatchingSnapshot> positionSnapshots =
+        matchingSnapshotRepository.findAllBySnapshotType(SnapshotType.POSITION);
+```
+
+**임베딩을 만드는 경로가 둘인데 스냅샷을 만드는 건 하나뿐이다:**
+
+| 경로 | 스냅샷 | 임베딩 |
+|---|---|---|
+| `RecruitingStartedPositionHandler` (모집 시작) | ✅ 만듦 | ✅ 만듦 |
+| `ProjectUpdatedEventListener` (결제 후 수정) | ❌ **안 만듦**(R32 — 카드는 고정이라 일부러) | ✅ 만듦 |
+
+즉 **스냅샷 없이 임베딩만 있는 포지션이 생길 수 있고, 그 포지션은 재색인에서 통째로 빠진다.**
+스냅샷은 "요청 카드 고정용"이지 "임베딩 대상 목록"이 아닌데 그 용도로 쓴 것이 잘못이다.
+
+**원인 확정 (2026-08-12 실측)**: 배포 DB의 `matching_snapshot`이 **0건**이다. 루프가 아예 안 돌았다.
+
+```sql
+SELECT snapshot_type, count(*) FROM matching_snapshot GROUP BY snapshot_type;
+-- → 0 rows
+```
+
+**고치는 방향**: 대상 목록을 스냅샷이 아니라 **모집이 시작된 포지션**에서 가져온다.
+`matching_round`의 distinct `position_id`가 후보다 — 모집 시작 시 라운드가 반드시 생기고,
+`ProjectUpdatedEvent`는 결제 후에만 발행되므로 라운드가 이미 있는 포지션이다.
+**다음 자바 수정 때 같이 올린다.**
+
+#### ③ 🔴 배포 DB에 스냅샷이 0건인데 라운드·요청이 있다 — **C1을 바로 막는다**
+
+②를 파다가 나온 것으로, **셋 중 제일 급하다.**
+
+```sql
+SELECT (SELECT count(*) FROM matching_round)     AS 라운드,   -- 2
+       (SELECT count(*) FROM matching_candidate) AS 후보,     -- 2
+       (SELECT count(*) FROM matching_request)   AS 요청,     -- 2
+       (SELECT count(*) FROM matching_snapshot)  AS 스냅샷,   -- 0  ← 문제
+       (SELECT count(*) FROM position_embedding) AS 포지션벡터; -- 9
+```
+
+**매칭 요청 상세 조회가 스냅샷 없이는 통째로 실패한다.**
+
+```java
+// MatchingRequestResponseAssembler.readSnapshot()
+.orElseThrow(() -> new BusinessException(MatchingErrorCode.SNAPSHOT_NOT_FOUND));
+```
+
+지금 배포 환경의 요청 2건은 **조회하는 순간 에러가 난다.** C1에서 "요청 → 상세 조회" 구간을
+지나갈 수 없다.
+
+**코드상으로는 이 상태가 나올 수 없다.** `RecruitingStartedPositionHandler`는 한 트랜잭션
+(`REQUIRES_NEW`) 안에서 **스냅샷 → 임베딩 → 라운드** 순으로 만든다. 라운드가 있으면 스냅샷도
+있어야 한다. 그러니 원인은 셋 중 하나다.
+
+| 가설 | 확인 방법 |
+|---|---|
+| (a) **스냅샷 기능 이전에 만든 옛 테스트 데이터** — `MatchingSnapshot`은 2026-08-09 도입 | `matching_round.created_at`이 08-09 이전인지 |
+| (b) **재추천으로만 생긴 라운드** — `MatchingRerecommendService.openRound`는 스냅샷을 안 만든다 | `round_type`이 `PAID`/`FREE`뿐인지 |
+| (c) 누가 `matching_snapshot`만 지웠다 | 위 둘이 아니면 이것 |
+
+```sql
+SELECT id, position_id, round_type, round_no, status, created_at
+FROM matching_round ORDER BY created_at;
+```
+
+- `round_type = INITIAL` 이고 `created_at`이 08-09 이후면 → **진짜 버그다.** 스냅샷 저장이
+  실패했는데 뒤 단계가 계속 진행됐다는 뜻이라 코드를 다시 봐야 한다
+- `PAID`/`FREE`뿐이면 → (b). **재추천만으로 라운드가 생길 수 있다는 게 드러난 것**이고,
+  그 자체가 검토 대상이다(최초 추천 없이 재추천이 되는 게 맞나)
+- 08-09 이전이면 → (a). **데이터만 정리하면 된다**
+
+**어느 쪽이든 C1 전에 정리해야 한다.** 옛 데이터면 지우고, 버그면 고친다.
+
+#### 지금 당장 급하지 않은 것 / 급한 것
+
+- ✅ **프리랜서 1건은 새 규칙으로 재생성됐다.** `upsert_freelancer`는 `source_hash`가 같으면
+  **AI를 부르기 전에** 건너뛰는데 `ai_agent_log`에 `SUCCESS`가 남았다 = 건너뛰지 않았다 =
+  텍스트가 바뀌었다. **B1이 실제로 적용됐다는 증거다**
+- ⏳ **포지션 9건은 옛 규칙 그대로.** ②를 고치기 전까지 재색인으로는 못 고친다.
+  급하면 **결제 완료된 프로젝트를 아무 필드나 수정**하면 된다 — `ProjectUpdatedEventListener`가
+  스냅샷과 무관하게 그 프로젝트의 포지션 임베딩을 전부 다시 만든다
+- 🔴 **③은 C1을 막으므로 먼저 정리한다**
 
 ### B6. 환경 — 12번 pgvector — **완료 (2026-08-12)**
 
@@ -518,12 +679,12 @@ FROM matching_candidate WHERE is_exposed = true;
 > `Pairing-python/db/init/10-create-ai-schema.sql`을 한 번 돌려야 한다.**
 > 그 SQL은 `ALTER TABLE ... ADD CONSTRAINT` 2줄 때문에 **재실행하면 실패한다**(파괴적이진 않다).
 
-## C. 검증 — 아직 한 번도 안 한 것
+## C. 검증
 
 | # | 항목 | 비고 |
 |---|---|---|
-| C1 | **통합 테스트(end-to-end)** | 이력서 저장 → 임베딩 → 모집 시작 → 추천 → 요청 → 수락까지 실제로 한 번도 안 돌려봤다. **남은 것 중 가장 큰 리스크** |
-| C2 | 실제 Gemini 호출로 추천 품질 확인 | 점수 스케일 버그(0~10으로 답하던 것)를 실호출로만 잡았던 전례가 있다 |
+| C1 | **통합 테스트(end-to-end)** | ✅ 배포 DB에서 완료. project `23` / position `33` / request `3` / negotiation `26` / contract `27` 생성 확인 |
+| C2 | 실제 Gemini 호출로 추천 품질 확인 | 다음 순서. 점수 스케일 버그(0~10으로 답하던 것)를 실호출로만 잡았던 전례가 있다 |
 | C3 | 유사도 분포 측정 | 순위 기반 정규화로 바꿔서 상수는 불필요해졌지만, 분포가 극단적이면 재검토 |
 
 ## D.+ 요구사항 (미착수)

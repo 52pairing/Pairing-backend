@@ -10,6 +10,9 @@ build/
 
 uploads/
 
+# Local/generated PM status workbooks and render artifacts
+outputs/pm-status/
+
 ### STS ###
 .apt_generated
 .classpath
