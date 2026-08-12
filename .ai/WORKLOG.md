@@ -943,3 +943,34 @@ recall / Drop the index until the table has more data`. 예상한 대로라 B5 �
 `REINDEX` 항목이 유효함을 확인했다.
 
 **이제 C1(통합 테스트)을 막는 환경 요인은 없다.**
+
+## 2026-08-12 (계속) — 7번 similarity + 13번 CI pgvector, python 브랜치 완성
+
+**7번.** `matching_candidate.similarity` 컬럼에 지금까지 `0.0` 이 박혀 있었다
+(`createFromEmbedding(..., 0.0)`). 컬럼 이름이 거짓말을 하고 있었고, "이 후보가 왜 뽑혔나"를
+나중에 되짚을 수 없었다. 25:75 비중이 맞는지 판단하려면 실제 유사도 분포가 있어야 한다.
+
+파이썬 추천 응답에 `similarity` 를 실었다. **LLM 이 만드는 값이 아니라 서버가 1차 추림에서
+계산한 값**이라 `_RANKING_SCHEMA` 에는 넣지 않고, 풀 밖 후보를 걸러낸 뒤 채운다. LLM 응답을
+`RankedCandidate` 로 파싱하는 단계에서는 비어 있어야 해서 기본값을 `None` 으로 뒀다.
+
+**프롬프트에는 넣지 않는다.** 넣으면 LLM 이 원문을 읽는 대신 그 숫자를 베낀다 — 1차 추림 점수를
+다시 확인하는 셈이라 새로 알아내는 게 없다. 테스트로 고정했다(`"0.7321" not in sent_prompt`).
+
+**13번.** CI 에 `pgvector/pgvector:pg16` 서비스와 `AI_TEST_DB_URL` 을 넣었다. 이제 PR 마다 실제
+pgvector 에 쿼리가 돈다. 어제 "스키마 드리프트 때문에 안 하는 게 낫다"고 했던 판단을 뒤집은 것인데,
+드리프트 위험은 붙이든 안 붙이든 같고 **안 붙이면 아무도 안 돌린다**는 게 결정적이었다.
+
+**⚠️ 하다가 위험한 걸 발견해 같이 고쳤다.** 어제 쓴 통합 테스트가 `public` 스키마에
+`DROP TABLE freelancer_embedding, freelancer_profile, account, freelancer_condition, condition_skill`
+을 그대로 걸고 있었다. CI 의 빈 컨테이너에서는 문제가 없지만, **`AI_TEST_DB_URL` 에 개발 DB 를
+넣으면 스프링 테이블이 통째로 날아간다.** 로컬 DB 를 방금 다 세팅한 직후라 실제로 일어날 수
+있는 사고였다.
+
+전용 스키마(`pgvector_it`)를 만들어 그 안에서만 테이블을 만들고 끝나면 `DROP SCHEMA CASCADE`
+하도록 바꿨다. 리포지토리 SQL 이 테이블명을 스키마 없이 쓰므로 세션의 `search_path` 만 돌리면
+그대로 픽스처를 본다. **실제 개발 DB(테이블 51개)에 직접 돌려서** 무손상(51 → 51)과 잔여 스키마
+없음을 확인했다.
+
+**→ python 브랜치(`feature/matching-condition-score`)는 PR 올릴 준비가 끝났다.**
+84 passed + 1 skipped, ruff 통과.

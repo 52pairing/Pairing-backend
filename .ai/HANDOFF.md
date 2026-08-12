@@ -16,7 +16,7 @@
 > | 레포 | 브랜치 | 담긴 것 | 남은 것 |
 > |---|---|---|---|
 > | backend | `feature/matching-embedding-text-redesign` | B1 임베딩 텍스트, B2 budgetCap, 수수료율 하드코딩 제거 | **B4 가드 교체** + 7번 자바 수신 |
-> | python | `feature/matching-condition-score` | B2 budget_cap 수신, B3 조건점수 25:75 | **7번 similarity 응답**, 13번 CI pgvector |
+> | python | `feature/matching-condition-score` | B2 budget_cap, B3 조건점수 25:75, 7번 similarity, 13번 CI pgvector | **없음 — PR 올리면 된다** |
 >
 > **핵심 숫자 (자주 헷갈린다)**
 > - 최종 점수 = 유사도 **25** + 조건점수 **75** (조건 배점 합 100을 0~1로 정규화 후 ×75)
@@ -262,9 +262,9 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 | 순서 | 할 일 | 어디 | 예상 |
 |---|---|---|---|
 | **1** | **E2 회신 보내기** (아래 "E2 회신" 절 그대로) — 나머지 4건은 종료됨 | 슬랙/이슈 | 2분 |
-| **2** | 7번 `similarity` 응답 필드 추가 | python `feature/matching-condition-score` | 30분 |
-| **3** | 13번 CI에 pgvector 서비스 추가 | python 같은 브랜치 | 10분 |
-| **4** | **python PR 올리고 머지** (10번: python 먼저) | GitHub 웹 | — |
+| ~~2~~ | ~~7번 `similarity` 응답 필드~~ | ✅ 완료 (2026-08-12) | |
+| ~~3~~ | ~~13번 CI에 pgvector~~ | ✅ 완료 (2026-08-12) | |
+| **4** | **python PR 올리고 머지** (10번: python 먼저) ← **여기** | GitHub 웹 | — |
 | **5** | **B4 가드 교체** (G3+G4) + 7번 자바 수신 | backend `feature/matching-embedding-text-redesign` | 4시간 |
 | **6** | **backend PR 올리고 머지** | GitHub 웹 | — |
 | **7** | 11번 재색인 API 1회 + `REINDEX` | 배포 후 | 10분 |
@@ -360,11 +360,20 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 - [x] 후보 0명 시 **스킬 필터 완화 재검색**(옛 "풀 확대"는 무의미해서 교체)
 - [x] 테스트 24건(채점 전 항목 + 25:75 경계) + 리포지토리 4건(파라미터·매핑·실DB)
 
-**남은 것 — 같은 브랜치에 얹는다:**
+**7번·13번도 같은 브랜치에 얹어 완료 (2026-08-12). 84 passed + 1 skipped, ruff 통과.**
 
-- [ ] **7번**: 추천 응답에 `similarity` 추가 (`RankedCandidate`에 필드) — 자바가 저장할 값
-- [ ] **13번**: CI(`.github/workflows/ci.yml`)에 pgvector 서비스 + `AI_TEST_DB_URL` 주입.
-      테스트는 이미 있다(`test_search_scored_candidates_against_real_db`). 설정 10줄
+- [x] **7번**: `RankedCandidate.similarity`(기본 `None`) 추가. **LLM 이 만드는 값이 아니라 서버가
+      채우는 값**이라 `_RANKING_SCHEMA` 에 넣지 않고, 풀 밖 후보를 걸러낸 뒤 1차 추림에서 계산한
+      코사인 유사도로 덮어쓴다. **프롬프트에는 안 넣는다** — 넣으면 LLM 이 원문을 읽는 대신 그
+      숫자를 베낀다. 테스트 3건(값 전달 / 프롬프트 미노출 / 지어낸 ID 는 유사도 조회 전에 제거)
+- [x] **13번**: CI 에 `pgvector/pgvector:pg16` 서비스 + `AI_TEST_DB_URL` 주입.
+      **PR 마다 실제 pgvector 로 SQL 이 돈다.** 서비스가 없으면 그 테스트만 skip 된다
+- [x] ⚠️ **통합 테스트가 `public` 스키마에 `DROP TABLE` 하던 것을 전용 스키마로 격리했다.**
+      `AI_TEST_DB_URL` 에 개발 DB 를 넣으면 `account`·`freelancer_profile` 등 스프링 테이블이
+      통째로 날아가는 구조였다. 실제 개발 DB(테이블 51개)로 돌려 무손상·잔여물 없음을 확인했다
+
+> **→ python 브랜치는 PR 올릴 준비 완료.** 담긴 것: B2(budget_cap) + B3(조건점수 25:75) +
+> 7번(similarity) + 13번(CI) + 단가 환산 정책 정렬(×160/×20) + README 갱신.
 
 ### B4. 4단계 — 가드 교체 (Java) ← **다음 작업**
 
