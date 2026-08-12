@@ -95,7 +95,10 @@ public final class NegotiationResponseFactory {
                 c.getAgreedValue(),
                 c.getStatus(),
                 c.getRoundCount(),
-                c.floorForViewer(role)      // 뷰어 본인 마지노선만
+                c.floorForViewer(role),     // 뷰어 본인 마지노선만
+                // 화면이 마지노선 안내 문구를 맞게 쓰려면 비교 방식을 알아야 한다.
+                // 프론트가 조건 타입으로 다시 판단하면 규칙이 두 곳에 생긴다.
+                c.getConditionType().getFloorComparison()
         );
     }
 }

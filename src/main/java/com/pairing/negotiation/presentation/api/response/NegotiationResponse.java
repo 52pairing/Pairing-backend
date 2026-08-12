@@ -2,6 +2,7 @@ package com.pairing.negotiation.presentation.api.response;
 
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
+import com.pairing.negotiation.domain.model.FloorComparison;
 import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -71,7 +72,11 @@ public record NegotiationResponse(
             @Schema(description = "합의값. 합의 전에는 null") String agreedValue,
             @Schema(description = "조건 상태") ConditionStatus status,
             @Schema(description = "이 조건의 라운드 수", example = "2") int roundCount,
-            @Schema(description = "내 마지노선(직전 입력값). 뷰어 본인 것만 내려감. 상대 마지노선은 절대 노출하지 않는다. 재지시 '직전 마지노선' 표시에 쓴다.", example = "3500000") String myFloor
+            @Schema(description = "내 마지노선(직전 입력값). 뷰어 본인 것만 내려감. 상대 마지노선은 절대 노출하지 않는다. 재지시 '직전 마지노선' 표시에 쓴다.", example = "3500000") String myFloor,
+            @Schema(description = "마지노선 비교 방식. RANGE=크기 비교(\"480만 원 이상이어야 합니다\"), "
+                    + "CHOICE=허용값 집합(\"재택을 허용해야 합니다\"), NONE=비교 기준 없음(안내 불필요). "
+                    + "RANGE 의 이상/이하 방향은 viewerRole 로 판단한다 — 클라는 상한, 프리는 하한이다.",
+                    example = "CHOICE") FloorComparison floorComparison
     ) {
     }
 }
