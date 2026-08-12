@@ -53,7 +53,7 @@ public record ResumeResponse(
                         .toList(),
                 result.careers().stream()
                         .map(c -> new Career(c.getStartDate(), c.getEndDate(), c.getCompanyName(),
-                                c.getDepartmentRank(), c.getJobDescription()))
+                                c.getDepartment(), c.getPosition(), c.getJobDescription()))
                         .toList(),
                 result.certificates().stream()
                         .map(c -> new Certificate(c.getAcquiredDate(), c.getName(), c.getIssuer(), c.getScore(),
@@ -83,7 +83,8 @@ public record ResumeResponse(
             @Schema(description = "입사일") LocalDate startDate,
             @Schema(description = "퇴사일") LocalDate endDate,
             @Schema(description = "회사/기관명") String companyName,
-            @Schema(description = "부서 및 직급") String departmentRank,
+            @Schema(description = "부서") String department,
+            @Schema(description = "직급") String position,
             @Schema(description = "담당 업무") String jobDescription
     ) {
     }

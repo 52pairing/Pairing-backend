@@ -74,7 +74,7 @@ class ResumeUpdatedEventListenerTest {
                 List.of(new UpsertResumeCommand.Education(LocalDate.of(2014, 3, 1), LocalDate.of(2018, 2, 1),
                         "페어링대학교", "컴퓨터공학과", GraduationStatus.GRADUATED, null)),
                 List.of(new UpsertResumeCommand.Career(LocalDate.of(2018, 3, 1), null, "A사",
-                        "백엔드팀 대리", "주문 시스템 개발")),
+                        "백엔드팀", "대리", "주문 시스템 개발")),
                 List.of(),
                 List.of(),
                 new UpsertResumeCommand.Agreements(true, true, true, true));

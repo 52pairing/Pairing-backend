@@ -336,7 +336,8 @@ CREATE TABLE "resume_career" (
     "start_date" DATE NOT NULL,
     "end_date" DATE,
     "company_name" VARCHAR(100) NOT NULL,
-    "department_rank" VARCHAR(100),
+    "department" VARCHAR(100),
+    "position" VARCHAR(100),
     "job_description" TEXT,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -1334,7 +1335,8 @@ COMMENT ON COLUMN "resume_career"."resume_id" IS '이력서 FK';
 COMMENT ON COLUMN "resume_career"."start_date" IS '근무 시작일';
 COMMENT ON COLUMN "resume_career"."end_date" IS '근무 종료일(NULL=재직중)';
 COMMENT ON COLUMN "resume_career"."company_name" IS '회사/기관명';
-COMMENT ON COLUMN "resume_career"."department_rank" IS '부서 및 직급';
+COMMENT ON COLUMN "resume_career"."department" IS '부서';
+COMMENT ON COLUMN "resume_career"."position" IS '직급';
 COMMENT ON COLUMN "resume_career"."job_description" IS '담당 업무';
 
 COMMENT ON COLUMN "resume_certificate"."id" IS 'PK';

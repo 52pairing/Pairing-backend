@@ -27,8 +27,8 @@ public record UpsertResumeCommand(
                             GraduationStatus graduationStatus, CampusType campusType) {
     }
 
-    public record Career(LocalDate startDate, LocalDate endDate, String companyName, String departmentRank,
-                         String jobDescription) {
+    public record Career(LocalDate startDate, LocalDate endDate, String companyName, String department,
+                         String position, String jobDescription) {
     }
 
     public record Certificate(LocalDate acquiredDate, String name, String issuer, String score, String note) {

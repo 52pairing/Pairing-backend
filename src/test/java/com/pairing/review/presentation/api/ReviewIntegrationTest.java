@@ -32,6 +32,8 @@ import com.pairing.global.config.SettlementResultStub;
 import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
+import com.pairing.review.domain.model.SiteReviewVisibility;
+import com.pairing.review.infrastructure.persistence.SiteReviewJpaEntity;
 import com.pairing.review.infrastructure.persistence.SpringDataReviewRepository;
 import com.pairing.review.infrastructure.persistence.SpringDataSiteReviewRepository;
 import com.pairing.terms.domain.model.TermsCode;
@@ -59,6 +61,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -484,40 +487,18 @@ class ReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("사이트 리뷰는 기본 비공개이고, 관리자가 공개·홍보로 바꾸면 요약에 반영된다")
-    void adminCanChangeSiteReviewVisibility() throws Exception {
+    @DisplayName("사이트 리뷰는 작성 시 공개·홍보 제외 상태로 저장된다")
+    void siteReviewIsPublicButNotPromotedOnCreate() throws Exception {
+        // 공개·홍보 설정 API 는 관리자 서버(pairing-admin)로 옮겼다. 여기서는 저장된 기본값만 본다.
+        // 공개가 기본이라 사후 관리가 가능하고, 홍보는 꺼져 있어 메인에 바로 뜨지 않는다.
         mockMvc.perform(post("/api/v1/reviews")
                         .cookie(freelancerAccessToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(reviewCreateBody())))
                 .andExpect(status().isCreated());
 
-        Cookie adminAccessToken = loginAsAdmin();
-        Long siteReviewId = siteReviewRepository.findAll().get(0).getId();
-
-        mockMvc.perform(get("/api/v1/reviews/admin/site-reviews/summary").cookie(adminAccessToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalCount").value(1))
-                .andExpect(jsonPath("$.data.publicCount").value(0))
-                .andExpect(jsonPath("$.data.promotedCount").value(0));
-
-        mockMvc.perform(get("/api/v1/reviews/admin/site-reviews").cookie(adminAccessToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.content.length()").value(1))
-                .andExpect(jsonPath("$.data.content[0].visibility").value("PRIVATE"));
-
-        mockMvc.perform(put("/api/v1/reviews/admin/site-reviews/" + siteReviewId + "/visibility")
-                        .cookie(adminAccessToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"visibility":"PUBLIC","promoted":true}"""))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.visibility").value("PUBLIC"))
-                .andExpect(jsonPath("$.data.promoted").value(true));
-
-        mockMvc.perform(get("/api/v1/reviews/admin/site-reviews/summary").cookie(adminAccessToken))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.publicCount").value(1))
-                .andExpect(jsonPath("$.data.promotedCount").value(1));
+        SiteReviewJpaEntity saved = siteReviewRepository.findAll().get(0);
+        assertThat(saved.getVisibility()).isEqualTo(SiteReviewVisibility.PUBLIC);
+        assertThat(saved.isPromoted()).isFalse();
     }
 }

@@ -12,8 +12,14 @@ import java.time.LocalDateTime;
 /**
  * 사이트(플랫폼) 이용 후기. (요구사항 R22, R40)
  *
- * <p>기본값은 비공개다. 관리자가 확인 후 공개·홍보 여부를 바꾼다({@link #updateVisibility}).
- * 그 외 내용은 작성 후 바뀌지 않는다.
+ * <p><b>기본값은 공개다.</b> 후기는 대부분 문제가 없는데 관리자가 하나하나 열어 공개로 바꾸면
+ * 그 일이 밀리는 동안 아무 후기도 노출되지 않는다. 그래서 공개로 두고, 부적절한 내용이 보이면
+ * 그때 비공개로 내린다({@link #updateVisibility}).
+ *
+ * <p>공개라고 바로 메인에 뜨는 것은 아니다. 메인 노출은 관리자가 홍보 활용까지 켜야 한다.
+ * 즉 <b>공개는 기본값, 홍보는 선별</b>이다.
+ *
+ * <p>그 외 내용은 작성 후 바뀌지 않는다.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -54,7 +60,7 @@ public class SiteReview {
     public static SiteReview create(Long contractId, Long projectId, Long writerAccountId, PartyRole writerRole,
                                     int score, String content) {
         return new SiteReview(null, contractId, projectId, writerAccountId, writerRole, score, content,
-                SiteReviewVisibility.PRIVATE, false, LocalDateTime.now());
+                SiteReviewVisibility.PUBLIC, false, LocalDateTime.now());
     }
 
     public static SiteReview reconstitute(Long id, Long contractId, Long projectId, Long writerAccountId,

@@ -26,6 +26,9 @@ import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
 import com.pairing.review.infrastructure.persistence.SpringDataReviewRepository;
+import com.pairing.review.domain.model.SiteReview;
+import com.pairing.review.domain.model.SiteReviewVisibility;
+import com.pairing.review.domain.repository.SiteReviewRepository;
 import com.pairing.review.infrastructure.persistence.SpringDataSiteReviewRepository;
 import com.pairing.terms.domain.model.TermsCode;
 import com.pairing.terms.infrastructure.persistence.SpringDataTermsAgreementRepository;
@@ -100,6 +103,8 @@ class HomeIntegrationTest {
     private SpringDataReviewRepository reviewRepository;
     @Autowired
     private SpringDataSiteReviewRepository siteReviewRepository;
+    @Autowired
+    private SiteReviewRepository siteReviewDomainRepository;
     @Autowired
     private JdbcTemplate jdbcTemplate;
     @Autowired
@@ -308,13 +313,17 @@ class HomeIntegrationTest {
                 .orElseThrow().getId();
     }
 
-    private void promote(Cookie adminAccessToken, Long siteReviewId) throws Exception {
-        mockMvc.perform(put("/api/v1/reviews/admin/site-reviews/" + siteReviewId + "/visibility")
-                        .cookie(adminAccessToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"visibility":"PUBLIC","promoted":true}"""))
-                .andExpect(status().isOk());
+    /**
+     * 공개+홍보로 만든다.
+     *
+     * <p>원래는 관리자 API 를 불렀는데, 그 API 가 관리자 서버(pairing-admin)로 옮겨가서
+     * 이 서버에는 없다. 검증 대상은 "그렇게 설정된 리뷰가 메인에 나오는가" 이므로
+     * 설정 자체는 리포지토리로 바로 만든다.
+     */
+    private void promote(Long siteReviewId) {
+        SiteReview siteReview = siteReviewDomainRepository.findById(siteReviewId).orElseThrow();
+        siteReview.updateVisibility(SiteReviewVisibility.PUBLIC, true);
+        siteReviewDomainRepository.save(siteReview);
     }
 
     private Long clientAccountId() {
@@ -329,8 +338,8 @@ class HomeIntegrationTest {
         Long lowScoreReviewId = createSiteReview(lowScoreFreelancerAccessToken, 902L, clientAccountId(), 3);
 
         Cookie adminAccessToken = loginAsAdmin();
-        promote(adminAccessToken, goodReviewId);
-        promote(adminAccessToken, lowScoreReviewId);
+        promote(goodReviewId);
+        promote(lowScoreReviewId);
 
         // 쿠키 없이(비로그인) 호출
         mockMvc.perform(get("/api/v1/home/site-reviews"))
@@ -342,17 +351,25 @@ class HomeIntegrationTest {
     }
 
     @Test
-    @DisplayName("관리자가 공개로 바꿔도 홍보 활용으로 설정하지 않으면 노출되지 않는다")
-    void findSiteReviewsExcludesPublicButNotPromoted() throws Exception {
-        Long siteReviewId = createSiteReview(freelancerAccessToken, 903L, clientAccountId(), 5);
+    @DisplayName("size 는 1~20 로 제한된다. 비로그인 API 라 상한이 없으면 통째로 긁힌다")
+    void siteReviewSizeIsCapped() throws Exception {
+        mockMvc.perform(get("/api/v1/home/site-reviews").param("size", "100000"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
 
-        Cookie adminAccessToken = loginAsAdmin();
-        mockMvc.perform(put("/api/v1/reviews/admin/site-reviews/" + siteReviewId + "/visibility")
-                        .cookie(adminAccessToken)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"visibility":"PUBLIC","promoted":false}"""))
+        mockMvc.perform(get("/api/v1/home/site-reviews").param("size", "0"))
+                .andExpect(status().isBadRequest());
+
+        // 상한 안쪽은 그대로 통과한다
+        mockMvc.perform(get("/api/v1/home/site-reviews").param("size", "20"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("공개여도 홍보 활용이 아니면 노출되지 않는다")
+    void findSiteReviewsExcludesPublicButNotPromoted() throws Exception {
+        // 작성 시 기본값이 이미 공개다. 홍보를 켜지 않았으므로 메인에는 나오지 않아야 한다.
+        createSiteReview(freelancerAccessToken, 903L, clientAccountId(), 5);
 
         mockMvc.perform(get("/api/v1/home/site-reviews"))
                 .andExpect(status().isOk())
@@ -366,8 +383,8 @@ class HomeIntegrationTest {
         Long second = createSiteReview(lowScoreFreelancerAccessToken, 905L, clientAccountId(), 5);
 
         Cookie adminAccessToken = loginAsAdmin();
-        promote(adminAccessToken, first);
-        promote(adminAccessToken, second);
+        promote(first);
+        promote(second);
 
         mockMvc.perform(get("/api/v1/home/site-reviews").param("size", "1"))
                 .andExpect(status().isOk())

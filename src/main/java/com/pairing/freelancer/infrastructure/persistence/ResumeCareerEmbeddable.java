@@ -23,18 +23,22 @@ public class ResumeCareerEmbeddable {
     @Column(name = "company_name", nullable = false, length = 100)
     private String companyName;
 
-    @Column(name = "department_rank", length = 100)
-    private String departmentRank;
+    @Column(name = "department", length = 100)
+    private String department;
+
+    @Column(name = "position", length = 100)
+    private String position;
 
     @Column(name = "job_description", length = 2000)
     private String jobDescription;
 
     public ResumeCareerEmbeddable(LocalDate startDate, LocalDate endDate, String companyName,
-                                  String departmentRank, String jobDescription) {
+                                  String department, String position, String jobDescription) {
         this.startDate = startDate;
         this.endDate = endDate;
         this.companyName = companyName;
-        this.departmentRank = departmentRank;
+        this.department = department;
+        this.position = position;
         this.jobDescription = jobDescription;
     }
 }

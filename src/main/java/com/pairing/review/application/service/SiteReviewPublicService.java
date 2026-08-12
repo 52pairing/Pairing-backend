@@ -4,36 +4,28 @@ import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.review.application.result.SiteReviewResult;
-import com.pairing.review.application.result.SiteReviewSummaryResult;
-import com.pairing.review.application.usecase.SiteReviewAdminUseCase;
+import com.pairing.global.exception.BusinessException;
 import com.pairing.review.application.usecase.SiteReviewPublicUseCase;
 import com.pairing.review.domain.model.SiteReview;
-import com.pairing.review.domain.model.SiteReviewVisibility;
 import com.pairing.review.domain.repository.SiteReviewRepository;
-import com.pairing.review.exception.ReviewErrorCode;
-import com.pairing.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * {@code search}/{@code updateVisibility} 는 일부러 {@code @Transactional} 로 묶지 않는다.
- * {@code toResult()} 가 부르는 {@code ProjectQueryUseCase.getById()} 가 대상 없으면 예외를 던지는데,
- * 같은 트랜잭션 안에서 그 예외를 잡아도 트랜잭션은 이미 rollback-only가 되어 커밋 시점에
- * {@code UnexpectedRollbackException} 이 난다. (ReviewService 와 같은 이유)
+ * 비로그인 메인에 노출할 사이트 리뷰 조회.
+ *
+ * <p>공개·홍보 설정은 <b>관리자 서버(pairing-admin)</b>가 한다. 이 서비스는 그 결과를 읽어
+ * 메인에 내려주기만 한다. 관리자가 아무것도 켜지 않으면 빈 목록이다.
  */
 @Service
 @RequiredArgsConstructor
-public class SiteReviewAdminService implements SiteReviewAdminUseCase, SiteReviewPublicUseCase {
+public class SiteReviewPublicService implements SiteReviewPublicUseCase {
 
     /** 비로그인 메인에는 이 점수 이상인 홍보 리뷰만 내려간다. */
     private static final int HOME_MIN_SCORE = 4;
@@ -44,33 +36,6 @@ public class SiteReviewAdminService implements SiteReviewAdminUseCase, SiteRevie
 
     @Override
     @Transactional(readOnly = true)
-    public SiteReviewSummaryResult getSummary() {
-        LocalDateTime monthStart = LocalDateTime.now().withDayOfMonth(1).toLocalDate().atStartOfDay();
-        Double average = siteReviewRepository.findAverageScore();
-        long totalCount = siteReviewRepository.count();
-        long promotedCount = siteReviewRepository.countByPromotedTrue();
-
-        Map<Integer, Long> distribution = new LinkedHashMap<>();
-        for (int score = 5; score >= 1; score--) {
-            distribution.put(score, 0L);
-        }
-        for (Object[] row : siteReviewRepository.countGroupByScore()) {
-            distribution.put((Integer) row[0], (Long) row[1]);
-        }
-
-        return new SiteReviewSummaryResult(
-                average == null ? 0.0 : average,
-                totalCount,
-                siteReviewRepository.countByCreatedAtAfter(monthStart),
-                promotedCount,
-                totalCount - promotedCount,
-                siteReviewRepository.countByVisibility(SiteReviewVisibility.PUBLIC),
-                distribution
-        );
-    }
-
-    @Override
-    @Transactional(readOnly = true)
     public List<SiteReviewResult> findPromoted(int limit) {
         Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
         return siteReviewRepository.findPromoted(HOME_MIN_SCORE, pageable).stream()
@@ -78,25 +43,12 @@ public class SiteReviewAdminService implements SiteReviewAdminUseCase, SiteRevie
                 .toList();
     }
 
-    @Override
-    public Page<SiteReviewResult> search(Integer score, PartyRole writerRole, SiteReviewVisibility visibility,
-                                         Boolean promoted, Pageable pageable) {
-        return siteReviewRepository.search(score, writerRole, visibility, promoted, pageable).map(this::toResult);
-    }
-
-    @Override
-    public SiteReviewResult updateVisibility(Long siteReviewId, SiteReviewVisibility visibility, boolean promoted) {
-        SiteReview siteReview = siteReviewRepository.findById(siteReviewId)
-                .orElseThrow(() -> new BusinessException(ReviewErrorCode.SITE_REVIEW_NOT_FOUND));
-        siteReview.updateVisibility(visibility, promoted);
-        return toResult(siteReviewRepository.save(siteReview));
-    }
-
     private SiteReviewResult toResult(SiteReview siteReview) {
         String projectTitle;
         try {
             projectTitle = projectQueryUseCase.getById(siteReview.getProjectId()).getTitle();
         } catch (BusinessException e) {
+            // 프로젝트가 지워졌어도 후기 자체는 보여준다. 프로젝트명만 비운다.
             projectTitle = null;
         }
 
@@ -109,10 +61,10 @@ public class SiteReviewAdminService implements SiteReviewAdminUseCase, SiteRevie
                 projectTitle,
                 siteReview.getVisibility(),
                 siteReview.isPromoted(),
-                siteReview.getCreatedAt()
-        );
+                siteReview.getCreatedAt());
     }
 
+    /** 비로그인 화면이라 실명을 그대로 내보내지 않는다. 이름을 못 찾으면 역할 이름으로 대체한다. */
     private String maskedWriterName(SiteReview siteReview) {
         String name = resolveWriterName(siteReview);
         if (name == null || name.isBlank()) {
@@ -131,7 +83,7 @@ public class SiteReviewAdminService implements SiteReviewAdminUseCase, SiteRevie
         }
     }
 
-    /** 첫 글자만 남기고 나머지는 {@code *} 로 가린다(예: "홍길동" -&gt; "홍**"). */
+    /** 첫 글자만 남기고 가린다. (예: 이프리 -&gt; 이**) */
     private String mask(String name) {
         if (name.length() <= 1) {
             return name;

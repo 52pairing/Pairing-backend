@@ -1,6 +1,5 @@
 package com.pairing.support.infrastructure.persistence;
 
-import com.pairing.account.domain.model.Role;
 import com.pairing.support.domain.model.Inquiry;
 import com.pairing.support.domain.model.InquiryStatus;
 import com.pairing.support.domain.repository.InquiryRepository;
@@ -10,7 +9,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -48,14 +46,6 @@ public class InquiryRepositoryAdapter implements InquiryRepository {
                 .map(inquiryMapper::toDomain);
     }
 
-    @Override
-    public Page<Inquiry> search(String keyword, Role writerRole, InquiryStatus status, Pageable pageable) {
-        String normalizedKeyword = (keyword == null || keyword.isBlank()) ? null : keyword.trim();
-        String keywordDigits = normalizedKeyword == null ? null : extractDigits(normalizedKeyword);
-        return springDataRepository.search(normalizedKeyword, keywordDigits, writerRole, status, pageable)
-                .map(inquiryMapper::toDomain);
-    }
-
     /**
      * 화면에 표시된 문의번호를 그대로 붙여넣은 경우("QNA-20260805-0012")엔 id 부분만 뽑고,
      * 그게 아니면 입력값의 숫자만 모아서 id 검색에 쓴다(예: "12" 만 입력해도 매칭).
@@ -69,18 +59,4 @@ public class InquiryRepositoryAdapter implements InquiryRepository {
         return digits.isBlank() ? null : digits;
     }
 
-    @Override
-    public long count() {
-        return springDataRepository.count();
-    }
-
-    @Override
-    public long countByStatus(InquiryStatus status) {
-        return springDataRepository.countByStatus(status);
-    }
-
-    @Override
-    public long countByCreatedAtAfter(LocalDateTime from) {
-        return springDataRepository.countByCreatedAtAfter(from);
-    }
 }
