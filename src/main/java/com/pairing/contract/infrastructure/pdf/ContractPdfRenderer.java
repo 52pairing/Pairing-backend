@@ -1,5 +1,6 @@
 package com.pairing.contract.infrastructure.pdf;
 
+import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import com.pairing.contract.application.port.ContractPdfPort;
 import com.pairing.contract.application.result.ContractPdfView;
@@ -25,14 +26,21 @@ import java.nio.file.Path;
  *
  * <p><b>폰트는 반드시 임베드해야 한다.</b> openhtmltopdf 는 시스템 폰트를 쓰지 않는다.
  * 등록하지 않으면 한글이 전부 빈칸으로 나온다 — 오류 없이 조용히 비어서 더 위험하다.
+ *
+ * <p><b>가변 폰트(VF)를 쓰면 안 된다.</b> PDFBox 가 {@code wght} 축을 읽지 못해 축 기본값 인스턴스로
+ * 그리는데, 그게 얇은 쪽이면 글자가 가늘게 나온다. 가는 획은 작은 크기에서 회색으로 보여
+ * 글자색을 검정으로 바꿔도 옅어 보인다. 그래서 굵기별 정적 파일을 따로 등록한다.
  */
 @Slf4j
 @Component
 public class ContractPdfRenderer implements ContractPdfPort {
 
     private static final String TEMPLATE = "contract/contract-pdf";
-    private static final String FONT_PATH = "fonts/NotoSansKR-VF.ttf";
     private static final String FONT_FAMILY = "NotoSansKR";
+    private static final String REGULAR_PATH = "fonts/NotoSansKR-Regular.ttf";
+    private static final String BOLD_PATH = "fonts/NotoSansKR-Bold.ttf";
+    private static final int REGULAR_WEIGHT = 400;
+    private static final int BOLD_WEIGHT = 700;
 
     private final TemplateEngine templateEngine;
 
@@ -42,11 +50,13 @@ public class ContractPdfRenderer implements ContractPdfPort {
      * <p>openhtmltopdf 의 폰트 등록이 {@code File} 을 요구하는데, 배포하면 폰트가 jar 안에 들어가
      * 파일 경로로 잡히지 않는다. 기동 때 한 번만 풀고 이후 렌더링은 그 파일을 재사용한다.
      */
-    private final Path fontFile;
+    private final Path regularFont;
+    private final Path boldFont;
 
     public ContractPdfRenderer(TemplateEngine templateEngine) {
         this.templateEngine = templateEngine;
-        this.fontFile = extractFont();
+        this.regularFont = extractFont(REGULAR_PATH);
+        this.boldFont = extractFont(BOLD_PATH);
     }
 
     @Override
@@ -62,8 +72,15 @@ public class ContractPdfRenderer implements ContractPdfPort {
             builder.withHtmlContent(html, null);
             builder.toStream(out);
 
-            if (fontFile != null) {
-                builder.useFont(fontFile.toFile(), FONT_FAMILY);
+            // 굵기를 명시해 등록해야 제목(h1·h2)이 실제로 굵어진다. 하나만 등록하면 PDFBox 가
+            // 없는 굵기를 합성해 획이 뭉갠다.
+            if (regularFont != null) {
+                builder.useFont(regularFont.toFile(), FONT_FAMILY, REGULAR_WEIGHT,
+                        BaseRendererBuilder.FontStyle.NORMAL, true);
+            }
+            if (boldFont != null) {
+                builder.useFont(boldFont.toFile(), FONT_FAMILY, BOLD_WEIGHT,
+                        BaseRendererBuilder.FontStyle.NORMAL, true);
             }
             builder.run();
             return out.toByteArray();
@@ -74,11 +91,16 @@ public class ContractPdfRenderer implements ContractPdfPort {
         }
     }
 
-    /** 폰트가 없으면 null 을 돌려주고 렌더링은 계속한다. 그 경우 한글이 비므로 경고를 크게 남긴다. */
-    private Path extractFont() {
-        ClassPathResource resource = new ClassPathResource(FONT_PATH);
+    /**
+     * 폰트가 없으면 null 을 돌려주고 렌더링은 계속한다.
+     *
+     * <p>Regular 가 없으면 한글이 통째로 비고, Bold 만 없으면 제목 굵기만 빠진다. 둘 다 렌더링을
+     * 막을 정도는 아니라 로그만 남긴다. 계약서를 못 뽑는 것보다는 낫다.
+     */
+    private Path extractFont(String fontPath) {
+        ClassPathResource resource = new ClassPathResource(fontPath);
         if (!resource.exists()) {
-            log.error("[계약서 PDF] 폰트가 없습니다: {}. PDF 의 한글이 비어 나옵니다.", FONT_PATH);
+            log.error("[계약서 PDF] 폰트가 없습니다: {}. 한글이 비거나 굵기가 빠집니다.", fontPath);
             return null;
         }
 
@@ -89,7 +111,7 @@ public class ContractPdfRenderer implements ContractPdfPort {
             return temp;
 
         } catch (IOException e) {
-            log.error("[계약서 PDF] 폰트를 풀지 못했습니다. PDF 의 한글이 비어 나옵니다.", e);
+            log.error("[계약서 PDF] 폰트를 풀지 못했습니다: {}", fontPath, e);
             return null;
         }
     }

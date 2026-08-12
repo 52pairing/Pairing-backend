@@ -1,6 +1,6 @@
 package com.pairing.contract.application.service;
 
-import com.pairing.chat.application.usecase.ChatActivationUseCase;
+import com.pairing.contract.application.event.ContractSignedEvent;
 import com.pairing.contract.application.command.SignContractCommand;
 import com.pairing.contract.application.port.ContractFileReaderPort;
 import com.pairing.contract.application.port.FreelancerGradeReaderPort;
@@ -59,8 +59,6 @@ class ContractSignatureTest {
     @Mock
     private ProjectCommandUseCase projectCommandUseCase;
     @Mock
-    private ChatActivationUseCase chatActivationUseCase;
-    @Mock
     private DepositSettlementUseCase depositSettlementUseCase;
     @Mock
     private FreelancerGradeReaderPort freelancerGradeReaderPort;
@@ -75,7 +73,7 @@ class ContractSignatureTest {
     @BeforeEach
     void setUp() {
         service = new ContractCommandService(contractRepository, contractFileReaderPort,
-                projectCommandUseCase, chatActivationUseCase, depositSettlementUseCase,
+                projectCommandUseCase, depositSettlementUseCase,
                 freelancerGradeReaderPort, notificationCreateUseCase, eventPublisher);
 
         contract = Contract.create(300L, 1L, 10L, 100L, 200L,
@@ -157,6 +155,36 @@ class ContractSignatureTest {
     }
 
     @Test
+    @DisplayName("체결 알림은 받는 사람에 따라 다음 할 일이 다르다")
+    void concludedNotificationDiffersByParty() {
+        // 프리랜서는 이 시점에 착수금 수수료가 청구된다. 서명 직후 화면을 떠나면 모르고 지나가서
+        // 체결 알림 문구에 합쳤다. 수수료 알림을 따로 보내면 두 개가 연달아 간다.
+        service.sign(command(CLIENT_ACCOUNT_ID, null));
+        service.sign(command(FREELANCER_ACCOUNT_ID, null));
+
+        ArgumentCaptor<CreateNotificationCommand> captor =
+                ArgumentCaptor.forClass(CreateNotificationCommand.class);
+        verify(notificationCreateUseCase, times(3)).create(captor.capture());
+
+        CreateNotificationCommand toClient = captor.getAllValues().stream()
+                .filter(c -> c.ownerAccountId().equals(CLIENT_ACCOUNT_ID))
+                .reduce((first, second) -> second)
+                .orElseThrow();
+        CreateNotificationCommand toFreelancer = captor.getAllValues().stream()
+                .filter(c -> c.ownerAccountId().equals(FREELANCER_ACCOUNT_ID))
+                .reduce((first, second) -> second)
+                .orElseThrow();
+
+        assertThat(toClient.content()).contains("채팅");
+        assertThat(toFreelancer.content()).contains("착수금 수수료를 결제");
+
+        // 링크는 양쪽 다 계약서다. 결제 화면으로 보내면 계약서를 안 보고 결제하게 된다.
+        assertThat(toClient.type()).isEqualTo(NotificationType.CONTRACT_SIGNED);
+        assertThat(toFreelancer.type()).isEqualTo(NotificationType.CONTRACT_SIGNED);
+        assertThat(toFreelancer.linkUrl()).isEqualTo(toClient.linkUrl());
+    }
+
+    @Test
     @DisplayName("알림이 실패해도 서명은 처리된다")
     void notificationFailureDoesNotBlockSigning() {
         // 알림 때문에 롤백되면 사용자는 버튼을 눌러도 아무 일이 없는 것처럼 보인다.
@@ -168,7 +196,7 @@ class ContractSignatureTest {
     }
 
     @Test
-    @DisplayName("양측이 서명해야 체결되고 그때 인원 확정·채팅방·착수금이 함께 일어난다")
+    @DisplayName("양측이 서명해야 체결되고 그때 인원 확정·착수금이 함께 일어난다")
     void concludesOnlyWhenBothSigned() {
         assertThat(service.sign(command(CLIENT_ACCOUNT_ID, SIGNATURE_FILE_ID))).isFalse();
         assertThat(contract.getStatus()).isEqualTo(ContractStatus.SIGN_PENDING);
@@ -178,7 +206,9 @@ class ContractSignatureTest {
 
         assertThat(contract.getStatus()).isEqualTo(ContractStatus.SIGNED);
         verify(projectCommandUseCase).confirmPosition(contract.getPositionId());
-        verify(chatActivationUseCase).openForSignedContract(contract.getNegotiationId());
         verify(depositSettlementUseCase).createFreelancerDeposit(any());
+
+        // 채팅방은 커밋 뒤에 연다. ContractChatListenerTest 가 맡는다.
+        verify(eventPublisher).publishEvent(any(ContractSignedEvent.class));
     }
 }
