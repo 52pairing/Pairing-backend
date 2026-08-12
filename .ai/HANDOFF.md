@@ -24,13 +24,27 @@
 > - 월단가 환산: **일급 ×20, 시급 ×160, 4주 = 1개월** (협상 도메인과 같은 값이어야 한다)
 > - 후보 풀 = 모집 인원 × 3, 노출 = 모집 인원
 >
-> **막혀 있는 것**
-> - `pgvector` 확장·임베딩 테이블이 **로컬에도 배포 DB에도 없을 수 있다.** 이대로면 C1(통합
->   테스트)이 첫 쿼리에서 죽는다 → **B6**·**E5** 참고
+> **DB 환경 — 로컬·배포 둘 다 준비 완료 (2026-08-12)**
+>
+> | | pgvector | 임베딩 테이블 | 데이터 |
+> |---|---|---|---|
+> | 로컬 (윈도우 네이티브 **PostgreSQL 18**) | **0.8.6** ✅ | ✅ | 0행 |
+> | 배포 | ✅ | ✅ | freelancer 1 / position 7 (2026-08-11 생성) |
+>
+> - **로컬은 도커가 아니라 네이티브 PG18을 쓴다.** 도커 `pairing-postgres`(PG16)는 5432가
+>   충돌하므로 **꺼둔다** — Redis만 띄운다: `docker compose up -d redis`
+> - 스프링 스키마(51개 테이블)와 `freelancer_profile.matching_paused`도 이미 있다
+> - `psql`은 PATH에 없다. 전체 경로로 부른다:
+>   `"C:\Program Files\PostgreSQL\18\bin\psql.exe" -U pairing -d pairing ...`
+> - 배포 벡터는 **B1 이전(옛 규칙)** 이라 B5 재색인 대상이다
 >
 > **아직 한 번도 안 해본 것**
 > - **C1 end-to-end 테스트.** 이력서 저장 → 임베딩 → 모집 시작 → 추천 → 요청 → 수락을 실제로
->   돌려본 적이 없다. **남은 것 중 가장 큰 리스크다.**
+>   돌려본 적이 없다. **남은 것 중 가장 큰 리스크다.** 이제 DB가 준비됐으니 막을 것은 없다.
+>
+> **사람 대기 중**
+> - **E2 회신만 남았다** — 3번이 정책 P03 제안 문구를 보내와 검토를 요청했고, 회신문은
+>   아래 "E2 회신" 절에 써뒀다. **보내면 전달 항목은 전부 종료된다.**
 
 이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다. 아래는 이력이다.
 
@@ -247,19 +261,21 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 
 | 순서 | 할 일 | 어디 | 예상 |
 |---|---|---|---|
-| **1** | **E 전달 4건 보내기** (아래 E 표) | 슬랙/이슈 | 5분 |
+| **1** | **E2 회신 보내기** (아래 "E2 회신" 절 그대로) — 나머지 4건은 종료됨 | 슬랙/이슈 | 2분 |
 | **2** | 7번 `similarity` 응답 필드 추가 | python `feature/matching-condition-score` | 30분 |
 | **3** | 13번 CI에 pgvector 서비스 추가 | python 같은 브랜치 | 10분 |
 | **4** | **python PR 올리고 머지** (10번: python 먼저) | GitHub 웹 | — |
 | **5** | **B4 가드 교체** (G3+G4) + 7번 자바 수신 | backend `feature/matching-embedding-text-redesign` | 4시간 |
 | **6** | **backend PR 올리고 머지** | GitHub 웹 | — |
-| **7** | 11번 재색인 API 1회 실행 | 배포 후 | 5분 |
-| **8** | 12번 로컬 도커 DB 복구 + 배포 DB 확인 | 팀원 답변 후 | 30분 |
-| **9** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 or 배포 | 0.5~2일 |
-| **10** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
-| **11** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
+| **7** | 11번 재색인 API 1회 + `REINDEX` | 배포 후 | 10분 |
+| **8** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 (DB 준비됨) | 0.5~2일 |
+| **9** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
+| **10** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
 
-> **E는 지금 보내세요.** 1분짜리인데 상대 작업 시간이 필요해서 미루면 마지막에 병목이 됩니다.
+> ~~12번 DB 환경~~ — **2026-08-12 완료.** 로컬(네이티브 PG18 + pgvector 0.8.6)·배포 둘 다 준비됐다.
+> 위 "지금 상태" 박스 참고.
+>
+> **13번(CI pgvector)은 아직 안 했다** — 순서 3번.
 >
 > **프론트 렌더링은 4번 파트가 아니다(2026-08-12 확정).** 매칭 API는 응답 모양이 안 바뀌고
 > 프론트 전달 문서도 나가 있으므로, 여기서 할 일은 없다. 화면 구현·렌더링은 프론트 담당.
@@ -382,28 +398,38 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 - [ ] 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`) 갱신 — API 응답 모양은 안 바뀌지만
       후보 순서 산출 방식이 달라진 것을 공유
 
-### B6. 환경 — 12번 pgvector 설치 (**팀 확정: 윈도우 네이티브 PostgreSQL**)
+### B6. 환경 — 12번 pgvector — **완료 (2026-08-12)**
 
-**팀이 도커가 아니라 윈도우에 PostgreSQL을 직접 설치하는 쪽으로 정했다(2026-08-12).**
-절차는 `README.md` "2-1) pgvector 설치"에 넣어뒀다(팀원이 볼 자리라 거기가 원본).
+**팀 확정: 도커가 아니라 윈도우에 PostgreSQL을 직접 설치한다.** 절차 원본은
+`README.md` "2-1) pgvector 설치"에 있다(팀원이 볼 자리라 거기에 뒀다).
 
-- [ ] 각자 pgvector 빌드·설치 — Build Tools "C++를 사용한 데스크톱 개발" → 관리자 권한
-      `x64 Native Tools Command Prompt` → `nmake /F Makefile.win install`
-- [ ] `pairing` DB 에 `CREATE EXTENSION vector;`
-- [ ] `Pairing-python/db/init/10-create-ai-schema.sql` 실행 (임베딩 테이블 2개)
-- [ ] 스프링 1회 기동 → `ddl-auto: update`가 `freelancer_profile.matching_paused` 생성
-- [ ] ⚠️ **배포 DB에도 확장·테이블이 있는지 확인**(E5) —
-      `SELECT extname FROM pg_extension WHERE extname='vector';`
-      없으면 배포 환경에서도 추천이 첫 쿼리에서 죽는다
+| | pgvector | 임베딩 테이블 | 데이터 | 비고 |
+|---|---|---|---|---|
+| 로컬 (네이티브 **PG18**) | **0.8.6** | ✅ | 0행 | 스프링 테이블 51개, `matching_paused` 있음 |
+| 배포 | ✅ | ✅ | freelancer 1 / position 7 | 2026-08-11 생성 = **B1 이전 = 재색인 대상** |
 
-> **도커로 쓰던 `pairing-postgres`(PG16)와 5432 포트가 충돌한다.** 네이티브로 가면 도커 쪽은
-> `docker compose up -d redis`로 Redis만 띄운다. 도커 컨테이너에 있던 데이터는 비어 있었으므로
-> (2026-08-12 확인: `account` 0건) 옮길 것은 없다.
->
-> 도커를 계속 쓰는 팀원은 이미지를 `pgvector/pgvector:pg16`으로 바꾸면 빌드 없이 된다.
+**막혔던 지점과 해결 (같은 걸 다시 겪지 않게)**
+
+- `postgres:16-alpine` 이미지엔 pgvector가 **아예 없다.** 네이티브 설치도 마찬가지라
+  **소스에서 빌드해야 한다**(`nmake /F Makefile.win`)
+- `nmake`는 **PowerShell에 없다.** 관리자 권한 cmd에서 `vcvars64.bat`을 먼저 `call` 해야
+  잡힌다. `set "VAR=..."`도 cmd 문법이라 PowerShell에선 안 먹는다
+- `psql`도 PATH에 없다 —
+  `"C:\Program Files\PostgreSQL\18\bin\psql.exe" -U pairing -d pairing -f ...`
+- pgvector를 **레포 안에 클론하지 말 것**(`git status`에 잡힌다). `C:\` 밑에 받는다
+- ⚠️ **도커 PG16과 네이티브 PG18이 둘 다 5432를 잡으면 앱이 어디에 붙는지 알 수 없다.**
+  실제로 그 상태였다. 네이티브를 쓰면 `docker compose stop postgres`, Redis만 띄운다
+
+**남은 것 하나**
+
+- [ ] 재색인(B5) **직후** `REINDEX INDEX idx_freelancer_embedding_cosine;`
+      — 빈 테이블에 만들어서 pgvector가 `ivfflat index created with little data / This will
+      cause low recall` 경고를 실제로 냈다. 데이터가 들어온 뒤 다시 만들어야 한다
 
 > ⚠️ **임베딩 테이블을 자동 생성하는 코드는 어디에도 없다.** AI 서버는 `create_all`을 안 쓰기로
-> 했고 스프링은 이 테이블을 JPA 엔티티로 갖고 있지 않다. **사람이 SQL을 한 번 돌려야 한다.**
+> 했고 스프링은 이 테이블을 JPA 엔티티로 갖고 있지 않다. **환경이 새로 생길 때마다 사람이
+> `Pairing-python/db/init/10-create-ai-schema.sql`을 한 번 돌려야 한다.**
+> 그 SQL은 `ALTER TABLE ... ADD CONSTRAINT` 2줄 때문에 **재실행하면 실패한다**(파괴적이진 않다).
 
 ## C. 검증 — 아직 한 번도 안 한 것
 
@@ -469,21 +495,12 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 > 배포 DB에 **pgvector 확장은 있고**, 임베딩 테이블만 SQL로 만들면 된다는 답을 받았다.
 > 남은 액션은 아래 "배포 DB 테이블 생성" 하나뿐이다.
 
-**배포 DB 테이블 생성 (1회, 아직 안 함)**
+**환경 준비는 로컬·배포 둘 다 끝났다(2026-08-12).** 새 환경이 생기면 위 B6 절차를 따른다.
 
-```bash
-psql -h <배포DB호스트> -U pairing -d pairing -v ON_ERROR_STOP=1 \
-     -f Pairing-python/db/init/10-create-ai-schema.sql
-```
-
-- ⚠️ **재실행하면 실패한다.** `CREATE TABLE`/`CREATE INDEX`는 `IF NOT EXISTS`지만
-  `ALTER TABLE ... ADD CONSTRAINT` 2줄은 아니라서, 두 번째 실행에서 "이미 있다"로 멈춘다.
-  파괴적이진 않고 그냥 에러다. 이미 만들어져 있으면 그 2줄만 빼고 돌리거나 아예 건너뛴다
-- ⚠️ **ivfflat 인덱스는 빈 테이블에 만들면 제대로 동작하지 않는다.** 데이터가 쌓인 뒤
-  `REINDEX INDEX idx_freelancer_embedding_cosine;`을 한 번 해야 한다 → **B5 재색인 직후**에 하면 된다
-- 참고: **B3의 새 추천 쿼리는 이 인덱스를 쓰지 않는다.** 하드필터 통과자 전원에 대해 유사도를
-  계산하는 설계라 `ORDER BY ... LIMIT`이 없어서 순차 스캔이다. 인덱스는 내부용 후보 미리보기
-  엔드포인트(`GET /embeddings/positions/{id}/candidates`)가 쓴다
+- 참고: **B3의 새 추천 쿼리는 ivfflat 인덱스를 쓰지 않는다.** 하드필터 통과자 전원에 대해
+  유사도를 계산하는 설계라 `ORDER BY ... LIMIT`이 없어서 순차 스캔이다(의도된 동작). 인덱스는
+  내부용 후보 미리보기 엔드포인트(`GET /embeddings/positions/{id}/candidates`)가 쓴다.
+  **수만 명 규모가 되면 이 지점을 먼저 본다.**
 
 ## F. 향후 개선 (범위 밖, 기록만)
 

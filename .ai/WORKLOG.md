@@ -912,3 +912,34 @@ B5 재색인 대상이다.
 **임베딩 쓰기 경로는 총 4개**로 확인했다(코드 전수):
 `RecruitingStartedPositionHandler`(모집 시작) / `ProjectUpdatedEventListener`(결제 후 수정) /
 `FreelancerEmbeddingRefresher`(이력서 저장·관리자 재색인 공용) / `EmbeddingReindexService`(포지션 재색인).
+
+## 2026-08-12 (계속) — pgvector 환경 완료 (로컬·배포)
+
+**배포는 원래 다 있었다.** 확장·테이블은 물론 데이터까지 있었다(freelancer 1행, position 7행,
+모델 1종, 마지막 생성 2026-08-11). **"배포에서도 아무도 모르게 안 되고 있을 것"이라는 내 추측이
+틀렸다.** 포지션 임베딩이 7건 있으니 비교 대상도 있었다. SQL 실행할 게 없었다.
+
+날짜가 B1 이전이라 전부 옛 규칙 벡터인 것만 B5 재색인 대상이다.
+
+**로컬은 팀 확정대로 윈도우 네이티브 PostgreSQL 18 + pgvector 소스 빌드로 해결했다.**
+pgvector 0.8.6 설치 완료, 임베딩 테이블 2개 생성 완료. 스프링 스키마(51개 테이블)와
+`freelancer_profile.matching_paused`는 이미 있었다 — **네이티브 PG18이 원래 쓰던 DB였고
+도커 PG16이 빈 껍데기였다.** 내가 앞서 "로컬에서 AI 매칭이 한 번도 돈 적이 없다"고 판단한 건
+비어 있던 도커 쪽을 보고 내린 결론이었다.
+
+**걸렸던 것 4가지 — 문서(README·HANDOFF·STATE)에 전부 남겼다.**
+
+1. `nmake`가 PowerShell에 없다. 관리자 cmd에서 `vcvars64.bat`을 먼저 `call` 해야 한다.
+   `set "VAR=..."`도 cmd 문법이라 PowerShell에선 아무 일도 안 한다
+2. `psql`도 PATH에 없다. 전체 경로로 부른다
+3. pgvector를 레포 안(`Pairing-backend/pgvector/`)에 클론해서 `git status`에 잡혔다 — 지웠다.
+   `C:\` 밑에 받는 것으로 문서를 고쳤다
+4. ⚠️ **도커 PG16과 네이티브 PG18이 둘 다 5432를 잡고 있었다.** `netstat`으로 확인함
+   (docker.backend PID 24084 / postgres PID 8712). 이 상태면 앱이 어느 쪽에 붙는지 알 수 없고,
+   "pgAdmin에서 고쳤는데 앱에 반영이 안 된다" 같은 형태로 나타난다. 하나만 켠다
+
+**ivfflat 경고가 실제로 났다.** `ivfflat index created with little data / This will cause low
+recall / Drop the index until the table has more data`. 예상한 대로라 B5 체크리스트의
+`REINDEX` 항목이 유효함을 확인했다.
+
+**이제 C1(통합 테스트)을 막는 환경 요인은 없다.**
