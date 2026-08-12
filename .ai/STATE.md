@@ -377,6 +377,10 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
   `Negotiation.agreedAmount` 는 **합의된 월 단가(원)** 이라 `budgetCap`과 단위가 같다.
 - `getAgreedForContract`는 **타결 전이면 `NOT_AGREED` 예외를 던진다.** 매칭 요청 상태가
   `CONTRACT_PENDING` 이상일 때만 부를 것.
+- ⚠️ **`agreedAmount`에 개월 수를 곱하지 말 것 (5번 확인, 2026-08-12).** 이미 월 단가라
+  `budgetCap`과 단위가 같다. 곱하면 상한이 개월 수배로 부풀어 **경고가 영영 안 뜬다.**
+  (`AgreedNegotiationView` javadoc이 "총액"이라고 잘못 적어놨던 것 — 5번이 수정 중. 계약
+  도메인은 `Contract.java`가 `salaryAmount * months`로 제대로 곱하고 있어 문제 없었다.)
 - 타결가가 없으면 **희망 단가**를 쓴다. 그때는 근사가 아니라 정확한 값이다 — (a) 아직 협상 전이면
   타결가 자체가 존재하지 않고, (b) `NegotiationConditionCalculator`는 `monthlyPay > budgetCap`
   일 때만 AMOUNT 조건을 만들므로 조건이 없다는 건 깎을 게 없었다는 뜻이다.
