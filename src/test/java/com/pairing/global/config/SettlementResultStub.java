@@ -13,6 +13,9 @@ import java.time.LocalDateTime;
  *
  * <p>리뷰·등급·홈 테스트는 정산 도메인을 검증하는 게 목적이 아니라, 정산 조회 결과만 대신한다.
  * 리뷰 서비스는 결과가 비었는지만 보므로 금액·번호는 아무 값이나 채운다.
+ *
+ * <p>{@code paymentMethodId}(상태 다음 자리)는 {@code null} 이다. 결제수단 표기를 만드는 건
+ * 정산 응답 조립 단계라 여기서는 쓰이지 않는다.
  */
 public final class SettlementResultStub {
 
@@ -23,6 +26,6 @@ public final class SettlementResultStub {
         return new SettlementResult(9001L, "ST-2026-009001", 1L, 1L,
                 PartyRole.CLIENT, SettlementPhase.SUCCESS_FEE, 10_000_000L,
                 new BigDecimal("6.00"), BigDecimal.ZERO, 600_000L, SettlementStatus.PAID,
-                "AP-TEST", null, null, null, false, LocalDateTime.now());
+                null, "AP-TEST", null, null, null, false, LocalDateTime.now());
     }
 }
