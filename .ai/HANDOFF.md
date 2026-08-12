@@ -44,9 +44,18 @@
 >   `"C:\Program Files\PostgreSQL\18\bin\psql.exe" -U pairing -d pairing ...`
 > - 배포 벡터는 **B1 이전(옛 규칙)** 이라 B5 재색인 대상이다
 >
+> **🔴 지금 C1을 막고 있는 것 (2026-08-12 배포 후 발견)**
+>
+> 배포 DB에 **라운드 2 / 후보 2 / 요청 2 / 스냅샷 0 / 포지션벡터 9**.
+> **스냅샷이 0건이라 매칭 요청 상세 조회가 `SNAPSHOT_NOT_FOUND`로 실패한다.**
+> 코드상 나올 수 없는 조합이라 원인 확인이 먼저다 → **B7-③** 참고.
+>
+> 재색인도 절반만 됐다 — **프리랜서 1건 성공(B1 적용 확인됨), 포지션 0건**(대상을
+> `matching_snapshot`에서 찾는데 0건이라 루프가 안 돌았다) → **B7-②**.
+>
 > **아직 한 번도 안 해본 것**
 > - **C1 end-to-end 테스트.** 이력서 저장 → 임베딩 → 모집 시작 → 추천 → 요청 → 수락을 실제로
->   돌려본 적이 없다. **남은 것 중 가장 큰 리스크다.** 이제 DB가 준비됐으니 막을 것은 없다.
+>   돌려본 적이 없다. **남은 것 중 가장 큰 리스크다.**
 >
 > **사람 대기 중**
 > - **E2 회신만 남았다** — 3번이 정책 P03 제안 문구를 보내와 검토를 요청했고, 회신문은
@@ -277,14 +286,16 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 | ~~2~~ | ~~python PR~~ — `8275b09`로 머지됨 | ✅ 완료 | |
 | **3** | **python 문서 PR 하나 더** — `0daeb5b`가 머지 타이밍에 빠졌다(위 ⚠️ 참고) | GitHub 웹 | 2분 |
 | **4** | **backend PR 머지 대기** — 올려둠. develop 머지·빌드 통과 상태 | GitHub 웹 | — |
-| **5** | **머지 후 B5 절차** — 배포 확인 → 재색인 → `REINDEX` → 반영 확인 → 추천 1회 호출 | 배포 후 | 20분 |
-| **6** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 (DB 준비됨) | 0.5~2일 |
-| **7** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
-| **8** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
+| ~~5~~ | ~~머지 후 B5 절차~~ — 재색인 실행함. **프리랜서 성공 / 포지션 0건** | ⚠️ 부분 완료 | |
+| **6** | 🔴 **B7-③ 먼저 정리** — 배포 DB에 스냅샷 0건인데 라운드·요청 2건. **요청 상세 조회가 실패해서 C1이 막힌다** | 배포 DB | 30분 |
+| **7** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 (DB 준비됨) | 0.5~2일 |
+| **8** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
+| **9** | B7-①②(재색인 버그 2개) — **각 레포 다음 수정에 얹는다.** 별도 PR 만들지 말 것 | | 1시간 |
+| **10** | D1 그라파나 / D2 트래픽 테스트 | | 5~7시간 |
 
-> **5번(B5 절차)이 이번 배포에서 제일 놓치기 쉽다.** 재색인을 빼먹으면 옛 규칙 벡터와 새 규칙
-> 벡터가 섞이는데 **에러가 안 나서 추천 품질만 조용히 나빠진다.** 명령어와 확인 쿼리는
-> 아래 "B5. 5단계" 절에 전부 적어뒀다.
+> **6번이 지금 제일 급하다.** 배포 DB에 매칭 요청 2건이 있는데 **스냅샷이 0건이라 상세 조회가
+> `SNAPSHOT_NOT_FOUND`로 실패한다.** C1의 "요청 → 상세 조회" 구간을 지나갈 수 없다.
+> 원인 구분 쿼리는 아래 **B7-③**에 있다.
 
 > ~~12번 DB 환경~~ — **2026-08-12 완료.** 로컬(네이티브 PG18 + pgvector 0.8.6)·배포 둘 다 준비됐다.
 > 위 "지금 상태" 박스 참고.
@@ -431,8 +442,27 @@ POST /api/v1/matchings/admin/embeddings/reindex
 
 ⚠️ **ADMIN 계정이 필요하다.** 경로에 `/admin/` 이 들어가서
 `GlobalSecurityConfig` 의 `.requestMatchers("/api/v1/*/admin/**").hasRole("ADMIN")` 에 걸린다 —
-클라이언트·프리랜서 계정으로는 **403**이다. Swagger 에서 `POST /auth/login` 으로 관리자 로그인을
-먼저 하면 쿠키가 붙어 그대로 호출된다. (curl 로 할 거면 `-H "Cookie: accessToken=<토큰>"`)
+클라이언트·프리랜서 계정으로는 **403**이다.
+
+**관리자 계정 만드는 법 (관리자 서버가 따로라 계정이 없다, 2026-08-12에 실제로 이렇게 했다)**
+
+DB에 직접 INSERT 하면 비밀번호 해시·약관 동의·프로필을 다 맞춰야 한다. **정상 회원가입으로
+만들고 역할만 바꾸는 게 훨씬 안전하다.**
+
+1. 배포 Swagger 에서 **새 이메일로 평범하게 회원가입**(CLIENT 로). 가입이 해시·약관·프로필을 다 처리한다
+2. DB 에서 역할만 바꾼다 — `Role` enum 에 `ADMIN` 이 이미 있다
+
+```sql
+UPDATE account SET role = 'ADMIN' WHERE email = 'admin@pairing.com';
+```
+
+3. **그 계정으로 로그인.** `POST /auth/login` 의 `role` 을 **`ADMIN`** 으로 보내야 한다 —
+   로그인이 `findByEmailAndRole(email, role)` 로 찾아서 `CLIENT` 로 보내면 계정을 못 찾는다
+4. ⚠️ **2번 전에 로그인해뒀다면 반드시 재로그인.** 권한은 **JWT 의 `role` 클레임**에서 읽으므로
+   (`GlobalJwtAuthenticationFilter`: `"ROLE_" + role`) 옛 토큰엔 `ROLE_CLIENT` 가 박혀 있다
+
+> 기존 본인 계정을 바꾸지 말고 새 계정으로 하면 되돌릴 필요가 없고, 관리자 서버 붙일 때 그대로 쓴다.
+> (curl 로 할 거면 `-H "Cookie: accessToken=<토큰>"`)
 
 ⚠️ **결과가 응답에 안 온다.** 즉시 `202`(본문 없음)만 돌아오고 실제 작업은 **백그라운드에서**
 돈다 — 대상 1건마다 Gemini 호출이 일어나 몇 분씩 걸릴 수 있어서다.
@@ -549,25 +579,72 @@ List<MatchingSnapshot> positionSnapshots =
 즉 **스냅샷 없이 임베딩만 있는 포지션이 생길 수 있고, 그 포지션은 재색인에서 통째로 빠진다.**
 스냅샷은 "요청 카드 고정용"이지 "임베딩 대상 목록"이 아닌데 그 용도로 쓴 것이 잘못이다.
 
-> ⚠️ **원인이 둘 중 어느 쪽인지는 아직 확정 못 했다.** (a) 스냅샷이 0건이라 루프가 안 돈 것과
-> (b) 스냅샷은 있는데 `findPositionSummary`가 전부 예외를 낸 것이 **둘 다 `EMBEDDING` 로그 0건**을
-> 만든다. 자바에서 예외가 나면 파이썬을 부르기 전에 끝나서 AI 로그가 안 남기 때문이다.
-> **먼저 확인할 것:**
-> ```sql
-> SELECT snapshot_type, count(*) FROM matching_snapshot GROUP BY snapshot_type;
-> ```
-> `POSITION`이 임베딩 9건보다 적으면 (a)다. 같은데도 0건이면 (b)이고 **서버 로그**를 봐야 한다.
+**원인 확정 (2026-08-12 실측)**: 배포 DB의 `matching_snapshot`이 **0건**이다. 루프가 아예 안 돌았다.
+
+```sql
+SELECT snapshot_type, count(*) FROM matching_snapshot GROUP BY snapshot_type;
+-- → 0 rows
+```
 
 **고치는 방향**: 대상 목록을 스냅샷이 아니라 **모집이 시작된 포지션**에서 가져온다.
 `matching_round`의 distinct `position_id`가 후보다 — 모집 시작 시 라운드가 반드시 생기고,
 `ProjectUpdatedEvent`는 결제 후에만 발행되므로 라운드가 이미 있는 포지션이다.
 **다음 자바 수정 때 같이 올린다.**
 
-#### 지금 당장 급하진 않은 이유
+#### ③ 🔴 배포 DB에 스냅샷이 0건인데 라운드·요청이 있다 — **C1을 바로 막는다**
 
-포지션 9건이 옛 규칙 벡터로 남지만, **C1에서 새 프로젝트를 결제하면 새 규칙으로 만들어진다.**
-기존 9건은 그 프로젝트들을 다시 추천할 때만 문제가 된다. **프리랜서 1건은 성공했으므로 B1 배선
-자체는 정상이다** — 대상 조회만 틀렸다.
+②를 파다가 나온 것으로, **셋 중 제일 급하다.**
+
+```sql
+SELECT (SELECT count(*) FROM matching_round)     AS 라운드,   -- 2
+       (SELECT count(*) FROM matching_candidate) AS 후보,     -- 2
+       (SELECT count(*) FROM matching_request)   AS 요청,     -- 2
+       (SELECT count(*) FROM matching_snapshot)  AS 스냅샷,   -- 0  ← 문제
+       (SELECT count(*) FROM position_embedding) AS 포지션벡터; -- 9
+```
+
+**매칭 요청 상세 조회가 스냅샷 없이는 통째로 실패한다.**
+
+```java
+// MatchingRequestResponseAssembler.readSnapshot()
+.orElseThrow(() -> new BusinessException(MatchingErrorCode.SNAPSHOT_NOT_FOUND));
+```
+
+지금 배포 환경의 요청 2건은 **조회하는 순간 에러가 난다.** C1에서 "요청 → 상세 조회" 구간을
+지나갈 수 없다.
+
+**코드상으로는 이 상태가 나올 수 없다.** `RecruitingStartedPositionHandler`는 한 트랜잭션
+(`REQUIRES_NEW`) 안에서 **스냅샷 → 임베딩 → 라운드** 순으로 만든다. 라운드가 있으면 스냅샷도
+있어야 한다. 그러니 원인은 셋 중 하나다.
+
+| 가설 | 확인 방법 |
+|---|---|
+| (a) **스냅샷 기능 이전에 만든 옛 테스트 데이터** — `MatchingSnapshot`은 2026-08-09 도입 | `matching_round.created_at`이 08-09 이전인지 |
+| (b) **재추천으로만 생긴 라운드** — `MatchingRerecommendService.openRound`는 스냅샷을 안 만든다 | `round_type`이 `PAID`/`FREE`뿐인지 |
+| (c) 누가 `matching_snapshot`만 지웠다 | 위 둘이 아니면 이것 |
+
+```sql
+SELECT id, position_id, round_type, round_no, status, created_at
+FROM matching_round ORDER BY created_at;
+```
+
+- `round_type = INITIAL` 이고 `created_at`이 08-09 이후면 → **진짜 버그다.** 스냅샷 저장이
+  실패했는데 뒤 단계가 계속 진행됐다는 뜻이라 코드를 다시 봐야 한다
+- `PAID`/`FREE`뿐이면 → (b). **재추천만으로 라운드가 생길 수 있다는 게 드러난 것**이고,
+  그 자체가 검토 대상이다(최초 추천 없이 재추천이 되는 게 맞나)
+- 08-09 이전이면 → (a). **데이터만 정리하면 된다**
+
+**어느 쪽이든 C1 전에 정리해야 한다.** 옛 데이터면 지우고, 버그면 고친다.
+
+#### 지금 당장 급하지 않은 것 / 급한 것
+
+- ✅ **프리랜서 1건은 새 규칙으로 재생성됐다.** `upsert_freelancer`는 `source_hash`가 같으면
+  **AI를 부르기 전에** 건너뛰는데 `ai_agent_log`에 `SUCCESS`가 남았다 = 건너뛰지 않았다 =
+  텍스트가 바뀌었다. **B1이 실제로 적용됐다는 증거다**
+- ⏳ **포지션 9건은 옛 규칙 그대로.** ②를 고치기 전까지 재색인으로는 못 고친다.
+  급하면 **결제 완료된 프로젝트를 아무 필드나 수정**하면 된다 — `ProjectUpdatedEventListener`가
+  스냅샷과 무관하게 그 프로젝트의 포지션 임베딩을 전부 다시 만든다
+- 🔴 **③은 C1을 막으므로 먼저 정리한다**
 
 ### B6. 환경 — 12번 pgvector — **완료 (2026-08-12)**
 
