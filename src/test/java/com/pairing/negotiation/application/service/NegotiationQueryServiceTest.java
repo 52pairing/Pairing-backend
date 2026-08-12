@@ -21,6 +21,7 @@ import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
+import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
@@ -139,6 +140,38 @@ class NegotiationQueryServiceTest {
         NegotiationResponse response = NegotiationResponseFactory.detail(view);
         assertThat(response.counterpartName()).isEqualTo("김프리");   // 클라가 보면 상대=프리 이름
         assertThat(response.conditions().get(0).myFloor()).isEqualTo("3500000");
+    }
+
+    @Test
+    @DisplayName("결렬이면 종료 사유·시각이 내려간다 — 화면이 '왜 끝났는지'를 그대로 보여줄 수 있어야 한다")
+    void detailExposesEndReasonWhenFailed() {
+        Negotiation negotiation = negotiationRepository.findById(negotiationId).orElseThrow();
+        negotiation.fail("근무 형태 조건 차이가 좁혀지지 않아 협상을 종료합니다.");
+        negotiationRepository.save(negotiation);
+
+        NegotiationResponse response = NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, CLIENT_ACCOUNT_ID));
+
+        assertThat(response.status()).isEqualTo(NegotiationStatus.FAILED);
+        assertThat(response.endReason()).isEqualTo("근무 형태 조건 차이가 좁혀지지 않아 협상을 종료합니다.");
+        assertThat(response.endedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("타결에는 종료 사유가 없다 — 성공 카드에 사유가 붙으면 안 된다")
+    void detailHasNoEndReasonWhenAgreed() {
+        Negotiation negotiation = negotiationRepository.findById(negotiationId).orElseThrow();
+        negotiation.getConditions().forEach(condition -> condition.lock("3500000"));
+        negotiation.agree(3_500_000L);
+        negotiationRepository.save(negotiation);
+
+        NegotiationResponse response = NegotiationResponseFactory.detail(
+                queryUseCase.getDetail(negotiationId, CLIENT_ACCOUNT_ID));
+
+        assertThat(response.status()).isEqualTo(NegotiationStatus.AGREED);
+        assertThat(response.endReason()).isNull();
+        // 끝난 시각은 타결에도 있다. "언제 끝났나"와 "왜 끝났나"는 다른 질문이다.
+        assertThat(response.endedAt()).isNotNull();
     }
 
     @Test
