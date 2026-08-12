@@ -204,24 +204,56 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 
 ---
 
-# 남은 작업 전체 목록 (2026-08-11 기준)
+# 남은 작업 전체 목록 (2026-08-12 갱신)
 
-우선순위 순. 설계 확정본은 `.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계(팀 확정)".
+설계 확정본은 `.ai/STATE.md`의 **"2026-08-11 갱신 — 매칭 파이프라인 재설계"** + **"2026-08-12
+확정 — 착수 전 결정 13건"** 두 절이다. 결정 근거를 찾을 땐 후자를 먼저 볼 것.
 
-## A. 지금 바로 — PR 3개 오픈·머지 대기
+---
 
-전부 develop 최신 반영 + 빌드 통과 상태. `gh` CLI가 없어 **GitHub 웹에서 직접 생성**해야 한다.
-배너는 최근 push된 브랜치 하나에만 뜨므로 나머지는 `Pull requests → New pull request`로 만든다.
+## ▶ 다음에 할 일 (순서대로. 이 순서를 지키면 중간에 안 깨진다)
 
-| # | 레포 | 브랜치 | 내용 |
+| 순서 | 할 일 | 어디 | 예상 |
 |---|---|---|---|
-| A1 | backend | `fix/matching-settlement-response-and-policy-doc` | 즉시 타결 응답 상태 불일치 + P41 위반 + P06 등급 가중치 명시 |
-| A2 | backend | `fix/matching-candidate-selection-guard` | MT_017/018 + AI_020 오분류 + 임베딩 길이 상한 + 파이프라인 재설계 문서 |
-| A3 | python | `feature/matching-llm-retry-and-pool-relax` | 후보 0명 시 풀 확대 재검색 + LLM 응답 오류 재시도 |
+| **1** | **4군 3건 결정** — 골드 등급 수수료 할인 / D3 프론트 렌더링 담당 / 전달 4건 | 사람 판단 | — |
+| **2** | 7번 `similarity` 응답 필드 추가 | python `feature/matching-condition-score` | 30분 |
+| **3** | 13번 CI에 pgvector 서비스 추가 | python 같은 브랜치 | 10분 |
+| **4** | **python PR 올리고 머지** (10번: python 먼저) | GitHub 웹 | — |
+| **5** | **B4 가드 교체** (G3+G4) + 7번 자바 수신 | backend `feature/matching-embedding-text-redesign` | 4시간 |
+| **6** | **backend PR 올리고 머지** | GitHub 웹 | — |
+| **7** | 11번 재색인 API 1회 실행 | 배포 후 | 5분 |
+| **8** | 12번 로컬 도커 DB 복구 + 배포 DB 확인 | 팀원 답변 후 | 30분 |
+| **9** | **C1 통합 테스트** — 남은 것 중 가장 큰 리스크 | 로컬 or 배포 | 0.5~2일 |
+| **10** | C2 실제 Gemini 호출 품질 확인 | | 1~3시간 |
+| **11** | D1 그라파나 / D2 트래픽 테스트 / D3 프론트 렌더링 | | 5~7시간 |
+| **12** | E 전달 4건 (3번 2건 + 5번 2건) | **지금 보내도 됨** | 5분 |
 
-## B. 매칭 파이프라인 재설계 — 1~5단계 (0단계 완료)
+> **E는 지금 보내세요.** 1분짜리인데 상대 작업 시간이 필요해서 미루면 마지막에 병목이 됩니다.
 
-0단계(되돌리기)는 `e2e7ef3`으로 완료. 아래는 A2 머지 후 새 브랜치에서 진행한다.
+---
+
+## A. PR — **전부 머지 완료 (2026-08-12)**
+
+| # | 레포 | 브랜치 | 상태 |
+|---|---|---|---|
+| A1 | backend | `fix/matching-settlement-response-and-policy-doc` | ✅ 머지 (PR #144, 충돌 2건 해소 후) |
+| A2 | backend | `fix/matching-candidate-selection-guard` | ✅ 머지 |
+| A3 | python | `feature/matching-llm-retry-and-pool-relax` | ✅ 머지 |
+
+> A3에 넣었던 "후보 0명 시 풀 확대 재검색"은 **효과가 없는 코드였다.** `LIMIT n`이 0건을
+> 돌려준 건 WHERE에 걸린 게 없다는 뜻이라 n을 키워도 결과가 같다. B3에서 **스킬 필터 완화**로
+> 교체했다(`_RELAXED_POOL_MULTIPLIER` 삭제).
+
+## B. 매칭 파이프라인 재설계 — 0~3단계 완료, 4~5단계 남음
+
+0단계(되돌리기)는 `e2e7ef3`으로 완료.
+
+**진행 중인 브랜치 2개:**
+
+| 레포 | 브랜치 | 담긴 것 |
+|---|---|---|
+| backend | `feature/matching-embedding-text-redesign` | B1 + B2(Java). **B4도 여기에 얹는다** |
+| python | `feature/matching-condition-score` | B2(Python) + B3. **7번·13번도 여기에 얹는다** |
 
 ### B1. 1단계 — 임베딩 텍스트 확정 (Java) — **완료 (2026-08-12)**
 
@@ -266,24 +298,44 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 > 단가는 SQL 혼자 계산 못 한다. 프리랜서는 시급/일급→월단가 환산이, 포지션은 순예산
 > (수수료율에 **클라이언트 등급** 필요 = account 도메인) ÷ 인원 ÷ 개월이 필요하다.
 
-### B3. 3단계 — 조건점수 SQL + 30:70 합산 (Python) ← **본 작업**
+### B3. 3단계 — 조건점수 + 25:75 합산 (Python) — **완료 (2026-08-12)**
 
-- [ ] `search_similar_freelancers` 하드필터에 **요구 스킬 1개 이상** 추가
-- [ ] 조건점수 70 계산 (채점식은 `.ai/STATE.md` [3] 표 그대로)
-- [ ] **유사도 컷 제거** — 하드필터 통과자 전원에 대해 `PERCENT_RANK`로 0~30 정규화 후
-      `+ 조건점수×70` → **그 합계로** 상위 (인원×3)
-      - 유사도로 먼저 자르면 조건 좋고 유사도 낮은 사람이 잘려 처음 문제로 돌아간다
-      - 수만 명 규모가 되면 성능 재검토 필요
-- [ ] 테스트
+브랜치 `feature/matching-condition-score`. 81 passed + 1 skipped, ruff 통과.
 
-### B4. 4단계 — 가드 교체 (Java)
+- [x] `search_scored_candidates` 신규 — 하드필터에 **요구 스킬 1개 이상** 추가, **LIMIT 없음**
+      (유사도로 자르지 않는다). 이력서 원문은 안 읽고 채점용 값만 가져온다
+- [x] `matching/scoring.py` 신규 — **순수 함수만** 둔다(DB·세션 안 받음). 채점식은 DB 없이
+      검증할 수 있어야 하고 이 파일이 그 경계다
+- [x] 배점 합 100 → `× 75`, 유사도는 `PERCENT_RANK` → `× 25`. **합산한 뒤** 상위 (인원×3)
+- [x] 후보 0명 시 **스킬 필터 완화 재검색**(옛 "풀 확대"는 무의미해서 교체)
+- [x] 테스트 24건(채점 전 항목 + 25:75 경계) + 리포지토리 4건(파라미터·매핑·실DB)
+
+**남은 것 — 같은 브랜치에 얹는다:**
+
+- [ ] **7번**: 추천 응답에 `similarity` 추가 (`RankedCandidate`에 필드) — 자바가 저장할 값
+- [ ] **13번**: CI(`.github/workflows/ci.yml`)에 pgvector 서비스 + `AI_TEST_DB_URL` 주입.
+      테스트는 이미 있다(`test_search_scored_candidates_against_real_db`). 설정 10줄
+
+### B4. 4단계 — 가드 교체 (Java) ← **다음 작업**
+
+브랜치는 `feature/matching-embedding-text-redesign`에 **이어서 얹는다**(B1+B2와 한 PR).
+상세 규칙은 `.ai/STATE.md` "[5] 가드"의 **G3 세부 / G4 세부** 절이 최종본이다.
 
 - [ ] `evaluateGuard`에서 **직무·스킬 재검증 제거**
-- [ ] G3 예산 조합: `Σ(노출 후보 월단가) ≤ budgetCap × 노출 인원 × 1.2`
-      - 분모는 모집 인원이 아니라 **노출 인원**
+- [ ] **판정 시점을 옮긴다.** 지금은 후보를 한 명씩 보고 **노출 전에** 판정하는데, G3는
+      "노출 후보 전원의 합계"라 **노출이 확정된 뒤**에 판정해야 한다. `persistCandidates` 루프 구조가 바뀐다
+- [ ] G3 예산 조합 — `Σ(노출 후보 월단가) ≤ 남은 1인 상한 × 노출 인원 × 1.2`
+      - **남은 1인 상한** = (`budgetCap` × 모집 인원 − 이미 자리를 차지한 사람들의 월단가 합) ÷ 남은 자리
+      - 그 사람들의 월단가는 **협상 타결가 우선**(`NegotiationPort` 신규 메서드), 없으면 희망 단가
+      - `getAgreedForContract`는 **타결 전이면 예외를 던진다** — 상태가 `CONTRACT_PENDING` 이상일 때만 호출
       - **탈락시키지 말 것.** `guardPassed=true` 유지, `guardReason`에 기록만
-- [ ] G4 LLM 응답 이상: 중복 ID / 요청 인원 초과 / `reason` 누락 — **여기만 실제로 거른다**
-- [ ] 테스트
+- [ ] G4 LLM 응답 이상 — 중복 ID(뒤엣것 버림) / 인원 초과(상위 N만) / `reason` 누락(탈락,
+      빈자리는 다음 순위가 채움). **여기만 실제로 거른다**
+- [ ] **7번 자바 쪽**: `RankedFreelancer`에 `similarity` 추가 → `PythonMatchingAdapter` 파싱 →
+      `createFromEmbedding(..., 0.0)`의 하드코딩 `0.0`을 실제 값으로 교체
+- [ ] 신규 리포지토리 메서드: 자리를 차지 중인 프리랜서 ID 목록
+      (`countByPositionIdAndStatusNotIn`의 목록 버전)
+- [ ] 테스트 — 기존 가드 테스트(`MatchingIntegrationTest`의 스킬 미달 시나리오 등)가 깨지므로 같이 고친다
 
 ### B5. 5단계 — 배포 후
 
@@ -292,6 +344,17 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
       섞이면 비교 자체가 무의미해진다
 - [ ] 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`) 갱신 — API 응답 모양은 안 바뀌지만
       후보 순서 산출 방식이 달라진 것을 공유
+
+### B6. 환경 — 12번 (팀원 답변 대기)
+
+- [ ] `Pairing-backend/docker-compose.yml`의 postgres 이미지를 **`pgvector/pgvector:pg16`** 으로
+      교체(같은 PG16이라 기존 볼륨 그대로 붙는다). **팀원 전원이 컨테이너를 재생성해야 하는 변경**
+- [ ] `Pairing-python/db/init/10-create-ai-schema.sql`을 수동 실행 —
+      `docker exec -i pairing-postgres psql -U pairing -d pairing < ...`
+- [ ] 스프링 1회 기동 → `ddl-auto: update`가 `freelancer_profile.matching_paused` 생성
+- [ ] ⚠️ **배포 DB에도 확장·테이블이 있는지 확인** —
+      `SELECT extname FROM pg_extension WHERE extname='vector';`
+      없으면 배포 환경에서도 추천이 첫 쿼리에서 죽는다
 
 ## C. 검증 — 아직 한 번도 안 한 것
 
@@ -317,6 +380,8 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 | E1 | 3번 | `ContractDraftListener`에 `@Async`가 없다 — 계약서 생성이 결제 응답을 붙잡는다. 아직 전달 안 함 |
 | E2 | 3번 | 정책 P03 문구(임베딩 시점)를 코드에 맞춰 수정 — **3번이 해주기로 함**, 확인만 |
 | E3 | — | 프리랜서 성공보수 정산 미생성 건 — develop에 `CreateFreelancerSuccessFeeCommand`가 들어왔다(`199a961`). **해결됐는지 확인 필요** |
+| E4 | 5번 | **`AgreedNegotiationView` javadoc 오류 (2026-08-12 발견).** `agreedAmount`를 "총액"이라고 적어놨는데 실제로는 **월단가**다(`Negotiation.agreedAmount` 주석: "합의된 월 단가(원). 계약 총액은 계약 도메인이 개월 수로 곱해 계산한다"). 계약 도메인이 이 문구를 믿고 개월 수를 안 곱하면 **계약 금액이 1/N로 찍힌다** |
+| E5 | 팀 | **배포 DB에 pgvector 확장·임베딩 테이블이 있는지 확인** (12번). 만드는 코드가 어디에도 없어서 누군가 수동으로 넣었어야 한다. 없으면 배포 환경에서도 추천이 안 된다 |
 
 ## F. 향후 개선 (범위 밖, 기록만)
 
