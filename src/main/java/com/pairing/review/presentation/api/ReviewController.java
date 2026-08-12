@@ -7,16 +7,13 @@ import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.review.application.usecase.ReviewUseCase;
-import com.pairing.review.application.usecase.SiteReviewAdminUseCase;
 import com.pairing.review.domain.model.SiteReviewVisibility;
 import com.pairing.review.exception.ReviewErrorCode;
 import com.pairing.review.presentation.api.request.ReviewCreateRequest;
-import com.pairing.review.presentation.api.request.SiteReviewVisibilityRequest;
 import com.pairing.review.presentation.api.response.PendingReviewResponse;
 import com.pairing.review.presentation.api.response.ReviewResponse;
 import com.pairing.review.presentation.api.response.ReviewSummaryResponse;
 import com.pairing.review.presentation.api.response.SiteReviewResponse;
-import com.pairing.review.presentation.api.response.SiteReviewSummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -53,7 +50,6 @@ import java.util.List;
 public class ReviewController {
 
     private final ReviewUseCase reviewUseCase;
-    private final SiteReviewAdminUseCase siteReviewAdminUseCase;
 
     @PostMapping
     @Operation(summary = "리뷰 작성",
@@ -115,46 +111,6 @@ public class ReviewController {
         return ResponseEntity.ok(ApiResponse.success("PENDING_REVIEWS_FOUND", "조회에 성공했습니다.", response));
     }
 
-    // ==========================================
-    // 관리자 (R40)
-    // ==========================================
-
-    @GetMapping("/admin/site-reviews/summary")
-    @Operation(summary = "[관리자] 사이트 리뷰 요약",
-            description = "요약 카드와 별점 분포 그래프에 쓰는 값입니다.")
-    public ResponseEntity<ApiResponse<SiteReviewSummaryResponse>> findSiteReviewSummaryForAdmin() {
-        SiteReviewSummaryResponse response = SiteReviewSummaryResponse.from(siteReviewAdminUseCase.getSummary());
-        return ResponseEntity.ok(ApiResponse.success("SITE_REVIEW_SUMMARY_FOUND", "조회에 성공했습니다.", response));
-    }
-
-    @GetMapping("/admin/site-reviews")
-    @Operation(summary = "[관리자] 사이트 리뷰 목록",
-            description = "별점·작성자 구분·공개 여부·홍보 여부로 필터링합니다.")
-    public ResponseEntity<ApiResponse<PageResponse<SiteReviewResponse>>> findSiteReviewsForAdmin(
-            @RequestParam(required = false) Integer score,
-            @RequestParam(required = false) PartyRole writerRole,
-            @RequestParam(required = false) SiteReviewVisibility visibility,
-            @RequestParam(required = false) Boolean promoted,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
-    ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        PageResponse<SiteReviewResponse> response = PageResponse.from(
-                siteReviewAdminUseCase.search(score, writerRole, visibility, promoted, pageable)
-                        .map(SiteReviewResponse::from));
-        return ResponseEntity.ok(ApiResponse.success("SITE_REVIEWS_FOUND", "조회에 성공했습니다.", response));
-    }
-
-    @PutMapping("/admin/site-reviews/{siteReviewId}/visibility")
-    @Operation(summary = "[관리자] 사이트 리뷰 공개·홍보 설정",
-            description = "기본값은 비공개입니다. 공개로 바꿔야 메인에 노출될 수 있습니다.")
-    @ApiErrorCodeExample(domain = ReviewErrorCode.class, value = {"SITE_REVIEW_NOT_FOUND"})
-    public ResponseEntity<ApiResponse<SiteReviewResponse>> updateVisibility(
-            @PathVariable Long siteReviewId,
-            @Valid @RequestBody SiteReviewVisibilityRequest request
-    ) {
-        SiteReviewResponse response = SiteReviewResponse.from(siteReviewAdminUseCase.updateVisibility(
-                siteReviewId, request.visibility(), request.promoted()));
-        return ResponseEntity.ok(ApiResponse.success("SITE_REVIEW_UPDATED", "설정을 변경했습니다.", response));
-    }
+    // 관리자용 사이트 리뷰 요약·목록·공개 설정은 관리자 서버(pairing-admin)로 옮겼다.
+    // 같은 site_review 테이블을 쓰므로 그쪽에서 공개·홍보를 켜면 메인 노출에 그대로 반영된다.
 }

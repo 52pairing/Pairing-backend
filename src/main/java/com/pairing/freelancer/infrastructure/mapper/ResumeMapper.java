@@ -68,7 +68,7 @@ public interface ResumeMapper {
             return null;
         }
         return new ResumeCareerEmbeddable(career.getStartDate(), career.getEndDate(), career.getCompanyName(),
-                career.getDepartmentRank(), career.getJobDescription());
+                career.getDepartment(), career.getPosition(), career.getJobDescription());
     }
 
     default Career toDomainCareer(ResumeCareerEmbeddable embeddable) {
@@ -76,7 +76,7 @@ public interface ResumeMapper {
             return null;
         }
         return Career.of(embeddable.getStartDate(), embeddable.getEndDate(), embeddable.getCompanyName(),
-                embeddable.getDepartmentRank(), embeddable.getJobDescription());
+                embeddable.getDepartment(), embeddable.getPosition(), embeddable.getJobDescription());
     }
 
     default ResumeCertificateEmbeddable toEmbeddable(Certificate certificate) {

@@ -96,7 +96,7 @@ public record ResumeRequest(
                         .toList(),
                 careers.stream()
                         .map(c -> new UpsertResumeCommand.Career(c.startDate(), c.endDate(), c.companyName(),
-                                c.departmentRank(), c.jobDescription()))
+                                c.department(), c.position(), c.jobDescription()))
                         .toList(),
                 certificates == null
                         ? List.of()
@@ -127,7 +127,8 @@ public record ResumeRequest(
             @Schema(description = "입사일") @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Schema(description = "퇴사일. 재직중이면 비운다.") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @Schema(description = "회사/기관명") @NotBlank @Size(max = 100) String companyName,
-            @Schema(description = "부서 및 직급") @Size(max = 100) String departmentRank,
+            @Schema(description = "부서", example = "개발팀") @Size(max = 100) String department,
+            @Schema(description = "직급", example = "프론트엔드 개발자") @Size(max = 100) String position,
             @Schema(description = "담당 업무") @Size(max = 2000) String jobDescription
     ) {
     }

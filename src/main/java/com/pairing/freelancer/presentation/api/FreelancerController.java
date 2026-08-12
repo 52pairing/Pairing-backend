@@ -112,8 +112,11 @@ public class FreelancerController {
     @PutMapping("/me/condition")
     @PreAuthorize("hasRole('FREELANCER')")
     @Operation(summary = "내 조건 등록/수정",
-            description = "없으면 생성하고 있으면 덮어씁니다. 저장 후 임베딩이 갱신됩니다.")
+            description = "없으면 생성하고 있으면 덮어씁니다. 저장 후 임베딩이 갱신됩니다. "
+                    + "급여는 만원 단위(최소 1만원)이고, 같은 스킬을 두 번 보낼 수 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST"})
+    @ApiErrorCodeExample(domain = FreelancerErrorCode.class,
+            value = {"INVALID_CONDITION_FIELD", "DUPLICATE_SKILL"})
     public ResponseEntity<ApiResponse<FreelancerConditionResponse>> upsertMyCondition(
             @Valid @RequestBody FreelancerConditionRequest request,
             @CurrentAccountId Long accountId

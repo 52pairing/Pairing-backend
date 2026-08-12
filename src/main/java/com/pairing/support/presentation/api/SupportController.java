@@ -6,18 +6,15 @@ import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.support.application.usecase.ChatbotUseCase;
-import com.pairing.support.application.usecase.InquiryAdminUseCase;
 import com.pairing.support.application.usecase.InquiryUseCase;
 import com.pairing.support.domain.model.InquiryStatus;
 import com.pairing.support.exception.ChatbotErrorCode;
 import com.pairing.support.exception.InquiryErrorCode;
 import com.pairing.support.presentation.api.request.ChatbotAskRequest;
-import com.pairing.support.presentation.api.request.InquiryAnswerRequest;
 import com.pairing.support.presentation.api.request.InquiryCreateRequest;
 import com.pairing.support.presentation.api.response.ChatbotAnswerResponse;
 import com.pairing.support.presentation.api.response.ChatbotQuotaResponse;
 import com.pairing.support.presentation.api.response.InquiryResponse;
-import com.pairing.support.presentation.api.response.InquirySummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -54,7 +51,6 @@ public class SupportController {
 
     private final ChatbotUseCase chatbotUseCase;
     private final InquiryUseCase inquiryUseCase;
-    private final InquiryAdminUseCase inquiryAdminUseCase;
 
     // ==========================================
     // 챗봇 (R44)
@@ -151,41 +147,6 @@ public class SupportController {
         return ResponseEntity.ok(ApiResponse.success("INQUIRY_FOUND", "조회에 성공했습니다.", response));
     }
 
-    // ==========================================
-    // 관리자 (R45)
-    // ==========================================
-
-    @GetMapping("/admin/inquiries/summary")
-    @Operation(summary = "[관리자] 문의 요약", description = "목록 상단 요약 카드(전체/답변 대기/답변 완료/오늘 접수)입니다.")
-    public ResponseEntity<ApiResponse<InquirySummaryResponse>> findInquirySummaryForAdmin() {
-        InquirySummaryResponse response = InquirySummaryResponse.from(inquiryAdminUseCase.getSummary());
-        return ResponseEntity.ok(ApiResponse.success("INQUIRY_SUMMARY_FOUND", "조회에 성공했습니다.", response));
-    }
-
-    @GetMapping("/admin/inquiries")
-    @Operation(summary = "[관리자] 문의 목록",
-            description = "keyword 는 회원명·제목·문의번호를 한 번에 검색합니다. 회원유형·상태로도 필터링합니다.")
-    public ResponseEntity<ApiResponse<PageResponse<InquiryResponse>>> findInquiriesForAdmin(
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Role writerRole,
-            @RequestParam(required = false) InquiryStatus status,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
-    ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        PageResponse<InquiryResponse> response = PageResponse.from(
-                inquiryAdminUseCase.findAll(keyword, writerRole, status, pageable).map(InquiryResponse::from));
-        return ResponseEntity.ok(ApiResponse.success("INQUIRIES_FOUND", "조회에 성공했습니다.", response));
-    }
-
-    @PostMapping("/admin/inquiries/{inquiryId}/answer")
-    @Operation(summary = "[관리자] 문의 답변", description = "답변하면 상태가 ANSWERED 로 바뀌고 사용자에게 알림이 발송됩니다.")
-    @ApiErrorCodeExample(domain = InquiryErrorCode.class, value = {"INQUIRY_NOT_FOUND"})
-    public ResponseEntity<ApiResponse<InquiryResponse>> answerInquiry(
-            @PathVariable Long inquiryId,
-            @Valid @RequestBody InquiryAnswerRequest request
-    ) {
-        InquiryResponse response = InquiryResponse.from(inquiryAdminUseCase.answer(inquiryId, request.answer()));
-        return ResponseEntity.ok(ApiResponse.success("INQUIRY_ANSWERED", "답변을 등록했습니다.", response));
-    }
+    // 관리자용 문의 요약·목록·답변은 관리자 서버(pairing-admin)로 옮겼다.
+    // 같은 inquiry 테이블을 쓰므로 그쪽에서 답변하면 사용자 조회에 그대로 반영된다.
 }

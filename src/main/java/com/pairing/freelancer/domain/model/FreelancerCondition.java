@@ -132,6 +132,29 @@ public class FreelancerCondition {
         if (minAcceptAmount != null) {
             requireInTenThousandUnit(minAcceptAmount);
         }
+        requireNoDuplicateSkill(skills);
+    }
+
+    /**
+     * 같은 스킬을 두 번 담을 수 없다.
+     *
+     * <p>화면에서 이미 고른 스킬은 다시 못 고르게 되어 있다. 그래도 중복이 들어오면 프론트가
+     * 잘못 보낸 것이므로 조용히 지우지 않고 끊는다 — 지워 버리면 그쪽 버그를 아무도 모른다.
+     *
+     * <p>숙련도까지 같은지는 보지 않는다. "React 초급 + React 고급" 은 사용자가 뭘 의도했는지
+     * 알 수 없고, 매칭 점수를 계산할 때 어느 쪽을 쓸지도 정할 수 없다.
+     *
+     * <p>개수 상한은 따로 두지 않는다. 스킬 코드가 유한(63개)하고 중복이 막히므로
+     * 그 수를 넘길 수 없다.
+     */
+    private static void requireNoDuplicateSkill(List<ConditionSkill> skills) {
+        long distinctCount = skills.stream()
+                .map(ConditionSkill::getSkillCode)
+                .distinct()
+                .count();
+        if (distinctCount != skills.size()) {
+            throw new BusinessException(FreelancerErrorCode.DUPLICATE_SKILL);
+        }
     }
 
     /**

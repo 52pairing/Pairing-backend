@@ -235,6 +235,48 @@ class FreelancerMyPageIntegrationTest {
     }
 
     @Test
+    @DisplayName("같은 스킬을 두 번 보내면 400 으로 끊긴다")
+    void duplicateSkillIsRejected() throws Exception {
+        Map<String, Object> body = conditionBody(6);
+        body.put("skills", List.of(
+                Map.of("skillCode", "JAVA", "skillLevel", "ADVANCED"),
+                Map.of("skillCode", "JAVA", "skillLevel", "BEGINNER")));
+
+        // 숙련도가 달라도 중복이다. 어느 쪽을 매칭 점수에 쓸지 정할 수 없다.
+        mockMvc.perform(put("/api/v1/freelancers/me/condition")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("FR_007"));
+    }
+
+    @Test
+    @DisplayName("급여가 만원 단위가 아니거나 1만원 미만이면 400 이다")
+    void payAmountMustBeInTenThousandUnit() throws Exception {
+        Map<String, Object> notMultiple = conditionBody(6);
+        notMultiple.put("payAmount", 5_000_500);
+
+        mockMvc.perform(put("/api/v1/freelancers/me/condition")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(notMultiple)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("FR_002"));
+
+        // 1만원 미만은 요청 검증(@Min)에서 먼저 걸린다. 도메인까지 오지 않으므로 코드가 다르다.
+        Map<String, Object> tooSmall = conditionBody(6);
+        tooSmall.put("payAmount", 9_000);
+
+        mockMvc.perform(put("/api/v1/freelancers/me/condition")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(tooSmall)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
+    }
+
+    @Test
     @DisplayName("협의 가능이라 기간 값을 비우면 null로 저장되고 조회에도 null로 나온다")
     void conditionPeriodValueCanBeNull() throws Exception {
         mockMvc.perform(put("/api/v1/freelancers/me/condition")
@@ -273,7 +315,7 @@ class FreelancerMyPageIntegrationTest {
                 "graduationStatus", "GRADUATED", "campusType", "MAIN")));
         body.put("careers", List.of(Map.of(
                 "startDate", "2018-03-01", "endDate", "2023-02-28",
-                "companyName", "주식회사 예시", "departmentRank", "서버개발팀 대리",
+                "companyName", "주식회사 예시", "department", "서버개발팀", "position", "대리",
                 "jobDescription", "결제 시스템 개발")));
         body.put("certificates", List.of(Map.of(
                 "acquiredDate", "2020-05-01", "name", "정보처리기사",

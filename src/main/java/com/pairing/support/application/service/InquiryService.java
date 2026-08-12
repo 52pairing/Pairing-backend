@@ -6,14 +6,9 @@ import com.pairing.account.domain.model.Role;
 import com.pairing.file.application.result.FileResult;
 import com.pairing.file.application.usecase.FileQueryUseCase;
 import com.pairing.global.exception.BusinessException;
-import com.pairing.notification.application.command.CreateNotificationCommand;
-import com.pairing.notification.application.usecase.NotificationCreateUseCase;
-import com.pairing.notification.domain.model.NotificationType;
 import com.pairing.support.application.command.CreateInquiryCommand;
 import com.pairing.support.application.result.InquiryFileResult;
 import com.pairing.support.application.result.InquiryResult;
-import com.pairing.support.application.result.InquirySummaryResult;
-import com.pairing.support.application.usecase.InquiryAdminUseCase;
 import com.pairing.support.application.usecase.InquiryUseCase;
 import com.pairing.support.domain.model.Inquiry;
 import com.pairing.support.domain.model.InquiryStatus;
@@ -32,14 +27,13 @@ import java.util.Objects;
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
-public class InquiryService implements InquiryUseCase, InquiryAdminUseCase {
+public class InquiryService implements InquiryUseCase {
 
     private static final String ANSWERER_NAME = "페어링 고객지원";
 
     private final InquiryRepository inquiryRepository;
     private final AccountQueryUseCase accountQueryUseCase;
     private final FileQueryUseCase fileQueryUseCase;
-    private final NotificationCreateUseCase notificationCreateUseCase;
 
     @Override
     @Transactional
@@ -72,35 +66,8 @@ public class InquiryService implements InquiryUseCase, InquiryAdminUseCase {
         return toResult(inquiry, isAdmin);
     }
 
-    @Override
-    public InquirySummaryResult getSummary() {
-        long totalCount = inquiryRepository.count();
-        long pendingCount = inquiryRepository.countByStatus(InquiryStatus.PENDING);
-        long answeredCount = inquiryRepository.countByStatus(InquiryStatus.ANSWERED);
-        long todayCount = inquiryRepository.countByCreatedAtAfter(LocalDate.now().atStartOfDay());
-        return new InquirySummaryResult(totalCount, pendingCount, answeredCount, todayCount);
-    }
-
-    @Override
-    public Page<InquiryResult> findAll(String keyword, Role writerRole, InquiryStatus status, Pageable pageable) {
-        return inquiryRepository.search(keyword, writerRole, status, pageable)
-                .map(inquiry -> toResult(inquiry, true));
-    }
-
-    @Override
-    @Transactional
-    public InquiryResult answer(Long inquiryId, String answer) {
-        Inquiry inquiry = inquiryRepository.findById(inquiryId)
-                .orElseThrow(() -> new BusinessException(InquiryErrorCode.INQUIRY_NOT_FOUND));
-        inquiry.answer(answer);
-        Inquiry saved = inquiryRepository.save(inquiry);
-
-        notificationCreateUseCase.create(new CreateNotificationCommand(saved.getWriterAccountId(),
-                NotificationType.INQUIRY_ANSWERED, "문의하신 내용에 답변이 등록되었습니다.", saved.getTitle(),
-                "/support/inquiries/" + saved.getId()));
-
-        return toResult(saved, true);
-    }
+    // 관리자용 요약·목록·답변은 관리자 서버(pairing-admin)로 옮겼다. 답변 알림도 그쪽에서 만든다.
+    // 답변된 문의를 사용자가 보는 경로(findMine/findOne)는 여기 그대로 남는다 — 같은 테이블이다.
 
     private InquiryResult toResult(Inquiry inquiry, boolean includeWriterInfo) {
         return new InquiryResult(

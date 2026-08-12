@@ -57,8 +57,8 @@ public class ResumeService implements ResumeUseCase {
                         e.graduationStatus(), e.campusType()))
                 .toList();
         List<Career> careers = command.careers().stream()
-                .map(c -> Career.of(c.startDate(), c.endDate(), c.companyName(), c.departmentRank(),
-                        c.jobDescription()))
+                .map(c -> Career.of(c.startDate(), c.endDate(), c.companyName(), c.department(),
+                        c.position(), c.jobDescription()))
                 .toList();
         List<Certificate> certificates = command.certificates() == null
                 ? List.of()

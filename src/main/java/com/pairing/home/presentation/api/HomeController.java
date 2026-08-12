@@ -7,8 +7,11 @@ import com.pairing.review.application.usecase.SiteReviewPublicUseCase;
 import com.pairing.review.presentation.api.response.SiteReviewResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,10 +28,14 @@ import java.util.List;
  * project/negotiation 등 다른 도메인 집계가 필요해서 스켈레톤 고정 응답을 유지한다.
  */
 @RestController
+@Validated
 @RequestMapping("/api/v1/home")
 @RequiredArgsConstructor
 @Tag(name = "05. Home", description = "비로그인 메인 API")
 public class HomeController {
+
+    /** 메인 후기 슬라이더가 한 번에 보여주는 개수의 상한. 화면이 이보다 많이 필요해질 일이 없다. */
+    private static final int MAX_HOME_REVIEW_SIZE = 20;
 
     private final SiteReviewPublicUseCase siteReviewPublicUseCase;
 
@@ -41,9 +48,13 @@ public class HomeController {
     }
 
     @GetMapping("/site-reviews")
-    @Operation(summary = "메인 노출 리뷰", description = "관리자가 공개+홍보 활용으로 설정한 4점 이상 리뷰만 반환합니다. 작성자명은 마스킹됩니다.")
+    @Operation(summary = "메인 노출 리뷰",
+            description = "관리자가 공개+홍보 활용으로 설정한 4점 이상 리뷰만 반환합니다. "
+                    + "작성자명은 마스킹됩니다. size 는 1~20 입니다.")
     public ResponseEntity<ApiResponse<List<SiteReviewResponse>>> findSiteReviews(
-            @RequestParam(defaultValue = "6") int size
+            // 비로그인 API 라 아무나 부를 수 있다. 상한이 없으면 size 를 크게 넣어 홍보 리뷰를
+            // 통째로 긁어갈 수 있고, 리뷰마다 프로젝트·계정을 읽으므로 조회가 size 만큼 늘어난다.
+            @RequestParam(defaultValue = "6") @Min(1) @Max(MAX_HOME_REVIEW_SIZE) int size
     ) {
         List<SiteReviewResponse> response = siteReviewPublicUseCase.findPromoted(size).stream()
                 .map(SiteReviewResponse::from)
