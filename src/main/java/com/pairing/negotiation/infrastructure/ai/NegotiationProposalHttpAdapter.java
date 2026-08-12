@@ -37,17 +37,25 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
     /**
      * A2A 읽기 타임아웃 기본값(ms).
      *
-     * <p>기본이 20초였는데 <b>실측 최대치가 이미 그걸 넘었다.</b> 조건 3개짜리 협상에서 평균
-     * 15.0초·최대 22.8초였고, 조건 5개짜리에서는 한 라운드가 33초 걸려 스프링이 정확히 20초에
-     * 끊고 stub 으로 폴백했다(2026-08-11, 협상 10번 라운드 2). 파이썬은 정상 응답을 만들어
-     * 13초 뒤 로그까지 남겼다 — 실패한 쪽은 파이썬이 아니라 기다리는 쪽이었다.
+     * <p>실측이 계속 이 값을 밀어올렸다. 기다리는 쪽이 먼저 끊으면 파이썬이 만든 정상 응답을
+     * 통째로 버리고 stub 으로 폴백하는데, 그 폴백이 조용해서 화면상으로는 협상이 정상으로 보인다.
      *
-     * <p>조건 수에 비례해 프롬프트가 길어지므로 실측 최대의 2배 이상으로 잡는다.
+     * <table>
+     *   <tr><th>시점</th><th>조건 수</th><th>실측</th><th>당시 설정</th><th>결과</th></tr>
+     *   <tr><td>08-11 낮</td><td>3</td><td>평균 15.0초 / 최대 22.8초</td><td>20초</td><td>최대치가 이미 초과</td></tr>
+     *   <tr><td>08-11 밤</td><td>5</td><td>33초</td><td>20초</td><td>전량 stub</td></tr>
+     *   <tr><td>08-12</td><td>5</td><td><b>64초</b></td><td>60초</td><td>3.6초 차로 전량 stub</td></tr>
+     * </table>
      *
-     * <p>근본 해결은 아니다. 동기로 기다리는 한 사람은 그만큼 빈 화면을 본다.
-     * LLM 비동기화가 예정돼 있고, 그때 이 값의 의미도 달라진다.
+     * <p>마지막 건은 프롬프트에 규칙 3개를 추가한 직후다(Pairing-python#35). <b>프롬프트가 길어지면
+     * 응답도 느려진다</b> — 조건 수뿐 아니라 지시문 길이도 이 값에 영향을 준다. 그래서 실측의
+     * 단순 2배가 아니라 여유를 크게 둔다.
+     *
+     * <p>근본 해결은 아니다. 동기로 기다리는 한 사람은 그만큼 빈 화면을 본다. 64초는 이미
+     * 사람이 기다릴 수 있는 시간이 아니고, <b>이 값을 올리는 것으로 버티는 건 여기까지다.</b>
+     * LLM 비동기화가 다음 작업으로 예정돼 있고, 그때 이 값의 의미도 달라진다.
      */
-    private static final int DEFAULT_READ_TIMEOUT_MS = 60_000;
+    private static final int DEFAULT_READ_TIMEOUT_MS = 120_000;
 
     private static final String CLIENT_AGENT = "CLIENT_AGENT";
     private static final String FREELANCER_AGENT = "FREELANCER_AGENT";
