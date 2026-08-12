@@ -9,11 +9,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -66,6 +68,9 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
     private void withCommonHeaders(HttpHeaders headers) {
         headers.add(INTERNAL_API_KEY_HEADER, internalApiKey);
         headers.add(TRACE_ID_HEADER, TraceIdFilter.currentTraceId());
+        // Accept 를 안 보내면 상대가 application/octet-stream 으로 내려줄 수 있고, 그러면 이 응답을
+        // 읽을 컨버터가 없어 예외가 난다. 협상 어댑터에서 실제로 겪은 실패다(2026-08-11 실측).
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
     }
 
     private AnswerData requireData(PythonApiResponse<AnswerData> response) {
