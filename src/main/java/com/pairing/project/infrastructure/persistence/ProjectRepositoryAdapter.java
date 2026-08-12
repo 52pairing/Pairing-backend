@@ -66,11 +66,13 @@ public class ProjectRepositoryAdapter implements ProjectRepository {
         Map<Long, ProjectPositionJpaEntity> byId = entity.getPositions().stream()
                 .collect(Collectors.toMap(ProjectPositionJpaEntity::getId, Function.identity()));
 
-        // 구성은 그대로 두고 마감 결과만 옮긴다. 번호도 스킬도 바뀌지 않아 유니크 제약과 무관하다.
+        // 구성은 그대로 두고 확정 인원과 마감 결과만 옮긴다. 번호도 스킬도 바뀌지 않아
+        // 유니크 제약과 무관하다.
         for (Position position : project.getPositions()) {
             ProjectPositionJpaEntity target = byId.get(position.getId());
             if (target != null) {
-                target.applyStatus(position.getStatus(), position.getClosedAt());
+                target.applyState(position.getConfirmedCount(),
+                        position.getStatus(), position.getClosedAt());
             }
         }
         return projectMapper.toDomain(entity);

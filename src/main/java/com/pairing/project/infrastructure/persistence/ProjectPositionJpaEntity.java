@@ -108,8 +108,16 @@ public class ProjectPositionJpaEntity {
         this.headcount = headcount;
     }
 
-    /** 모집 마감 결과만 반영한다. 조건과 확정 인원은 건드리지 않는다. */
-    public void applyStatus(PositionStatus status, LocalDateTime closedAt) {
+    /**
+     * 확정 인원과 모집 마감 결과를 반영한다. 조건({@code applyCondition})은 건드리지 않는다.
+     *
+     * <p>{@code confirmedCount} 를 빠뜨리면 계약 체결이 DB 에 남지 않는다. 도메인이 메모리에서만
+     * 올리고 상태({@code CLOSED})만 저장돼, <b>인원이 다 찬 것처럼 닫혀 있는데 확정 인원은 0</b> 인
+     * 상태가 된다. 그러면 {@code Project.isFullyStaffed()} 가 거짓이라 착수금을 다 내도 프로젝트가
+     * 진행중으로 넘어가지 못한다.
+     */
+    public void applyState(int confirmedCount, PositionStatus status, LocalDateTime closedAt) {
+        this.confirmedCount = confirmedCount;
         this.status = status;
         this.closedAt = closedAt;
     }
