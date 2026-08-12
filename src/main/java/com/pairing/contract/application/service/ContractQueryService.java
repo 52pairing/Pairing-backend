@@ -15,6 +15,7 @@ import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractDraftText;
 import com.pairing.contract.domain.model.ContractSignature;
 import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.domain.model.ContractTab;
 import com.pairing.contract.domain.model.SignatureStatus;
 import com.pairing.contract.domain.repository.ContractRepository;
 import com.pairing.contract.domain.service.ContractClauseRenderer;
@@ -64,13 +65,16 @@ public class ContractQueryService implements ContractQueryUseCase {
      */
     @Override
     public Page<ContractSummary> findMine(Long accountId, Long projectId, ContractStatus status,
-                                          Pageable pageable) {
-        Page<Contract> page = contractRepository.findByParty(accountId, projectId, status, pageable);
+                                          ContractTab tab, Pageable pageable) {
+        Page<Contract> page = contractRepository.findByParty(accountId, projectId, status, tab, pageable);
 
-        Set<Long> paidContractIds = settlementReaderPort.findPaidDepositContractIds(
-                page.getContent().stream().map(Contract::getId).toList());
+        List<Long> contractIds = page.getContent().stream().map(Contract::getId).toList();
+        Set<Long> paidContractIds = settlementReaderPort.findPaidDepositContractIds(contractIds);
+        Map<Long, Long> payableSettlementIds =
+                settlementReaderPort.findPayableSettlementIds(accountId, contractIds);
 
-        return page.map(contract -> toSummary(contract, accountId, paidContractIds));
+        return page.map(contract ->
+                toSummary(contract, accountId, paidContractIds, payableSettlementIds));
     }
 
     @Override
@@ -185,12 +189,19 @@ public class ContractQueryService implements ContractQueryUseCase {
      * <p>양측 서명 여부는 뷰어와 무관하게 같은 값이다. 카드가 "클라이언트 서명 ○ / 프리랜서 서명 ✓"
      * 를 함께 보여줘서, 내 차례가 아닐 때 누구를 기다리는지 알 수 있어야 한다.
      */
-    private ContractSummary toSummary(Contract contract, Long accountId, Set<Long> paidContractIds) {
+    private ContractSummary toSummary(Contract contract, Long accountId, Set<Long> paidContractIds,
+                                      Map<Long, Long> payableSettlementIds) {
         ContractSignature mine = contract.findSignature(accountId);
 
-        String counterpartName = mine.getPartyRole() == PartyRole.CLIENT
+        // 업종은 갑의 값이라 프리랜서가 볼 때만 필요하다. 클라이언트 화면은 상대가 프리랜서다.
+        boolean viewerIsClient = mine.getPartyRole() == PartyRole.CLIENT;
+        ContractPartyReaderPort.ClientSummary client = viewerIsClient
+                ? ContractPartyReaderPort.ClientSummary.EMPTY
+                : partyReaderPort.findClientSummary(contract.getClientId());
+
+        String counterpartName = viewerIsClient
                 ? partyReaderPort.findFreelancerName(contract.getFreelancerId())
-                : partyReaderPort.findClientName(contract.getClientId());
+                : client.companyName();
 
         ContractProjectReaderPort.ProjectView project =
                 projectReaderPort.findByPositionId(contract.getPositionId());
@@ -200,9 +211,11 @@ public class ContractQueryService implements ContractQueryUseCase {
                 project.projectTitle(),
                 project.jobRole(),
                 counterpartName,
+                client.businessField(),
                 mine.getStatus() == SignatureStatus.PENDING,
                 contract.isSignedBy(PartyRole.CLIENT),
                 contract.isSignedBy(PartyRole.FREELANCER),
-                paidContractIds.contains(contract.getId()));
+                paidContractIds.contains(contract.getId()),
+                payableSettlementIds.get(contract.getId()));
     }
 }

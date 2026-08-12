@@ -1,6 +1,7 @@
 package com.pairing.contract.application.port;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -19,4 +20,13 @@ public interface ContractSettlementReaderPort {
      * 결과에 들어가지 않는다. 배지는 체결 여부와 함께 봐야 한다.
      */
     Set<Long> findPaidDepositContractIds(Collection<Long> contractIds);
+
+    /**
+     * 계약별로 내가 지금 결제할 정산 ID. {@code 계약 ID -> 정산 ID}.
+     *
+     * <p>배지만으로는 어느 정산을 결제할지 알 수 없어 목록 카드의 결제 버튼이 이 값을 쓴다.
+     * 낼 게 없는 계약은 결과에 없다. 계약에 걸린 정산은 전부 프리랜서 몫이라 클라이언트가
+     * 부르면 빈 맵이다.
+     */
+    Map<Long, Long> findPayableSettlementIds(Long payerAccountId, Collection<Long> contractIds);
 }

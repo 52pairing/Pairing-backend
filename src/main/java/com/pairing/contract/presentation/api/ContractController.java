@@ -4,6 +4,7 @@ import com.pairing.contract.application.command.SignContractCommand;
 import com.pairing.contract.application.usecase.ContractCommandUseCase;
 import com.pairing.contract.application.usecase.ContractQueryUseCase;
 import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.domain.model.ContractTab;
 import com.pairing.contract.exception.ContractErrorCode;
 import com.pairing.contract.presentation.api.request.ContractRejectRequest;
 import com.pairing.contract.presentation.api.request.ContractSignRequest;
@@ -57,16 +58,30 @@ public class ContractController {
     @GetMapping
     @Operation(summary = "내 계약 목록",
             description = "헤더의 계약관리 화면에 사용합니다. projectId 를 주면 그 프로젝트의 계약만 "
-                    + "나오므로 프로젝트 상세의 계약 탭에도 같은 API 를 씁니다. 최신순입니다.")
+                    + "나오므로 프로젝트 상세의 계약 탭에도 같은 API 를 씁니다. 최신순입니다.\n\n"
+                    + "tab 은 화면의 탭입니다. 화면 둘이 나눠 씁니다.\n\n"
+                    + "공통\n"
+                    + "- ALL: 전체 (AI 가 문구를 채우는 중인 DRAFT 도 여기에만 나옵니다)\n"
+                    + "- AWAITING_ME: 내가 아직 서명하지 않음. 상대 서명 여부는 가리지 않습니다\n\n"
+                    + "클라이언트 계약관리\n"
+                    + "- AWAITING_COUNTERPART: 나는 서명했고 상대를 기다림\n"
+                    + "- CONCLUDED: 양측 서명 완료(체결 이후 전체)\n\n"
+                    + "프리랜서 내 계약\n"
+                    + "- IN_PROGRESS: 진행 중. 착수금 수수료 미납(SIGNED)도 함께 나옵니다\n"
+                    + "- SETTLEMENT_PENDING: 정산 대기\n"
+                    + "- COMPLETED: 완료\n\n"
+                    + "AWAITING_ME 와 AWAITING_COUNTERPART 는 계약 상태가 둘 다 SIGN_PENDING 이라 "
+                    + "status 로는 가를 수 없습니다. IN_PROGRESS 도 상태가 둘이라 마찬가지입니다.")
     public ResponseEntity<ApiResponse<PageResponse<ContractSummaryResponse>>> findMine(
             @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) ContractStatus status,
+            @RequestParam(required = false) ContractTab tab,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @CurrentAccountId Long accountId
     ) {
         Page<ContractSummaryResponse> data = contractQueryUseCase
-                .findMine(accountId, projectId, status, PageRequest.of(page, size))
+                .findMine(accountId, projectId, status, tab, PageRequest.of(page, size))
                 .map(ContractSummaryResponse::from);
 
         return ResponseEntity.ok(ApiResponse.success("CONTRACTS_FOUND", "조회에 성공했습니다.",

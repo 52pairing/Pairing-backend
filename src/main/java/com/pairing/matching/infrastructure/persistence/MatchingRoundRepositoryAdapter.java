@@ -8,6 +8,7 @@ import com.pairing.matching.infrastructure.mapper.MatchingRoundMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -37,6 +38,13 @@ public class MatchingRoundRepositoryAdapter implements MatchingRoundRepository {
     @Override
     public long countByPositionId(Long positionId) {
         return springDataRepository.countByPositionId(positionId);
+    }
+
+    @Override
+    public List<MatchingRound> findLatestRoundsByDistinctPosition() {
+        return springDataRepository.findLatestByDistinctPosition().stream()
+                .map(matchingRoundMapper::toDomain)
+                .toList();
     }
 
     @Override

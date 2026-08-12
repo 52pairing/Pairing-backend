@@ -1,6 +1,8 @@
 package com.pairing.contract.infrastructure.persistence;
 
 import com.pairing.contract.domain.model.Contract;
+import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.domain.model.ContractTab;
 import com.pairing.contract.domain.repository.ContractRepository;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 
 /**
  * 계약 목록 쿼리를 실제 DB 에 태운다.
@@ -65,6 +68,181 @@ class ContractListQueryTest {
                 .allSatisfy(contract -> assertThat(contract.getProjectId()).isEqualTo(PROJECT_A));
     }
 
+    /** 양측 서명까지 마친 계약. 체결되면 SIGNED 가 된다. */
+    private Long concludedContract(Long positionId) {
+        Contract contract = Contract.create(
+                PROJECT_A * 10 + positionId, PROJECT_A, positionId, 1L, 2L,
+                CLIENT_ACCOUNT_ID, FREELANCER_ACCOUNT_ID, 5_000_000L, 4,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31),
+                WorkStyle.REMOTE, WorkForm.FULL_TIME, null, null);
+        contract.completeDraft("{}", null);
+        contract.sign(CLIENT_ACCOUNT_ID, "SESSION", null, null, null, null);
+        contract.sign(FREELANCER_ACCOUNT_ID, "SESSION", null, null, null, null);
+        return contractRepository.save(contract).getId();
+    }
+
+    /** 아무도 서명하지 않은 서명 대기 계약. AI 문구가 채워져 SIGN_PENDING 이 된 상태다. */
+    private Long signPendingContract(Long positionId) {
+        return contractRepository.save(draft(positionId)).getId();
+    }
+
+    /** 클라이언트만 서명한 계약. 상태는 여전히 SIGN_PENDING 이다. */
+    private Long clientSignedContract(Long positionId) {
+        Contract contract = draft(positionId);
+        contract.sign(CLIENT_ACCOUNT_ID, "SESSION", null, null, null, null);
+        return contractRepository.save(contract).getId();
+    }
+
+    /** 프리랜서만 서명한 계약. 역시 SIGN_PENDING 이다. */
+    private Long freelancerSignedContract(Long positionId) {
+        Contract contract = draft(positionId);
+        contract.sign(FREELANCER_ACCOUNT_ID, "SESSION", null, null, null, null);
+        return contractRepository.save(contract).getId();
+    }
+
+    private Contract draft(Long positionId) {
+        Contract contract = Contract.create(
+                PROJECT_A * 10 + positionId, PROJECT_A, positionId, 1L, 2L,
+                CLIENT_ACCOUNT_ID, FREELANCER_ACCOUNT_ID, 5_000_000L, 4,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2026, 12, 31),
+                WorkStyle.REMOTE, WorkForm.FULL_TIME, null, null);
+        contract.completeDraft("{}", null);
+        return contract;
+    }
+
+    @Test
+    @DisplayName("서명 대기와 상대방 서명 대기가 갈린다 — 계약 상태는 둘 다 SIGN_PENDING 이다")
+    void splitsPendingByMySignature() {
+        Long notSignedYet = signPendingContract(1L);
+        Long clientSigned = clientSignedContract(2L);
+
+        // 클라이언트 기준: 내가 안 한 것 / 내가 하고 상대를 기다리는 것
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.AWAITING_ME))
+                .containsExactly(notSignedYet);
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.AWAITING_COUNTERPART))
+                .containsExactly(clientSigned);
+
+        // 프리랜서가 보면 정확히 반대다. 같은 파라미터로 역할이 갈린다.
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.AWAITING_ME))
+                .containsExactlyInAnyOrder(notSignedYet, clientSigned);
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.AWAITING_COUNTERPART)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("상대만 서명한 계약도 내 서명 대기에 뜬다 — 아무도 서명 안 한 것만 세면 안 된다")
+    void countsContractsSignedOnlyByCounterpart() {
+        // 판정 기준이 "내 서명이 PENDING" 이라야 한다. "서명이 하나도 없음" 으로 짜면
+        // 프리랜서가 먼저 서명한 계약이 클라이언트의 할 일 목록에서 사라진다.
+        Long nobodySigned = signPendingContract(1L);
+        Long freelancerOnly = freelancerSignedContract(2L);
+
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.AWAITING_ME))
+                .containsExactlyInAnyOrder(nobodySigned, freelancerOnly);
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.AWAITING_COUNTERPART)).isEmpty();
+
+        // 같은 두 건을 프리랜서가 보면 하나는 이미 내가 서명한 것이다.
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.AWAITING_ME))
+                .containsExactly(nobodySigned);
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.AWAITING_COUNTERPART))
+                .containsExactly(freelancerOnly);
+    }
+
+    @Test
+    @DisplayName("DRAFT 는 서명 대기 탭에 안 들어간다 — 아직 서명할 수 없는 상태다")
+    void draftIsExcludedFromSignTabs() {
+        // AI 가 문구를 채우는 2~5초 과도기다. 탭에 넣으면 눌러도 아무 일이 안 일어난다.
+        Long draftContract = createContract(PROJECT_A, 1L);
+
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.AWAITING_ME)).isEmpty();
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.AWAITING_COUNTERPART)).isEmpty();
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.CONCLUDED)).isEmpty();
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.ALL)).containsExactly(draftContract);
+    }
+
+    @Test
+    @DisplayName("체결 완료 탭은 서명이 끝난 계약만 담는다")
+    void concludedTabHoldsSignedOnly() {
+        createContract(PROJECT_A, 1L);
+        Long concluded = concludedContract(2L);
+
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.CONCLUDED)).containsExactly(concluded);
+    }
+
+    /**
+     * 체결 뒤 프로젝트를 따라 상태를 옮긴 계약.
+     *
+     * <p>운영에서는 {@code ContractLifecycleListener} 가 프로젝트 이벤트를 받아 옮긴다.
+     * 여기서는 목록 쿼리만 보면 되므로 도메인 메서드를 직접 부른다.
+     */
+    private Long advancedContract(Long positionId, ContractStatus target) {
+        Contract contract = draft(positionId);
+        contract.sign(CLIENT_ACCOUNT_ID, "SESSION", null, null, null, null);
+        contract.sign(FREELANCER_ACCOUNT_ID, "SESSION", null, null, null, null);
+
+        if (target != ContractStatus.SIGNED) {
+            contract.startProgress();
+        }
+        if (target == ContractStatus.COMPLETION_PENDING || target == ContractStatus.COMPLETED) {
+            contract.requestCompletion();
+        }
+        if (target == ContractStatus.COMPLETED) {
+            contract.complete();
+        }
+        return contractRepository.save(contract).getId();
+    }
+
+    @Test
+    @DisplayName("진행 중 탭은 착수금 미납(SIGNED)까지 담는다 — 상태 하나로는 못 가른다")
+    void inProgressTabHoldsSignedAndInProgress() {
+        // 화면에서 "결제하면 시작됩니다" 카드가 진행 중 탭에 놓인다. 그 계약은 아직 SIGNED 다.
+        Long depositUnpaid = advancedContract(1L, ContractStatus.SIGNED);
+        Long running = advancedContract(2L, ContractStatus.IN_PROGRESS);
+        advancedContract(3L, ContractStatus.COMPLETION_PENDING);
+        advancedContract(4L, ContractStatus.COMPLETED);
+
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.IN_PROGRESS))
+                .containsExactlyInAnyOrder(depositUnpaid, running);
+    }
+
+    @Test
+    @DisplayName("정산 대기와 완료 탭은 상태 하나씩만 담는다")
+    void settlementAndCompletedTabsHoldOneStatusEach() {
+        advancedContract(1L, ContractStatus.IN_PROGRESS);
+        Long settling = advancedContract(2L, ContractStatus.COMPLETION_PENDING);
+        Long done = advancedContract(3L, ContractStatus.COMPLETED);
+
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.SETTLEMENT_PENDING))
+                .containsExactly(settling);
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.COMPLETED))
+                .containsExactly(done);
+    }
+
+    @Test
+    @DisplayName("프리랜서 탭에도 서명 전 계약은 안 들어간다")
+    void freelancerTabsExcludeUnsigned() {
+        createContract(PROJECT_A, 1L);
+        signPendingContract(2L);
+
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.IN_PROGRESS)).isEmpty();
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.SETTLEMENT_PENDING)).isEmpty();
+        assertThat(tab(FREELANCER_ACCOUNT_ID, ContractTab.COMPLETED)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("탭이 null 이면 전체와 같다")
+    void nullTabMeansAll() {
+        createContract(PROJECT_A, 1L);
+        concludedContract(2L);
+
+        assertThat(tab(CLIENT_ACCOUNT_ID, ContractTab.ALL)).hasSize(2);
+        assertThat(tab(CLIENT_ACCOUNT_ID, null)).hasSize(2);
+    }
+
+    private List<Long> tab(Long accountId, ContractTab tab) {
+        return contractRepository.findByParty(accountId, null, null, tab, PageRequest.of(0, 10))
+                .getContent().stream().map(Contract::getId).toList();
+    }
+
     @Test
     @DisplayName("최신 계약이 앞에 온다")
     void ordersByNewest() {
@@ -104,6 +282,32 @@ class ContractListQueryTest {
 
         assertThat(settlementRepository.findPaidFreelancerDepositContractIds(Set.of(paid, unpaid)))
                 .containsExactly(paid);
+    }
+
+    @Test
+    @DisplayName("계약별로 결제할 정산 ID 를 준다 — 낸 건과 남의 건은 빠진다")
+    void findsPayableSettlementIdsByContract() {
+        Long unpaid = createContract(PROJECT_A, 1L);
+        Long paid = createContract(PROJECT_A, 2L);
+
+        Long unpaidSettlementId = settlementRepository.save(freelancerDeposit(unpaid)).getId();
+        payFor(settlementRepository.save(freelancerDeposit(paid)));
+
+        // 프리랜서가 보면 아직 안 낸 건만 결제 대상이다.
+        assertThat(settlementRepository.findPayableSettlementIdsByContract(
+                FREELANCER_ACCOUNT_ID, Set.of(unpaid, paid)))
+                .containsExactly(entry(unpaid, unpaidSettlementId));
+
+        // 계약에 걸린 정산은 전부 프리랜서 몫이라 클라이언트에게는 결제할 게 없다.
+        assertThat(settlementRepository.findPayableSettlementIdsByContract(
+                CLIENT_ACCOUNT_ID, Set.of(unpaid, paid))).isEmpty();
+    }
+
+    @Test
+    @DisplayName("빈 입력이면 결제 대상 조회도 쿼리를 타지 않는다")
+    void emptyInputSkipsPayableQuery() {
+        assertThat(settlementRepository.findPayableSettlementIdsByContract(
+                FREELANCER_ACCOUNT_ID, List.of())).isEmpty();
     }
 
     @Test

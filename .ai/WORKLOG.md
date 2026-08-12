@@ -1098,3 +1098,157 @@ B4 구현과 정확히 일치한다.
 자바 머지 후 실제로 뭘 어떻게 확인하는지가 없었다. ①배포 완료 확인 → ②재색인 curl →
 ③`REINDEX` → ④반영 확인 쿼리 → ⑤추천 1회 호출(증상별 의심 지점 표) → ⑥유사도·경고 빈도 쿼리
 순으로 명령어까지 적었다. **재색인을 빼먹으면 에러 없이 추천 품질만 나빠져서** 제일 놓치기 쉽다.
+
+## 2026-08-12 (계속) — 재색인 실행 방법 확인, B5 절차 정정
+
+사용자가 "재색인을 어디서 하냐(Swagger?)"고 물어 컨트롤러를 직접 확인했고, **내가 B5에 적어둔
+내용에 틀린 게 두 개 있었다.**
+
+**① "응답으로 성공·실패 건수가 온다" — 틀렸다.**
+
+```java
+public ResponseEntity<ApiResponse<Void>> reindexEmbeddings() {
+    embeddingReindexUseCase.startReindexAll();   // 백그라운드
+    return ResponseEntity.accepted()...          // 202, 본문 없음
+}
+```
+
+대상 1건마다 Gemini 호출이 일어나 몇 분씩 걸리므로 **즉시 202만 주고 백그라운드로 돈다.**
+성공·실패 건수는 **서버 로그에만** 남는다. 끝났는지는 DB의 `updated_at` 으로 확인해야 한다.
+
+**② 단계 순서가 어긋나 있었다.** `REINDEX` 를 재색인 **직후**에 하도록 적었는데, 그러면 벡터가
+아직 안 채워진 상태라 ivfflat 이 클러스터를 못 잡는다 — 애초에 `low recall` 경고가 났던 이유와
+같다. **재색인 완료 확인 → 그다음 REINDEX** 로 순서를 바꿨다.
+
+**권한도 확인해 적었다.** 경로에 `/admin/` 이 들어가서 `GlobalSecurityConfig` 의
+`.requestMatchers("/api/v1/*/admin/**").hasRole("ADMIN")` 에 걸린다. **클라이언트·프리랜서
+계정으로는 403**이라 관리자 계정이 필요하다. Swagger 에서 `POST /auth/login` 으로 관리자 로그인 후
+`11. Matching` 태그의 `[관리자] 임베딩 일괄 재색인` 을 호출하면 된다.
+
+**교훈**: 문서에 절차를 적을 때 **실제 코드를 안 보고 기억으로 적으면 틀린다.** 응답 타입과
+동기/비동기 여부는 컨트롤러를 열어봐야 안다.
+
+**자바 PR도 머지됐다**(`220890d`). 파이썬은 `8275b09` + 문서 PR까지 완료.
+이제 남은 것은 배포 후 B5 절차와 C1 통합 테스트다.
+
+## 2026-08-12 (계속) — 배포 후 재색인 실행, 버그 2개 발견
+
+자바 PR(`220890d`)까지 머지·배포된 뒤 재색인을 실제로 돌렸다. **관리자 계정이 없어서**
+새 계정을 회원가입으로 만들고 DB에서 `role='ADMIN'`으로 바꾼 뒤 재로그인해서 호출했다
+(권한은 JWT의 `role` 클레임에서 읽으므로 DB만 바꾸면 안 되고 재로그인이 필요하다).
+
+`202 EMBEDDINGS_REINDEX_STARTED` 는 왔는데, 확인 단계에서 두 가지가 드러났다.
+
+### ① `updated_at`이 갱신되지 않는다 (Python)
+
+내가 B5에 적어둔 확인 쿼리(`updated_at > now() - interval '10 minutes'`)가 **0을 돌려줘서**
+재색인이 실패한 줄 알았다. 코드를 보니 upsert의 `set_`에 `updated_at`이 없었다 —
+`server_default`는 INSERT 때만 걸리므로 **벡터를 다시 만들어도 시각이 안 바뀐다.**
+
+**확인 쿼리 자체가 틀렸던 것이고, 동시에 진짜 버그이기도 하다.** "이 벡터가 언제 만들어졌나"를
+알 수 없으면 재색인이 됐는지 영영 확인할 수 없다. 한 줄 수정이라 다음 파이썬 작업에 같이 넣는다.
+
+B5 절차의 확인 방법을 **`ai_agent_log` 조회**로 바꿨다. 임베딩 호출은 거기 남는다.
+
+### ② 포지션이 하나도 재색인되지 않았다 (Java)
+
+`ai_agent_log` 실측: `FREELANCER SUCCESS 1건`, **`POSITION` 0건.** 포지션 임베딩이 9건인데
+하나도 안 돌았다.
+
+`EmbeddingReindexService.reindexPositions()`가 대상을 **`matching_snapshot`(POSITION 타입)** 에서
+찾는다. 그런데 임베딩을 만드는 경로는 둘인데 스냅샷을 만드는 건 하나뿐이다 —
+`ProjectUpdatedEventListener`는 **R32 때문에 스냅샷을 일부러 안 건드리고** 임베딩만 갱신한다.
+그래서 **스냅샷 없이 임베딩만 있는 포지션**이 생길 수 있고, 그 포지션은 재색인에서 통째로 빠진다.
+
+스냅샷은 "요청 카드 고정용"이지 "임베딩 대상 목록"이 아닌데 그 용도로 쓴 게 잘못이다.
+
+**다만 원인을 확정하진 못했다.** (a) 스냅샷 0건이라 루프가 안 돈 것과 (b) 스냅샷은 있는데
+`findPositionSummary`가 전부 예외를 낸 것이 **둘 다 EMBEDDING 로그 0건**을 만든다 — 자바에서
+예외가 나면 파이썬을 부르기 전에 끝나 AI 로그가 안 남고 `log.warn`만 남기 때문이다.
+`matching_snapshot` 개수를 세면 갈린다. HANDOFF B7에 확인 쿼리와 함께 적어뒀다.
+
+**"원인을 찾았다"고 먼저 단정한 것은 성급했다.** 증거(로그 0건)가 두 가설을 모두 설명하는데
+한쪽만 말했다.
+
+### 둘 다 "에러가 안 나서 안 보이는" 종류다
+
+202도 정상이고 예외도 없었다. **실제로 뭐가 돌았는지 확인하려고 로그 테이블을 뒤져야** 드러났다.
+B5 절차에 확인 단계를 넣어두지 않았으면 "재색인 했으니 됐겠지"로 넘어갔을 것이다.
+
+### 실측 결과와 확정된 원인 (같은 날 이어서)
+
+**관리자 계정이 없어서 만드는 것부터 했다.** 관리자 서버를 따로 만들 예정이라 ADMIN 계정이
+아예 없었다. DB 직접 INSERT 는 비밀번호 해시·약관 동의·프로필을 다 맞춰야 해서, **새 이메일로
+정상 회원가입 후 `UPDATE account SET role='ADMIN'`** 으로 했다. 권한은 JWT 의 `role` 클레임에서
+읽으므로(`GlobalJwtAuthenticationFilter`) **DB 만 바꾸면 안 되고 재로그인이 필요하다.**
+로그인 요청의 `role` 도 `ADMIN` 으로 보내야 한다 — `findByEmailAndRole` 로 찾기 때문이다.
+절차는 HANDOFF B5-② 에 남겼다(다음에 또 필요하다).
+
+**재색인 결과: 프리랜서 1건 성공, 포지션 0건.**
+
+프리랜서가 실제로 새 규칙으로 바뀌었다는 근거가 있다 — `upsert_freelancer` 는 `source_hash` 가
+같으면 **AI 를 부르기 전에** 건너뛰는데 `ai_agent_log` 에 `EMBEDDING SUCCESS` 가 남았다.
+즉 건너뛰지 않았고, 텍스트가 바뀌었다는 뜻이다. **B1 이 배포까지 정상 적용됐다는 증거다.**
+
+**포지션 0건의 원인은 `matching_snapshot` 0건으로 확정됐다.** `reindexPositions()` 가 대상을
+스냅샷에서 찾으니 루프가 아예 안 돌았다.
+
+### 그러다 더 큰 걸 발견했다 — 스냅샷 0건인데 라운드·요청이 있다
+
+```
+라운드 2 / 후보 2 / 요청 2 / 스냅샷 0 / 포지션벡터 9
+```
+
+`MatchingRequestResponseAssembler.readSnapshot()` 이 스냅샷이 없으면
+`SNAPSHOT_NOT_FOUND` 를 던진다. **지금 배포 환경의 요청 2건은 상세 조회가 실패한다.**
+C1 의 "요청 → 상세 조회" 구간을 지나갈 수 없으므로 **C1 전에 반드시 정리해야 한다.**
+
+**코드상으로는 이 조합이 나올 수 없다.** `RecruitingStartedPositionHandler` 가 한 트랜잭션
+(`REQUIRES_NEW`) 안에서 **스냅샷 → 임베딩 → 라운드** 순으로 만들기 때문에, 라운드가 있으면
+스냅샷도 있어야 한다. 가설 셋을 구분하는 쿼리를 HANDOFF B7-③ 에 적었다.
+
+- (a) 스냅샷 기능(2026-08-09 도입) 이전의 옛 테스트 데이터 → `created_at` 확인
+- (b) 재추천으로만 생긴 라운드 → `MatchingRerecommendService.openRound` 는 스냅샷을 안 만든다.
+      `round_type` 이 `PAID`/`FREE` 뿐인지 확인. **최초 추천 없이 재추천이 되는 게 맞는지도
+      같이 봐야 한다**
+- (c) 누가 `matching_snapshot` 만 지웠다
+
+### 포지션 벡터를 지금 고치는 우회 방법
+
+②를 고치기 전까지 재색인으로는 못 고친다. 대신 **결제 완료된 프로젝트를 아무 필드나 수정**하면
+`ProjectUpdatedEventListener` 가 스냅샷과 무관하게 그 프로젝트의 포지션 임베딩을 전부 다시 만든다.
+(결제 전 프로젝트는 이 이벤트가 발행되지 않지만, 어차피 추천이 안 도는 프로젝트라 상관없다.)
+
+### 돌아보면
+
+**세 개 다 "에러가 안 나서 안 보이는" 종류였다.** 재색인은 202 를 줬고 예외도 없었다.
+`ai_agent_log` 를 뒤지고 테이블 카운트를 세고 나서야 드러났다. B5 절차에 확인 단계를 넣어두지
+않았다면 "재색인 했으니 됐겠지"로 넘어갔을 것이고, C1 에서 원인 모를 실패로 만났을 것이다.
+
+---
+
+## 2026-08-12 추가 확인 및 후속 수정
+
+### C1 end-to-end 확인 완료
+
+배포 DB에서 신규 프로젝트 `23`, 포지션 `33` 기준으로 결제 완료 후 모집 시작 이벤트가 정상 처리되는 것을 확인했다.
+후보 조회에서 freelancer `9`가 노출됐고, 매칭 요청 `3` 발송 후 프리랜서 수락으로 협상 `26`이 생성됐다.
+협상은 1라운드에서 `3,750,000`원으로 타결됐고, 계약 `27`(`CT-2026-000027`)이 `SIGN_PENDING` 상태로 생성됐다.
+
+### B7 수정
+
+- Python 임베딩 upsert 시 `updated_at`이 갱신되지 않아 재색인 여부를 시간 기준으로 확인하기 어려웠다.
+  `freelancer_embedding`, `position_embedding` upsert update 절에 `updated_at = current_timestamp`를 추가했다.
+- Java 관리자 포지션 재색인 대상이 `matching_snapshot` 기준이라 스냅샷이 없는 포지션은 재색인되지 않았다.
+  실제 모집 라운드가 생성된 `matching_round`의 distinct position 기준으로 최신 라운드를 찾아 포지션 임베딩을 다시 생성하도록 바꿨다.
+
+### F3 수정
+
+후보 조회 응답에 `budgetWarned`를 추가했다. 노출 후보 중 예산 조합 가드 사유가 남아 있으면 `true`로 내려준다.
+`guardReason` 원문은 화면에 직접 노출하지 않고, 프론트는 이 boolean으로 예산 경고 UI만 분기하면 된다.
+
+### 검증
+
+- Backend: `./gradlew test --tests "com.pairing.matching.*"` 통과
+- Python: `ruff check app/domains/embedding/repository.py tests/test_embedding_repository.py` 통과
+- Python: `pytest tests/test_embedding_repository.py` 5 passed, 1 skipped

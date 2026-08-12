@@ -2,6 +2,7 @@ package com.pairing.contract.domain.repository;
 
 import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.domain.model.ContractTab;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -33,12 +34,22 @@ public interface ContractRepository {
     /** 협상 1건당 계약 1건이다. 중복 생성 방지에 쓴다. */
     Optional<Contract> findByNegotiationId(Long negotiationId);
 
+    /** 탭을 쓰지 않는 조회. 전체 목록이 필요한 호출부가 쓴다. */
+    default Page<Contract> findByParty(Long accountId, Long projectId, ContractStatus status,
+                                       Pageable pageable) {
+        return findByParty(accountId, projectId, status, null, pageable);
+    }
+
     /**
      * 내 계약 목록. projectId / status 가 null 이면 그 조건을 걸지 않는다.
      *
      * <p>{@code projectId} 는 프로젝트 상세의 계약 탭용이다. 헤더의 "내 계약" 은 null 로 부른다.
+     *
+     * <p>{@code tab} 은 계약관리 화면의 탭이다. 내 서명 상태와 계약 상태 묶음으로 풀린다.
+     * null 이면 {@link ContractTab#ALL} 과 같다.
      */
-    Page<Contract> findByParty(Long accountId, Long projectId, ContractStatus status, Pageable pageable);
+    Page<Contract> findByParty(Long accountId, Long projectId, ContractStatus status,
+                               ContractTab tab, Pageable pageable);
 
     /** 프로젝트에 걸린 계약 전체. 진행중 전환 판정과 프로젝트 상세에 쓴다. */
     List<Contract> findByProjectId(Long projectId);

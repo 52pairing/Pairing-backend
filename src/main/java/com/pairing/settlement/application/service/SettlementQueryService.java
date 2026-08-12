@@ -14,6 +14,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.Map;
+
 /**
  * 정산 조회.
  *
@@ -43,6 +46,13 @@ public class SettlementQueryService implements SettlementQueryUseCase {
                                            SettlementStatus status, Pageable pageable) {
         return settlementRepository.findByPayer(accountId, projectId, phase, status, pageable)
                 .map(SettlementResult::from);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, Long> findPayableSettlementIdsByContract(Long payerAccountId,
+                                                              Collection<Long> contractIds) {
+        return settlementRepository.findPayableSettlementIdsByContract(payerAccountId, contractIds);
     }
 
     @Override

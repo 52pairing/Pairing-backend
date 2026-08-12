@@ -40,6 +40,13 @@ public class ContractPartyReaderAdapter implements ContractPartyReaderPort {
     }
 
     @Override
+    public ClientSummary findClientSummary(Long clientProfileId) {
+        return accountQueryUseCase.findClientProfileById(clientProfileId)
+                .map(profile -> new ClientSummary(profile.getCompanyName(), profile.getBusinessField()))
+                .orElse(ClientSummary.EMPTY);
+    }
+
+    @Override
     public String findFreelancerName(Long freelancerProfileId) {
         return accountQueryUseCase.findFreelancerProfileById(freelancerProfileId)
                 .map(FreelancerProfile::getAccountId)

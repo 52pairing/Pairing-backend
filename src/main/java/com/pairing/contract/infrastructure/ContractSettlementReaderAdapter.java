@@ -2,10 +2,12 @@ package com.pairing.contract.infrastructure;
 
 import com.pairing.contract.application.port.ContractSettlementReaderPort;
 import com.pairing.settlement.application.usecase.DepositSettlementUseCase;
+import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -18,9 +20,15 @@ import java.util.Set;
 public class ContractSettlementReaderAdapter implements ContractSettlementReaderPort {
 
     private final DepositSettlementUseCase depositSettlementUseCase;
+    private final SettlementQueryUseCase settlementQueryUseCase;
 
     @Override
     public Set<Long> findPaidDepositContractIds(Collection<Long> contractIds) {
         return depositSettlementUseCase.findPaidFreelancerDepositContractIds(contractIds);
+    }
+
+    @Override
+    public Map<Long, Long> findPayableSettlementIds(Long payerAccountId, Collection<Long> contractIds) {
+        return settlementQueryUseCase.findPayableSettlementIdsByContract(payerAccountId, contractIds);
     }
 }

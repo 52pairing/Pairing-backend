@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.contract.application.port.ContractFileReaderPort;
 import com.pairing.contract.application.port.ContractPartyReaderPort;
 import com.pairing.contract.application.port.ContractPdfPort;
+import com.pairing.account.domain.model.BusinessField;
 import com.pairing.contract.application.port.ContractProjectReaderPort;
 import com.pairing.contract.application.port.ContractSettlementReaderPort;
 import com.pairing.contract.application.result.ContractSummary;
 import com.pairing.contract.domain.model.Contract;
+import com.pairing.contract.domain.model.ContractTab;
 import com.pairing.contract.domain.repository.ContractRepository;
 import com.pairing.global.infrastructure.s3.S3Settings;
 import com.pairing.meta.domain.model.JobRole;
@@ -27,7 +29,10 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.List;
 
 
@@ -80,17 +85,25 @@ class ContractSummaryMappingTest {
                 new ContractProjectReaderPort.ProjectView(
                         "B2B 주문 관리 서비스 리뉴얼", JobRole.FRONTEND, List.of(SkillCode.REACT)));
         given(partyReaderPort.findFreelancerName(any())).willReturn("김개발");
+        given(partyReaderPort.findClientSummary(any())).willReturn(
+                new ContractPartyReaderPort.ClientSummary(
+                        "주식회사 페어링", BusinessField.IT_CONTENTS_AI));
 
         // 저장 전이라 id 가 아직 없다. Set.of() 는 contains(null) 에서 터지므로 널을 견디는 집합을 쓴다.
         // 실제 목록은 리포지토리가 돌려준 계약이라 id 가 항상 있다.
         given(settlementReaderPort.findPaidDepositContractIds(any())).willReturn(new HashSet<>());
+        given(settlementReaderPort.findPayableSettlementIds(any(), any())).willReturn(new HashMap<>());
     }
 
     private ContractSummary firstSummary() {
-        given(contractRepository.findByParty(any(), any(), any(), any()))
+        return summaryFor(CLIENT_ACCOUNT_ID);
+    }
+
+    private ContractSummary summaryFor(Long viewerAccountId) {
+        given(contractRepository.findByParty(any(), any(), any(), any(), any()))
                 .willReturn(page(List.of(contract)));
 
-        return service.findMine(CLIENT_ACCOUNT_ID, null, null, PageRequest.of(0, 10))
+        return service.findMine(viewerAccountId, null, null, null, PageRequest.of(0, 10))
                 .getContent().get(0);
     }
 
@@ -132,36 +145,70 @@ class ContractSummaryMappingTest {
     }
 
     @Test
-    @DisplayName("착수금 조회는 계약 수와 무관하게 페이지당 한 번만 부른다")
-    void asksSettlementOncePerPage() {
-        // 계약마다 물으면 페이지 크기만큼 쿼리가 늘어난다. 배지 하나 때문에 그럴 이유가 없다.
-        given(contractRepository.findByParty(any(), any(), any(), any()))
-                .willReturn(page(List.of(contract, contract, contract)));
+    @DisplayName("업종은 프리랜서가 볼 때만 채운다 — 클라이언트 화면의 상대는 프리랜서다")
+    void fillsBusinessFieldForFreelancerViewerOnly() {
+        // 프리랜서 카드가 "주식회사 페어링 · IT/컨텐츠/AI" 로 찍는다.
+        ContractSummary freelancerView = summaryFor(FREELANCER_ACCOUNT_ID);
+        assertThat(freelancerView.counterpartName()).isEqualTo("주식회사 페어링");
+        assertThat(freelancerView.clientBusinessField()).isEqualTo(BusinessField.IT_CONTENTS_AI);
 
-        service.findMine(CLIENT_ACCOUNT_ID, null, null, PageRequest.of(0, 10));
-
-        verify(settlementReaderPort, times(1)).findPaidDepositContractIds(any());
+        // 클라이언트가 보면 상대가 프리랜서라 업종을 채울 이유가 없다. 조회도 안 탄다.
+        ContractSummary clientView = summaryFor(CLIENT_ACCOUNT_ID);
+        assertThat(clientView.counterpartName()).isEqualTo("김개발");
+        assertThat(clientView.clientBusinessField()).isNull();
     }
 
     @Test
-    @DisplayName("projectId 는 그대로 리포지토리로 넘어간다")
-    void passesProjectIdThrough() {
-        given(contractRepository.findByParty(any(), any(), any(), any()))
+    @DisplayName("결제할 정산 ID 가 계약별로 매칭된다")
+    void mapsPayableSettlementId() {
+        assertThat(firstSummary().payableSettlementId()).isNull();
+
+        // 정산이 "이 계약은 700번을 내면 된다" 고 답한 경우.
+        given(settlementReaderPort.findPayableSettlementIds(any(), any()))
+                .willAnswer(invocation -> {
+                    Map<Long, Long> result = new HashMap<>();
+                    ((Collection<Long>) invocation.getArgument(1))
+                            .forEach(id -> result.put(id, 700L));
+                    return result;
+                });
+
+        assertThat(firstSummary().payableSettlementId()).isEqualTo(700L);
+    }
+
+    @Test
+    @DisplayName("정산 조회는 계약 수와 무관하게 페이지당 한 번만 부른다")
+    void asksSettlementOncePerPage() {
+        // 계약마다 물으면 페이지 크기만큼 쿼리가 늘어난다. 배지 하나 때문에 그럴 이유가 없다.
+        given(contractRepository.findByParty(any(), any(), any(), any(), any()))
+                .willReturn(page(List.of(contract, contract, contract)));
+
+        service.findMine(CLIENT_ACCOUNT_ID, null, null, null, PageRequest.of(0, 10));
+
+        verify(settlementReaderPort, times(1)).findPaidDepositContractIds(any());
+        verify(settlementReaderPort, times(1)).findPayableSettlementIds(any(), any());
+    }
+
+    @Test
+    @DisplayName("projectId 와 tab 이 그대로 리포지토리로 넘어간다")
+    void passesFiltersThrough() {
+        given(contractRepository.findByParty(any(), any(), any(), any(), any()))
                 .willReturn(page(List.of()));
 
-        service.findMine(CLIENT_ACCOUNT_ID, 77L, null, PageRequest.of(0, 10));
+        service.findMine(CLIENT_ACCOUNT_ID, 77L, null, ContractTab.AWAITING_ME,
+                PageRequest.of(0, 10));
 
-        verify(contractRepository).findByParty(CLIENT_ACCOUNT_ID, 77L, null, PageRequest.of(0, 10));
+        verify(contractRepository).findByParty(CLIENT_ACCOUNT_ID, 77L, null,
+                ContractTab.AWAITING_ME, PageRequest.of(0, 10));
     }
 
     @Test
     @DisplayName("빈 페이지에서도 착수금 조회가 터지지 않는다")
     void handlesEmptyPage() {
-        given(contractRepository.findByParty(any(), any(), any(), any()))
+        given(contractRepository.findByParty(any(), any(), any(), any(), any()))
                 .willReturn(page(List.of()));
 
         Page<ContractSummary> result =
-                service.findMine(CLIENT_ACCOUNT_ID, null, null, PageRequest.of(0, 10));
+                service.findMine(CLIENT_ACCOUNT_ID, null, null, null, PageRequest.of(0, 10));
 
         assertThat(result).isEmpty();
     }

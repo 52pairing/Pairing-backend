@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -58,4 +59,13 @@ public interface SettlementRepository {
      * 한 번에 받는다. 입력에 없던 id 는 결과에도 없고, 빈 입력이면 빈 집합이다.
      */
     Set<Long> findPaidFreelancerDepositContractIds(Collection<Long> contractIds);
+
+    /**
+     * 계약별로 이 사람이 지금 결제할 정산 ID. {@code 계약 ID -> 정산 ID}.
+     *
+     * <p>계약 목록의 결제 버튼이 쓴다. 낼 게 없는 계약은 결과에 없다. 계약마다 되물으면 페이지
+     * 크기만큼 쿼리가 늘어나 한 번에 받는다. 빈 입력이면 빈 맵이다.
+     */
+    Map<Long, Long> findPayableSettlementIdsByContract(Long payerAccountId,
+                                                       Collection<Long> contractIds);
 }

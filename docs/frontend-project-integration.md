@@ -1,6 +1,9 @@
 # 프론트엔드 연동 가이드 — 프로젝트 (클라이언트)
 
 프로젝트 **등록 → 착수금 결제 → 내 프로젝트 목록 → 프로젝트 상세** 까지의 연동 문서입니다.
+**피그마 화면 하나를 붙이는 중이라면 [frontend-screen-api-guide.md](frontend-screen-api-guide.md)
+를 먼저 보세요.** 화면 → API → 필드가 정리돼 있고, 이 문서는 그 안에서 참조하는 심화편입니다.
+
 계정·인증 공통 규약은 [frontend-auth-integration.md](frontend-auth-integration.md) 를,
 그 외 도메인은 [frontend-integration.md](frontend-integration.md) 를 참고하세요.
 
