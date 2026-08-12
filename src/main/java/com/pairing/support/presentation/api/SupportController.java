@@ -113,7 +113,10 @@ public class SupportController {
     // ==========================================
 
     @PostMapping("/inquiries")
-    @Operation(summary = "1:1 문의 등록", description = "챗봇 이용 여부와 무관하게 언제든 접수할 수 있습니다.")
+    @Operation(summary = "1:1 문의 등록",
+            description = "챗봇 이용 여부와 무관하게 언제든 접수할 수 있습니다. "
+                    + "fileIds 는 POST /api/v1/files 로 먼저 업로드해 받은 값이어야 합니다.")
+    @ApiErrorCodeExample(domain = InquiryErrorCode.class, value = {"INVALID_ATTACHMENT"})
     public ResponseEntity<ApiResponse<InquiryResponse>> createInquiry(
             @Valid @RequestBody InquiryCreateRequest request,
             @CurrentAccountId Long accountId
