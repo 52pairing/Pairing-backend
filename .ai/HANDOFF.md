@@ -376,6 +376,9 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 - [ ] **`POST /api/v1/matchings/admin/embeddings/reindex` 1회 실행 (필수)**
       임베딩 텍스트 규칙이 바뀌므로 기존 벡터가 전부 낡는다. 옛 규칙 벡터와 새 규칙 벡터가
       섞이면 비교 자체가 무의미해진다
+- [ ] 재색인 **직후** `REINDEX INDEX idx_freelancer_embedding_cosine;`
+      ivfflat 은 빈 테이블에 만들면 클러스터를 못 잡아서, 데이터가 들어온 뒤 다시 만들어야
+      제대로 동작한다. (추천 본 경로는 이 인덱스를 안 쓰지만 후보 미리보기 엔드포인트가 쓴다)
 - [ ] 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`) 갱신 — API 응답 모양은 안 바뀌지만
       후보 순서 산출 방식이 달라진 것을 공유
 
@@ -427,7 +430,7 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 | E2 | 3번 | 정책 P03 문구 수정 — 3번이 해주기로 함 | 확인만 |
 | E3 | 3번 | 프리랜서 성공보수 정산 미생성 건 해결됐는지 | 확인만 |
 | E4 | 5번 | `AgreedNegotiationView` javadoc이 월단가를 "총액"이라고 표기 | 미전달 |
-| E5 | 팀 | 배포 DB에 pgvector 확장·임베딩 테이블 확인 | 미전달 |
+| E5 | 팀 | 배포 DB pgvector 확인 | **확장은 있음 확인(2026-08-12). 테이블 생성 SQL만 1회 실행하면 됨** |
 
 **보낼 문장 (그대로 복사해서 쓰면 된다)**
 
@@ -454,16 +457,25 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 > 문구만 고치면 되는 건이지만, 계약 쪽에서 이미 그렇게 쓰고 있진 않은지도 같이 봐주세요.
 > (매칭은 이 값을 가드 예산 판정에 쓸 예정이라 단위를 확인하다 발견했습니다.)
 
-> **E5 → 팀 (인프라 담당)**
-> 배포 DB에 아래 두 개가 있는지 확인 부탁드립니다.
-> ```sql
-> SELECT extname FROM pg_extension WHERE extname = 'vector';
-> SELECT count(*) FROM freelancer_embedding;
-> ```
-> **없으면 배포 환경에서 AI 추천이 첫 쿼리에서 실패합니다.** 임베딩 테이블을 자동으로 만드는
-> 코드가 어디에도 없어서(AI 서버는 `create_all` 미사용, 스프링은 JPA 엔티티 없음) 사람이
-> `Pairing-python/db/init/10-create-ai-schema.sql`을 한 번 실행해야 합니다.
-> 추천을 실제로 성공시켜본 적이 아직 없어서 **지금까지 아무도 몰랐을 수 있습니다.**
+> **E5 → 팀 (인프라 담당) — 2026-08-12 확인 완료**
+> 배포 DB에 **pgvector 확장은 있고**, 임베딩 테이블만 SQL로 만들면 된다는 답을 받았다.
+> 남은 액션은 아래 "배포 DB 테이블 생성" 하나뿐이다.
+
+**배포 DB 테이블 생성 (1회, 아직 안 함)**
+
+```bash
+psql -h <배포DB호스트> -U pairing -d pairing -v ON_ERROR_STOP=1 \
+     -f Pairing-python/db/init/10-create-ai-schema.sql
+```
+
+- ⚠️ **재실행하면 실패한다.** `CREATE TABLE`/`CREATE INDEX`는 `IF NOT EXISTS`지만
+  `ALTER TABLE ... ADD CONSTRAINT` 2줄은 아니라서, 두 번째 실행에서 "이미 있다"로 멈춘다.
+  파괴적이진 않고 그냥 에러다. 이미 만들어져 있으면 그 2줄만 빼고 돌리거나 아예 건너뛴다
+- ⚠️ **ivfflat 인덱스는 빈 테이블에 만들면 제대로 동작하지 않는다.** 데이터가 쌓인 뒤
+  `REINDEX INDEX idx_freelancer_embedding_cosine;`을 한 번 해야 한다 → **B5 재색인 직후**에 하면 된다
+- 참고: **B3의 새 추천 쿼리는 이 인덱스를 쓰지 않는다.** 하드필터 통과자 전원에 대해 유사도를
+  계산하는 설계라 `ORDER BY ... LIMIT`이 없어서 순차 스캔이다. 인덱스는 내부용 후보 미리보기
+  엔드포인트(`GET /embeddings/positions/{id}/candidates`)가 쓴다
 
 ## F. 향후 개선 (범위 밖, 기록만)
 
