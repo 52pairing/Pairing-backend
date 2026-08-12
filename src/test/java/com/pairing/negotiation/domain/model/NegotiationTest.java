@@ -76,7 +76,7 @@ class NegotiationTest {
     }
 
     @Test
-    @DisplayName("조건: 거절→REJECTED, 재지시→PENDING+라운드증가, 락→AGREED")
+    @DisplayName("조건: 거절→REJECTED, 재지시→PENDING, 라운드는 대리인이 논의할 때 증가, 락→AGREED")
     void conditionTransitions() {
         NegotiationCondition c = NegotiationCondition.create(ConditionType.PERIOD, "6", "4", 0);
 
@@ -85,8 +85,13 @@ class NegotiationTest {
 
         c.redirect(PartyRole.FREELANCER, "5");
         assertThat(c.getStatus()).isEqualTo(ConditionStatus.PENDING);
-        assertThat(c.getRoundCount()).isEqualTo(1);
         assertThat(c.getFreelancerFloor()).isEqualTo("5");
+        // 재지시는 "다시 붙어 보라"는 지시일 뿐 아직 오간 말이 없다. 여기서 올리면
+        // 재지시 한 번이 두 라운드로 세진다(대리인이 다음 라운드에 또 올리므로).
+        assertThat(c.getRoundCount()).isZero();
+
+        c.countRound();
+        assertThat(c.getRoundCount()).isEqualTo(1);
 
         c.lock("5");
         assertThat(c.isAgreed()).isTrue();

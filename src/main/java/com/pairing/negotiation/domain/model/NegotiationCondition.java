@@ -107,11 +107,26 @@ public class NegotiationCondition {
         this.status = ConditionStatus.REJECTED;
     }
 
-    /** 재지시: 거절 조건의 마지노선을 다시 받아 재협상으로 되돌린다. */
+    /**
+     * 재지시: 거절 조건의 마지노선을 다시 받아 재협상으로 되돌린다.
+     *
+     * <p>여기서 라운드 수를 올리지 않는다. 재지시는 "다시 붙어 보라"는 지시일 뿐 아직 오간 말이
+     * 없고, 실제 논의는 다음 라운드에 대리인이 제안을 내면서 일어난다. 양쪽에서 올리면
+     * 재지시 한 번이 두 라운드로 세진다.
+     */
     public void redirect(PartyRole role, String newFloor) {
         submitFloor(role, newFloor);
-        this.roundCount++;
         this.status = ConditionStatus.PENDING;
+    }
+
+    /**
+     * 이 쟁점이 한 라운드 더 논의됐다.
+     *
+     * <p>협상 전체 라운드({@code Negotiation.totalRound})와 <b>다르다.</b> 먼저 합의된 쟁점은 이후
+     * 라운드에서 빠지므로 쟁점마다 값이 갈린다 — 화면의 "이 조건은 몇 번 오갔나"가 이 값이다.
+     */
+    public void countRound() {
+        this.roundCount++;
     }
 
     public boolean isAgreed() {
