@@ -86,6 +86,39 @@ public class NegotiationMessage {
                 LocalDateTime.now());
     }
 
+    /**
+     * 감사 기록. 해시 체인에는 들어가지만 <b>당사자 협상방에는 보이지 않는다</b>
+     * ({@link #isAudit()} 로 걸러진다).
+     *
+     * <p>타결 시점 최종 조건 스냅샷처럼 <b>기계가 파싱할 증거</b>를 남길 때 쓴다. 사람에게
+     * 보여 줄 내용이면 {@link #system} 을 쓸 것.
+     *
+     * <p><b>왜 별도 messageType 이 아니라 내용 표식인가.</b> RDS 에
+     * {@code message_type CHECK IN ('PROPOSAL','RESPONSE','SYSTEM')} 제약이 걸려 있어서
+     * {@code AUDIT} 같은 값을 넣으면 INSERT 가 거부되고 <b>타결 트랜잭션이 통째로 롤백된다.</b>
+     * 제약을 푸는 마이그레이션은 팀이 함께 쓰는 DB 를 건드리는 일이라 따로 잡아야 한다.
+     * 그때까지는 표식으로 구분하되, <b>판정 로직을 여기 한 곳에 가둔다</b> — 호출부는
+     * {@link #isAudit()} 만 부르므로 나중에 타입으로 바꿔도 호출부는 그대로다.
+     */
+    public static NegotiationMessage audit(Long negotiationId, int roundNo, String body) {
+        return new NegotiationMessage(null, negotiationId, null, roundNo, SenderType.SYSTEM,
+                NegotiationMessageType.SYSTEM, AUDIT_MARKER + body, null, null, null, null, null, null,
+                LocalDateTime.now());
+    }
+
+    /**
+     * 당사자 화면에서 감춰야 하는 감사 기록인가.
+     *
+     * <p>표식은 {@link #audit} 이 붙인다. 사람이 쓴 내용과 겹치지 않도록 유닛 세퍼레이터를 쓰므로
+     * 사용자가 우연히 같은 문자열을 입력할 수 없다.
+     */
+    public boolean isAudit() {
+        return content != null && content.startsWith(AUDIT_MARKER);
+    }
+
+    /** 감사 기록 표식. 화면에 안 나가고 해시에만 포함되므로 눈에 띌 필요가 없다. */
+    private static final String AUDIT_MARKER = String.valueOf((char) 0x1E);
+
     public static NegotiationMessage reconstitute(Long id, Long negotiationId, Long conditionId, int roundNo,
                                                   SenderType senderType, NegotiationMessageType messageType,
                                                   String content, String reason, String proposedValue,

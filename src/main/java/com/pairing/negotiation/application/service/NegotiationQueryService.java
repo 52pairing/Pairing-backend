@@ -58,10 +58,22 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
         return detailView(negotiation, role, title, clientProfileId, chatRoomId);
     }
 
+    /**
+     * 당사자 협상방의 대화 로그.
+     *
+     * <p><b>감사 기록(AUDIT)은 뺀다.</b> 타결 시점 최종 조건 스냅샷 같은 것으로, 기계가 파싱할
+     * 형태(공백 없는 한 줄)라 사람이 읽을 물건이 아니다. 실제로 그게 협상방에 그대로 노출돼
+     * 화면을 옆으로 밀어 가로 스크롤을 만들었다(2026-08-12).
+     *
+     * <p>저장은 그대로 두고 여기서만 거른다 — 해시 체인은 손대지 않으므로 증거 능력에 영향이
+     * 없고, {@link #verifyLog} 와 관리자 화면은 계속 전체 로그를 본다.
+     */
     @Override
     public List<NegotiationMessage> findMessages(Long negotiationId, Long accountId) {
         assertParticipant(negotiationId, accountId);
-        return messageRepository.findByNegotiationId(negotiationId);
+        return messageRepository.findByNegotiationId(negotiationId).stream()
+                .filter(message -> !message.isAudit())
+                .toList();
     }
 
     @Override
