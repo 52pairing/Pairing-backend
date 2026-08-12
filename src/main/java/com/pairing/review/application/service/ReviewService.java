@@ -21,6 +21,9 @@ import com.pairing.review.domain.model.SiteReview;
 import com.pairing.review.domain.repository.ReviewRepository;
 import com.pairing.review.domain.repository.SiteReviewRepository;
 import com.pairing.review.exception.ReviewErrorCode;
+import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
+import com.pairing.settlement.domain.model.SettlementPhase;
+import com.pairing.settlement.domain.model.SettlementStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -51,6 +54,7 @@ public class ReviewService implements ReviewUseCase {
     private final AccountQueryUseCase accountQueryUseCase;
     private final ProjectQueryUseCase projectQueryUseCase;
     private final ContractQueryUseCase contractQueryUseCase;
+    private final SettlementQueryUseCase settlementQueryUseCase;
     private final PlatformTransactionManager transactionManager;
 
     @Override
@@ -68,7 +72,7 @@ public class ReviewService implements ReviewUseCase {
                 command.reviewerAccountId());
 
         // 대금 지급이 끝나야 리뷰가 열린다(P51). 작성 대기 목록에서만 거르면 API 를 직접 부르는 경로가 뚫린다.
-        if (!isSettled(contract.contract())) {
+        if (!isReviewable(contract.contract(), command.reviewerAccountId())) {
             throw new BusinessException(ReviewErrorCode.NOT_REVIEWABLE_YET);
         }
 
@@ -125,7 +129,7 @@ public class ReviewService implements ReviewUseCase {
         // 계약의 COMPLETED 는 검수 완료 시점이라 성공보수 결제 전이어서 여기서는 쓰지 않는다.
         return contractQueryUseCase.findMine(accountId, null, null, PageRequest.of(0, PENDING_LIMIT))
                 .getContent().stream()
-                .filter(summary -> isSettled(summary.contract()))
+                .filter(summary -> isReviewable(summary.contract(), accountId))
                 .filter(summary -> !reviewRepository.existsByContractIdAndReviewerAccountId(
                         summary.contract().getId(), accountId))
                 .map(summary -> new PendingReviewResult(
@@ -137,7 +141,32 @@ public class ReviewService implements ReviewUseCase {
     }
 
     /**
-     * 대금 지급까지 끝난 계약인지. 프로젝트가 CLOSED 면 성공보수 수수료까지 결제된 것이다.
+     * 이 계약에 리뷰를 쓸 수 있는지. 두 조건을 모두 만족해야 한다.
+     *
+     * <ol>
+     *   <li>거래가 끝났다 — 프로젝트가 CLOSED</li>
+     *   <li><b>내 몫의 성공보수를 냈다</b></li>
+     * </ol>
+     *
+     * <p>프로젝트를 CLOSED 로 만드는 것은 클라이언트 성공보수 결제뿐이다(P30). 그래서 1번만 보면
+     * 프리랜서는 자기 성공보수를 내지 않고도 리뷰를 쓸 수 있다. "대금 지급 완료 후 작성"(P51)과
+     * 어긋나므로 납부자 본인 기준으로 한 번 더 확인한다.
+     *
+     * <p>클라이언트에게는 2번이 사실상 항상 참이다. CLOSED 라는 것 자체가 본인이 냈다는 뜻이라
+     * 조건이 겹치지만, 판정 근거를 역할별로 나누면 P30 이 바뀔 때 또 어긋난다.
+     */
+    private boolean isReviewable(Contract contract, Long reviewerAccountId) {
+        return isSettled(contract) && hasPaidOwnSuccessFee(reviewerAccountId, contract.getProjectId());
+    }
+
+    /** 이 프로젝트에서 본인이 납부자인 성공보수 정산이 결제 완료됐는지. */
+    private boolean hasPaidOwnSuccessFee(Long accountId, Long projectId) {
+        return !settlementQueryUseCase.findMine(accountId, projectId, SettlementPhase.SUCCESS_FEE,
+                SettlementStatus.PAID, PageRequest.of(0, 1)).isEmpty();
+    }
+
+    /**
+     * 거래가 끝났는지. 프로젝트가 CLOSED 면 클라이언트 성공보수까지 결제된 것이다.
      *
      * <p>파기·거부된 계약은 제외한다. 끝까지 가지 않은 거래는 평가 대상이 아니다.
      *

@@ -30,6 +30,13 @@
 |---|---|
 | `401 GLOBAL_006` | 로그인 안 됨 / 토큰 만료 → 로그인 화면 |
 | `403 GLOBAL_005` | 역할이 안 맞음 (프리랜서 API를 클라이언트가 호출 등) |
+| `409 GLOBAL_012` | 이미 존재하거나 다른 데이터가 참조 중 |
+| `413 GLOBAL_014` | 요청 크기가 서버 허용치 초과 |
+| `415 GLOBAL_015` | `Content-Type` 이 맞지 않음 |
+| `500 GLOBAL_013` | 서버 데이터 제약 위반 — **서버 문제이니 바로 알려주세요** |
+
+> `4xx` 는 요청을 고치면 풀립니다. **`5xx` 는 프론트가 고칠 수 있는 게 없습니다.**
+> 응답의 `traceId` 를 같이 주시면 서버 로그를 바로 찾을 수 있습니다.
 
 ### 응답 형태
 
@@ -614,7 +621,7 @@ GET    /api/v1/files/{fileId}
 DELETE /api/v1/files/{fileId}
 ```
 
-`file` (파일) + `purpose` (쿼리 파라미터)
+파트 이름은 **`file` 고정**, `purpose` 는 **쿼리 파라미터**입니다. 둘 다 자주 틀립니다.
 
 | purpose | 용도 | 제한 |
 |---|---|---|
@@ -622,6 +629,14 @@ DELETE /api/v1/files/{fileId}
 | `COMPANY_LOGO` | 기업 로고 | 5MB, jpg/jpeg/png |
 | `PORTFOLIO` | 포트폴리오 | 100MB, pdf |
 | `INQUIRY_ATTACHMENT` | 1:1 문의 첨부 | 10MB, pdf/jpg/jpeg/png |
+
+| 응답 | 의미 |
+|---|---|
+| `400 GLOBAL_002` | 파트 이름이 틀렸거나 `purpose` 누락 |
+| `400 GLOBAL_008` | 허용되지 않는 확장자 |
+| `400 FI_003` | 용량 초과 (purpose 별 상한은 위 표) |
+| `415 GLOBAL_015` | `Content-Type` 이 `multipart/form-data` 가 아님 |
+| `500 GLOBAL_007` | 스토리지 업로드 실패 — 서버 문제 |
 
 응답의 `fileId` 를 각 API의 `~FileId` 필드에 넣어 저장합니다.
 **업로드만 하고 저장 API를 안 부르면 파일이 어디에도 연결되지 않습니다.**
