@@ -523,9 +523,41 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 |---|---|---|
 | F1 | 상주근무 시 주소 비교 | 컬럼은 다 있다(`project.work_location`, `resume.zip_code/address`). 시/군/구까지만, **상세주소는 개인정보라 LLM에 금지**, 거리 계산 안 함. Python `PositionRequirement`/`FreelancerProfile`에 필드 추가부터 필요 |
 | F2 | `position_skill`에 요구 숙련도 컬럼 | 있으면 숙련도를 보너스가 아니라 조건으로 쓸 수 있다 (3번 파트) |
-| F3 | 예산 경고 화면 노출 (U4) | 지금은 `guardReason` 기록만. 띄우려면 회차 플래그 + API 필드 + 프론트 작업 |
+| F3 | 예산 경고 화면 노출 (U4) | **2026-08-12 하기로 확정.** 문구까지 정했고 프론트에도 전달됨. 아래 상세 참고 |
 | F4 | LLM 호출 비용 | 포지션당 1회라 포지션 3개면 3회. 원안("프로젝트당 1회")과 다르다 |
 | F5 | 포지션별 우대사항 되살리기 | 기획 결정 사안. 지금은 불필요 |
+
+### F3 상세 — 예산 경고 배너 (2026-08-12 확정, 미구현)
+
+**`lowScoreWarned`와 완전히 같은 패턴이다.** 새로 설계할 게 없고 이미 뚫린 길을 한 번 더 쓴다.
+
+| # | 어디 | 무엇 |
+|---|---|---|
+| 1 | `MatchingRoundJpaEntity` | `budget_warned` 컬럼 (`ddl-auto`가 생성) |
+| 2 | `MatchingRound` | `warnBudget()` — `warnLowScore()` 바로 옆에 같은 모양으로 |
+| 3 | `MatchingRoundCreationService` | `evaluateBudgetCombination`이 사유를 냈으면 `round.warnBudget()` |
+| 4 | `CandidateListResponse` | `budgetWarned` 필드 |
+| 5 | `CandidateResponseAssembler` | 매핑 |
+| 6 | 프론트 | `budgetWarned=true`면 상단 배너 (기존 컴포넌트 재사용) |
+
+백엔드 약 1시간. **확정 문구:**
+
+```text
+추천된 후보들의 희망 단가 합계가 남은 예산을 넘습니다. 협상에서 조정이 필요할 수 있어요.
+```
+
+- **`guardReason`은 화면에 내보내지 않는다.** 상한 계산식이 그대로 노출되면 클라이언트가
+  역산해서 다른 후보의 희망 단가를 추정할 수 있다. 개발자용 로그로만 둔다
+- `lowScoreWarned`와 **동시에 true일 수 있다.** 배너 2개를 어떻게 보여줄지는 프론트가 정한다
+  (프론트 전달 문서에 질문으로 남겼다)
+- ⏳ **착수 시점**: C1·C2를 먼저 돌려 **경고가 실제로 얼마나 자주 뜨는지** 보고 만드는 게 낫다.
+  너무 자주 뜨면 배너가 아니라 **판정식(×1.2)부터** 손봐야 하고, 그러면 문구도 다시 쓴다.
+  아래 쿼리로 빈도를 먼저 본다:
+
+```sql
+SELECT count(*) FILTER (WHERE guard_reason IS NOT NULL) AS 경고, count(*) AS 전체
+FROM matching_candidate WHERE is_exposed = true;
+```
 
 ## 주의 사항 (반복해서 걸린 것)
 
