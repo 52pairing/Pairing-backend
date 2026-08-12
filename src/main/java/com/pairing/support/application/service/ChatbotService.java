@@ -1,5 +1,6 @@
 package com.pairing.support.application.service;
 
+import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.support.application.command.AskChatbotCommand;
 import com.pairing.support.application.port.out.ChatbotAiPort;
@@ -27,6 +28,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ChatbotService implements ChatbotUseCase {
 
+    private final AccountQueryUseCase accountQueryUseCase;
     private final ChatbotSessionRepository sessionRepository;
     private final ChatbotMessageRepository messageRepository;
     private final ChatbotQuotaRepository quotaRepository;
@@ -46,8 +48,12 @@ public class ChatbotService implements ChatbotUseCase {
         // AI 호출이 성공했을 때만 사용량을 반영한다.
         ChatbotQuota persistedQuota = saveQuotaSafely(command.accountId(), quota);
 
+        // 역할에 맞지 않는 화면이면 버튼만 뺀다. 답변은 그대로 나간다.
+        ChatbotIntent intent = ChatbotIntent.from(aiAnswer.intent())
+                .filterFor(accountQueryUseCase.getById(command.accountId()).getRole());
+
         return new ChatbotAnswerResult(session.getId(), saved.getQuestion(), saved.getAnswer(),
-                ChatbotIntent.from(aiAnswer.intent()), persistedQuota.remaining(), saved.getCreatedAt());
+                intent, persistedQuota.remaining(), saved.getCreatedAt());
     }
 
     /**

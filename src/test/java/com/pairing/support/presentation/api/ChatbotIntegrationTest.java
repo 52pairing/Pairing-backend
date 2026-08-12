@@ -234,6 +234,22 @@ class ChatbotIntegrationTest {
     }
 
     @Test
+    @DisplayName("역할에 맞지 않는 화면이면 버튼만 빠진다")
+    void intentNotAllowedForRoleIsDropped() throws Exception {
+        // 프리랜서 계정인데 AI 가 클라이언트 전용 화면을 골랐다. 눌러도 막히는 버튼이라 뺀다.
+        given(chatbotAiPort.ask(anyString()))
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "PROJECT_CREATE"));
+
+        mockMvc.perform(post("/api/v1/support/chatbot/questions")
+                        .cookie(writerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(askBody(null, "프로젝트는 어떻게 등록하나요?"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.answer").value(FAKE_ANSWER))
+                .andExpect(jsonPath("$.data.actions.length()").value(0));
+    }
+
+    @Test
     @DisplayName("지난 대화를 다시 불러오면 버튼 없이 텍스트만 나온다")
     void historyHasNoActions() throws Exception {
         ask(writerAccessToken, null, "착수금 수수료는 언제 결제하나요?");
