@@ -7,7 +7,9 @@ import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
 import com.pairing.global.exception.BusinessException;
+import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
+import com.pairing.negotiation.application.usecase.NegotiationAgentUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.AnswerInput;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.FloorInput;
@@ -15,6 +17,7 @@ import com.pairing.negotiation.domain.service.NegotiationProposalStub;
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
+import com.pairing.negotiation.domain.model.NegotiationAgentState;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.NegotiationMessageType;
@@ -83,6 +86,8 @@ class NegotiationLoopServiceTest {
     @Autowired
     private NegotiationLoopUseCase loopUseCase;
     @Autowired
+    private NegotiationAgentUseCase agentUseCase;
+    @Autowired
     private NegotiationRepository negotiationRepository;
     @Autowired
     private NegotiationMessageRepository messageRepository;
@@ -138,8 +143,8 @@ class NegotiationLoopServiceTest {
     }
 
     /**
-     * 양측 마지노선을 모두 제출한다. 대리인 협상은 <b>두 번째 제출</b>에서 시작되므로,
-     * 라운드 1 이후를 검증하는 테스트는 전부 이걸 거쳐야 한다.
+     * 양측 마지노선을 모두 제출하고 <b>대리인까지 돌린다</b>(= 라운드 1 제안이 있는 상태).
+     * 대리인 협상은 두 번째 제출에서 예약되므로, 라운드 1 이후를 검증하는 테스트는 전부 이걸 거친다.
      */
     private void startBothSides() {
         // 중간값 제안(500만)이 양측 마지노선 안에 들어오도록 잡는다. 밖이면 수락이 NG_011 로 막히므로
@@ -148,6 +153,20 @@ class NegotiationLoopServiceTest {
                 List.of(new FloorInput(ConditionType.AMOUNT, "4800000")));
         loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
                 List.of(new FloorInput(ConditionType.AMOUNT, "5200000")));
+        runAgent(NegotiationEventType.STARTED);
+    }
+
+    /**
+     * 커밋 후 리스너가 할 일을 손으로 돌린다.
+     *
+     * <p>A2A 호출이 비동기라 제안 생성은 {@code NegotiationAgentListener} 가
+     * {@code AFTER_COMMIT} 에서 한다. <b>이 테스트 클래스는 {@code @Transactional} 이라 커밋이
+     * 없고, 따라서 그 리스너가 뜨지 않는다.</b> 그래서 대리인 단계만 직접 부른다 — 검증 대상은
+     * 리스너의 배선이 아니라 그 안에서 벌어지는 협상 로직이다.
+     * (배선 자체는 {@code scheduleAgent} 가 상태를 RUNNING 으로 바꾸는지로 따로 확인한다.)
+     */
+    private void runAgent(NegotiationEventType type) {
+        agentUseCase.runAgent(negotiationId, type);
     }
 
     @Test
@@ -258,6 +277,7 @@ class NegotiationLoopServiceTest {
 
         loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
                 List.of(new AnswerInput(amountConditionId, false, "5,800,000")));
+        runAgent(NegotiationEventType.ANSWERED);
 
         Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
         assertThat(reloaded.getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.PENDING);
@@ -395,6 +415,7 @@ class NegotiationLoopServiceTest {
 
         loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
                 List.of(new AnswerInput(amountConditionId, false, "5800000")));
+        runAgent(NegotiationEventType.ANSWERED);
 
         Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.IN_PROGRESS);
@@ -411,6 +432,7 @@ class NegotiationLoopServiceTest {
         startBothSides();
         loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
                 List.of(new AnswerInput(amountConditionId, false, "5800000")));
+        runAgent(NegotiationEventType.ANSWERED);
 
         var result = com.pairing.negotiation.domain.service.NegotiationLogVerifier.verify(
                 messageRepository.findByNegotiationId(negotiationId));
@@ -427,6 +449,96 @@ class NegotiationLoopServiceTest {
         Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
         assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.FAILED);
         assertThat(reloaded.getEndReason()).isEqualTo("예산이 맞지 않습니다.");
+    }
+
+    // ----- 대리인(A2A) 비동기 실행 -----
+
+    @Test
+    @DisplayName("양측 제출 시점엔 대리인 예약만 된다 — 제안은 아직 없다(요청 스레드가 A2A 를 안 기다린다)")
+    void bothSidesSubmittedOnlySchedulesAgent() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4800000")));
+        loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5200000")));
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getAgentState()).isEqualTo(NegotiationAgentState.RUNNING);
+        assertThat(reloaded.getAgentStartedAt()).isNotNull();
+        // 라운드도 제안도 대리인이 실제로 돈 뒤에 생긴다.
+        assertThat(reloaded.getTotalRound()).isZero();
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .noneMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL);
+    }
+
+    @Test
+    @DisplayName("대리인이 끝나면 IDLE 로 돌아오고 라운드·제안이 생긴다")
+    void agentRunProducesProposalAndReturnsToIdle() {
+        startBothSides();   // 예약 + 대리인 실행까지
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getAgentState()).isEqualTo(NegotiationAgentState.IDLE);
+        assertThat(reloaded.getAgentStartedAt()).isNull();
+        assertThat(reloaded.getTotalRound()).isEqualTo(1);
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .anyMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL);
+    }
+
+    @Test
+    @DisplayName("이미 도는 중이면 대리인을 두 번 돌리지 않는다(제안 중복·A2A 비용 두 배 방지)")
+    void agentDoesNotRunTwiceConcurrently() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4800000")));
+        loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5200000")));   // → RUNNING
+
+        // 첫 실행이 라운드 1 을 만들고 IDLE 로 돌아온다.
+        runAgent(NegotiationEventType.STARTED);
+        // 예약이 이미 정리됐으므로 같은 신호가 또 와도 아무 일도 없어야 한다
+        // (리스너 재전달·사용자 더블클릭에 해당).
+        runAgent(NegotiationEventType.STARTED);
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getTotalRound()).isEqualTo(1);
+        assertThat(messageRepository.findByNegotiationId(negotiationId).stream()
+                .filter(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL)
+                .toList()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("대리인 실패는 FAILED 로 남고 안내 메시지가 붙는다 — 조용히 사라지지 않는다")
+    void agentFailureIsRecorded() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4800000")));
+        loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5200000")));   // → RUNNING
+
+        // 리스너가 runAgent 실패를 잡고 부르는 경로.
+        agentUseCase.markAgentFailed(negotiationId);
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getAgentState()).isEqualTo(NegotiationAgentState.FAILED);
+        // 라운드는 오르지 않았다 — 실패한 호출로 라운드를 태우면 상한이 억울하게 깎인다.
+        assertThat(reloaded.getTotalRound()).isZero();
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .anyMatch(m -> m.getContent().contains("다시 시도해 주세요"));
+    }
+
+    @Test
+    @DisplayName("실패한 뒤에도 다시 예약할 수 있다(재시도 경로)")
+    void failedAgentCanBeRetried() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4800000")));
+        loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5200000")));
+        agentUseCase.markAgentFailed(negotiationId);
+
+        // 재지시(마지노선 조정 후 응답)가 다시 대리인을 예약한다.
+        loopUseCase.updateFloors(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4700000")));
+        Negotiation beforeRetry = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(beforeRetry.getAgentState()).isEqualTo(NegotiationAgentState.FAILED);
+
+        assertThat(beforeRetry.beginAgentRun()).isTrue();   // FAILED → RUNNING 이 막히지 않는다
     }
 
     @Test
