@@ -669,7 +669,24 @@ budgetCap  = 순예산 ÷ 프로젝트 전체 인원 ÷ 개월수   (월단가, 
 > 성공보수의 기준 금액은 원래 **계약 총액**이지만 추천 시점엔 계약이 없어 프로젝트 예산으로 구간을
 > 판정한다. 상한 계산용 추정값이라 이 근사는 허용된다(코드 주석에도 명시).
 
-### 12번 상세 — 로컬에서 AI 매칭이 한 번도 돈 적이 없다
+### 12번 상세 — pgvector가 어디에도 안 깔려 있다
+
+**팀 확정(2026-08-12): 윈도우에 PostgreSQL을 직접 설치하고 pgvector를 소스에서 빌드한다.**
+절차 원본은 `README.md` "2-1) pgvector 설치"에 있다(팀원이 볼 자리라 거기에 뒀다). 요약:
+
+```bat
+:: Build Tools에서 "C++를 사용한 데스크톱 개발" 설치 후,
+:: 관리자 권한 x64 Native Tools Command Prompt 에서
+set "PGROOT=C:\Program Files\PostgreSQL\18"
+git clone https://github.com/pgvector/pgvector.git
+cd pgvector
+nmake /F Makefile.win
+nmake /F Makefile.win install
+```
+
+그다음 `pairing` DB에서 `CREATE EXTENSION vector;` → `Pairing-python/db/init/10-create-ai-schema.sql` 실행.
+
+**왜 이게 필요했나 (2026-08-12 발견)**
 
 임베딩 테이블을 만드는 SQL은 `Pairing-python/db/init/10-create-ai-schema.sql` 하나뿐인데,
 **어느 `docker-compose.yml`에도 마운트돼 있지 않다.** 파이썬은 `create_all`을 안 쓰기로 했으므로
@@ -678,8 +695,9 @@ budgetCap  = 순예산 ÷ 프로젝트 전체 인원 ÷ 개월수   (월단가, 
 
 - 로컬 확인 결과(2026-08-12): `vector` 확장 없음, `freelancer_embedding`/`position_embedding` 없음,
   `freelancer_profile.matching_paused` 없음(스프링이 그 머지 이후 안 뜬 상태 — `ddl-auto: update`라 뜨면 생긴다)
-- 고치는 법: compose 이미지를 `pgvector/pgvector:pg16`으로 교체(같은 PG16이라 기존 볼륨 그대로 붙는다)
-  → 컨테이너 재생성 → 위 SQL 수동 실행
+- 도커를 계속 쓰는 사람은 이미지를 `pgvector/pgvector:pg16`으로 바꾸면 빌드 없이 된다
+  (같은 PG16이라 기존 볼륨 그대로 붙는다). **네이티브 PostgreSQL과는 5432 포트가 충돌하므로
+  둘 중 하나만 쓴다** — 네이티브로 가면 도커는 `docker compose up -d redis`로 Redis만 띄운다
 - ⚠️ **배포 DB도 같은 이유로 누군가 수동으로 넣었어야 한다.** 안 넣었으면 배포 환경에서도 추천이
   첫 쿼리에서 죽는다. C1을 한 번도 안 돌려봐서 **아직 아무도 모르는 상태일 수 있다.**
   확인: `SELECT extname FROM pg_extension WHERE extname='vector';`

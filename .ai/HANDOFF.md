@@ -1,6 +1,38 @@
-# 인수인계 — AI매칭(4번 파트) 3일 스프린트
+# 인수인계 — AI매칭(4번 파트)
 
-최종 갱신: 2026-08-10. 이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다.
+> ## 🔵 지금 상태 (2026-08-12) — 새 세션은 여기부터 읽는다
+>
+> **매칭 파이프라인 재설계를 코드로 옮기는 중이다.** 설계는 전부 확정됐고 남은 건 실행이다.
+>
+> **읽는 순서**
+> 1. 이 박스
+> 2. 아래 **"▶ 다음에 할 일"** 표 — 순서대로 하면 중간에 안 깨진다
+> 3. `.ai/STATE.md`의 **"2026-08-11 갱신 — 매칭 파이프라인 재설계"**(설계) +
+>    **"2026-08-12 확정 — 착수 전 결정 13건"**(왜 그렇게 정했나)
+> 4. 이 문서 맨 아래 **"주의 사항"** — 반복해서 걸린 것들
+>
+> **작업 중인 브랜치 2개** (둘 다 push 완료, PR 아직 안 올림)
+>
+> | 레포 | 브랜치 | 담긴 것 | 남은 것 |
+> |---|---|---|---|
+> | backend | `feature/matching-embedding-text-redesign` | B1 임베딩 텍스트, B2 budgetCap, 수수료율 하드코딩 제거 | **B4 가드 교체** + 7번 자바 수신 |
+> | python | `feature/matching-condition-score` | B2 budget_cap 수신, B3 조건점수 25:75 | **7번 similarity 응답**, 13번 CI pgvector |
+>
+> **핵심 숫자 (자주 헷갈린다)**
+> - 최종 점수 = 유사도 **25** + 조건점수 **75** (조건 배점 합 100을 0~1로 정규화 후 ×75)
+> - 조건 배점: 스킬 30 / 연차 20 / 단가 20 / 근무방식 10 / 근무형태 8 / 시작일 6 / 기간 6
+> - 월단가 환산: **일급 ×20, 시급 ×160, 4주 = 1개월** (협상 도메인과 같은 값이어야 한다)
+> - 후보 풀 = 모집 인원 × 3, 노출 = 모집 인원
+>
+> **막혀 있는 것**
+> - `pgvector` 확장·임베딩 테이블이 **로컬에도 배포 DB에도 없을 수 있다.** 이대로면 C1(통합
+>   테스트)이 첫 쿼리에서 죽는다 → **B6**·**E5** 참고
+>
+> **아직 한 번도 안 해본 것**
+> - **C1 end-to-end 테스트.** 이력서 저장 → 임베딩 → 모집 시작 → 추천 → 요청 → 수락을 실제로
+>   돌려본 적이 없다. **남은 것 중 가장 큰 리스크다.**
+
+이어서 작업할 때는 이 문서 + `.ai/STATE.md`를 먼저 읽는다. 아래는 이력이다.
 
 **2026-08-10 배치.** `feature/freelancer-matching-settings`(freelancer `/me/matching-settings` 실구현 +
 matchingPaused 하드필터 반영, 원래 2번 담당이지만 4번이 직접 진행), `feature/matching-request-auto-expire`
@@ -347,16 +379,28 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 - [ ] 프론트 전달 문서(`AI매칭_API_화면매핑_최신본.md`) 갱신 — API 응답 모양은 안 바뀌지만
       후보 순서 산출 방식이 달라진 것을 공유
 
-### B6. 환경 — 12번 (팀원 답변 대기)
+### B6. 환경 — 12번 pgvector 설치 (**팀 확정: 윈도우 네이티브 PostgreSQL**)
 
-- [ ] `Pairing-backend/docker-compose.yml`의 postgres 이미지를 **`pgvector/pgvector:pg16`** 으로
-      교체(같은 PG16이라 기존 볼륨 그대로 붙는다). **팀원 전원이 컨테이너를 재생성해야 하는 변경**
-- [ ] `Pairing-python/db/init/10-create-ai-schema.sql`을 수동 실행 —
-      `docker exec -i pairing-postgres psql -U pairing -d pairing < ...`
+**팀이 도커가 아니라 윈도우에 PostgreSQL을 직접 설치하는 쪽으로 정했다(2026-08-12).**
+절차는 `README.md` "2-1) pgvector 설치"에 넣어뒀다(팀원이 볼 자리라 거기가 원본).
+
+- [ ] 각자 pgvector 빌드·설치 — Build Tools "C++를 사용한 데스크톱 개발" → 관리자 권한
+      `x64 Native Tools Command Prompt` → `nmake /F Makefile.win install`
+- [ ] `pairing` DB 에 `CREATE EXTENSION vector;`
+- [ ] `Pairing-python/db/init/10-create-ai-schema.sql` 실행 (임베딩 테이블 2개)
 - [ ] 스프링 1회 기동 → `ddl-auto: update`가 `freelancer_profile.matching_paused` 생성
-- [ ] ⚠️ **배포 DB에도 확장·테이블이 있는지 확인** —
+- [ ] ⚠️ **배포 DB에도 확장·테이블이 있는지 확인**(E5) —
       `SELECT extname FROM pg_extension WHERE extname='vector';`
       없으면 배포 환경에서도 추천이 첫 쿼리에서 죽는다
+
+> **도커로 쓰던 `pairing-postgres`(PG16)와 5432 포트가 충돌한다.** 네이티브로 가면 도커 쪽은
+> `docker compose up -d redis`로 Redis만 띄운다. 도커 컨테이너에 있던 데이터는 비어 있었으므로
+> (2026-08-12 확인: `account` 0건) 옮길 것은 없다.
+>
+> 도커를 계속 쓰는 팀원은 이미지를 `pgvector/pgvector:pg16`으로 바꾸면 빌드 없이 된다.
+
+> ⚠️ **임베딩 테이블을 자동 생성하는 코드는 어디에도 없다.** AI 서버는 `create_all`을 안 쓰기로
+> 했고 스프링은 이 테이블을 JPA 엔티티로 갖고 있지 않다. **사람이 SQL을 한 번 돌려야 한다.**
 
 ## C. 검증 — 아직 한 번도 안 한 것
 
@@ -377,13 +421,49 @@ Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3�
 
 ## E. 다른 사람에게 전달만 하면 되는 것
 
-| # | 대상 | 내용 |
-|---|---|---|
-| E1 | 3번 | `ContractDraftListener`에 `@Async`가 없다 — 계약서 생성이 결제 응답을 붙잡는다. 아직 전달 안 함 |
-| E2 | 3번 | 정책 P03 문구(임베딩 시점)를 코드에 맞춰 수정 — **3번이 해주기로 함**, 확인만 |
-| E3 | — | 프리랜서 성공보수 정산 미생성 건 — develop에 `CreateFreelancerSuccessFeeCommand`가 들어왔다(`199a961`). **해결됐는지 확인 필요** |
-| E4 | 5번 | **`AgreedNegotiationView` javadoc 오류 (2026-08-12 발견).** `agreedAmount`를 "총액"이라고 적어놨는데 실제로는 **월단가**다(`Negotiation.agreedAmount` 주석: "합의된 월 단가(원). 계약 총액은 계약 도메인이 개월 수로 곱해 계산한다"). 계약 도메인이 이 문구를 믿고 개월 수를 안 곱하면 **계약 금액이 1/N로 찍힌다** |
-| E5 | 팀 | **배포 DB에 pgvector 확장·임베딩 테이블이 있는지 확인** (12번). 만드는 코드가 어디에도 없어서 누군가 수동으로 넣었어야 한다. 없으면 배포 환경에서도 추천이 안 된다 |
+| # | 대상 | 한 줄 | 상태 |
+|---|---|---|---|
+| E1 | 3번 | `ContractDraftListener`에 `@Async` 누락 | 미전달 |
+| E2 | 3번 | 정책 P03 문구 수정 — 3번이 해주기로 함 | 확인만 |
+| E3 | 3번 | 프리랜서 성공보수 정산 미생성 건 해결됐는지 | 확인만 |
+| E4 | 5번 | `AgreedNegotiationView` javadoc이 월단가를 "총액"이라고 표기 | 미전달 |
+| E5 | 팀 | 배포 DB에 pgvector 확장·임베딩 테이블 확인 | 미전달 |
+
+**보낼 문장 (그대로 복사해서 쓰면 된다)**
+
+> **E1 → 3번**
+> `contract/.../ContractDraftListener`에 `@Async`가 없습니다. 이벤트 리스너가 결제 트랜잭션
+> 스레드에서 그대로 돌아서, LLM으로 계약서 초안을 만드는 동안 **결제 응답이 그만큼 늦어집니다.**
+> 다른 리스너들(매칭 쪽 4개)은 `@Async`가 붙어 있어 이 하나만 동기입니다. 계약 도메인 파일이라
+> 직접 안 건드리고 전달드립니다.
+
+> **E2 → 3번**
+> 정책 P03의 임베딩 시점 문구("등록 시점")를 코드에 맞춰 고쳐주시기로 하셨는데 반영됐는지
+> 확인 부탁드립니다. 실제 구현은 **착수금 결제 완료(모집 시작)** 시점입니다.
+
+> **E3 → 3번**
+> 프리랜서 성공보수 정산이 안 만들어지던 건, develop에 `CreateFreelancerSuccessFeeCommand`가
+> 들어온 걸(`199a961`) 봤습니다. 이걸로 해결된 게 맞는지 확인 부탁드립니다.
+
+> **E4 → 5번** ⚠️ 금액이 틀어질 수 있는 건
+> `negotiation/application/result/AgreedNegotiationView` javadoc에 이렇게 적혀 있습니다:
+> *"총액은 `agreedAmount`(Long)를 쓰면 된다."*
+> 그런데 실제로는 **월단가**입니다 — `Negotiation.agreedAmount` 필드 주석이 *"합의된 월 단가(원).
+> 타결 전 null. 계약 총액은 계약 도메인이 개월 수로 곱해 계산한다"* 입니다.
+> **계약 도메인이 javadoc을 믿고 개월 수를 안 곱하면 계약 금액이 1/개월수로 찍힙니다.**
+> 문구만 고치면 되는 건이지만, 계약 쪽에서 이미 그렇게 쓰고 있진 않은지도 같이 봐주세요.
+> (매칭은 이 값을 가드 예산 판정에 쓸 예정이라 단위를 확인하다 발견했습니다.)
+
+> **E5 → 팀 (인프라 담당)**
+> 배포 DB에 아래 두 개가 있는지 확인 부탁드립니다.
+> ```sql
+> SELECT extname FROM pg_extension WHERE extname = 'vector';
+> SELECT count(*) FROM freelancer_embedding;
+> ```
+> **없으면 배포 환경에서 AI 추천이 첫 쿼리에서 실패합니다.** 임베딩 테이블을 자동으로 만드는
+> 코드가 어디에도 없어서(AI 서버는 `create_all` 미사용, 스프링은 JPA 엔티티 없음) 사람이
+> `Pairing-python/db/init/10-create-ai-schema.sql`을 한 번 실행해야 합니다.
+> 추천을 실제로 성공시켜본 적이 아직 없어서 **지금까지 아무도 몰랐을 수 있습니다.**
 
 ## F. 향후 개선 (범위 밖, 기록만)
 
