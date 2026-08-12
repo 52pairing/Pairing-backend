@@ -1,6 +1,7 @@
 package com.pairing.contract.infrastructure.persistence;
 
 import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.domain.model.SignatureStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -28,10 +29,17 @@ public interface SpringDataContractRepository extends JpaRepository<ContractJpaE
     long countByPositionIdAndStatusIn(Long positionId, List<ContractStatus> statuses);
 
     /**
-     * projectId / status 가 null 이면 그 조건을 건너뛴다.
+     * projectId / status / mySignatureStatus 가 null 이면 그 조건을 건너뛴다.
      *
      * <p>{@code projectId} 는 프로젝트 상세의 계약 탭이 쓴다. 이 파라미터가 없으면 그 화면이
      * 헤더의 "내 계약" 과 같은 목록을 받아 다른 프로젝트 계약까지 섞여 나온다.
+     *
+     * <p>{@code mySignatureStatus} 와 {@code tabStatuses} 는 {@code ContractTab} 이 푼 값이다.
+     * "서명 대기"와 "상대방 서명 대기"는 계약 상태가 둘 다 {@code SIGN_PENDING} 이라
+     * 계약 상태만으로는 못 가른다. <b>내 서명 행</b>의 상태를 EXISTS 안에서 함께 걸어야 갈린다.
+     *
+     * <p>{@code tabStatuses} 는 null 을 받지 않는다. {@code IN ()} 이 되면 DB 가 거부하므로
+     * 조건을 걸지 않는 탭도 전체 상태를 담아 넘긴다.
      *
      * <p>최신순으로 고정한다. 정렬이 없으면 DB 가 임의 순서로 돌려주는데, 페이지를 넘길 때
      * 순서가 달라지면 같은 계약이 두 번 보이거나 빠진다. 방금 타결된 계약이 첫 화면에
@@ -44,13 +52,17 @@ public interface SpringDataContractRepository extends JpaRepository<ContractJpaE
     @Query("""
             SELECT c FROM ContractJpaEntity c
              WHERE EXISTS (SELECT 1 FROM ContractSignatureJpaEntity s
-                            WHERE s.contract = c AND s.accountId = :accountId)
+                            WHERE s.contract = c AND s.accountId = :accountId
+                              AND (:mySignatureStatus IS NULL OR s.status = :mySignatureStatus))
                AND (:projectId IS NULL OR c.projectId = :projectId)
                AND (:status IS NULL OR c.status = :status)
+               AND c.status IN :tabStatuses
              ORDER BY c.id DESC
             """)
     Page<ContractJpaEntity> findByParty(@Param("accountId") Long accountId,
                                         @Param("projectId") Long projectId,
                                         @Param("status") ContractStatus status,
+                                        @Param("mySignatureStatus") SignatureStatus mySignatureStatus,
+                                        @Param("tabStatuses") List<ContractStatus> tabStatuses,
                                         Pageable pageable);
 }

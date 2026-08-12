@@ -6,6 +6,9 @@ import com.pairing.settlement.domain.model.SettlementStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
+import java.util.Map;
+
 public interface SettlementQueryUseCase {
 
     /** 납부자 본인만 열람할 수 있다. 없으면 ST_001, 남의 것이면 ST_002. */
@@ -29,4 +32,16 @@ public interface SettlementQueryUseCase {
      * <p>위약금은 아직 도메인이 없어 보지 않는다. 생기면 여기에 조건을 더한다.
      */
     boolean hasUnpaidSettlement(Long accountId);
+
+    /**
+     * 계약별로 내가 지금 결제할 정산 ID. {@code 계약 ID -> 정산 ID}.
+     *
+     * <p>계약 목록의 결제 버튼이 쓴다. 배지만으로는 어느 정산을 결제할지 알 수 없어 ID 가 필요하다.
+     * 낼 게 없는 계약은 결과에 들어가지 않는다.
+     *
+     * <p>{@code payerAccountId} 로 좁히므로 남의 정산이 나오지 않는다. 계약에 걸린 정산은 전부
+     * 프리랜서 몫이라 클라이언트가 부르면 빈 맵이다.
+     */
+    Map<Long, Long> findPayableSettlementIdsByContract(Long payerAccountId,
+                                                       Collection<Long> contractIds);
 }

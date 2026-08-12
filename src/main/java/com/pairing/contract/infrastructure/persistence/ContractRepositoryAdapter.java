@@ -2,6 +2,7 @@ package com.pairing.contract.infrastructure.persistence;
 
 import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractStatus;
+import com.pairing.contract.domain.model.ContractTab;
 import com.pairing.contract.domain.repository.ContractRepository;
 import com.pairing.contract.exception.ContractErrorCode;
 import com.pairing.contract.infrastructure.mapper.ContractMapper;
@@ -96,8 +97,12 @@ public class ContractRepositoryAdapter implements ContractRepository {
 
     @Override
     public Page<Contract> findByParty(Long accountId, Long projectId, ContractStatus status,
-                                      Pageable pageable) {
-        return springDataRepository.findByParty(accountId, projectId, status, pageable)
+                                      ContractTab tab, Pageable pageable) {
+        // null 은 전체 조회다. ALL 이 전체 상태를 담고 있어 조건이 사실상 걸리지 않는다.
+        ContractTab resolved = tab == null ? ContractTab.ALL : tab;
+
+        return springDataRepository.findByParty(accountId, projectId, status,
+                        resolved.getMySignatureStatus(), resolved.getStatuses(), pageable)
                 .map(contractMapper::toDomain);
     }
 

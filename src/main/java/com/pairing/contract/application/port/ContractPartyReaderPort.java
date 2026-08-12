@@ -1,5 +1,7 @@
 package com.pairing.contract.application.port;
 
+import com.pairing.account.domain.model.BusinessField;
+
 /**
  * 계약 당사자 정보. 계약서 머리말의 갑·을 표시에 쓴다.
  *
@@ -13,6 +15,20 @@ public interface ContractPartyReaderPort {
 
     /** 목록 카드용. 클라이언트는 기업명을 쓴다. 없으면 null. */
     String findClientName(Long clientProfileId);
+
+    /**
+     * 목록 카드용. 기업명과 업종을 함께 준다. 없으면 {@link ClientSummary#EMPTY}.
+     *
+     * <p>프리랜서 화면 카드가 "주식회사 페어링 · IT/컨텐츠/AI" 로 찍는다. 기업명만 필요한 곳은
+     * {@link #findClientName} 을 그대로 쓴다.
+     */
+    ClientSummary findClientSummary(Long clientProfileId);
+
+    /** 목록 카드에 찍는 갑 요약. */
+    record ClientSummary(String companyName, BusinessField businessField) {
+
+        public static final ClientSummary EMPTY = new ClientSummary(null, null);
+    }
 
     /** 목록 카드용. 프리랜서는 계정 이름을 쓴다. 없으면 null. */
     String findFreelancerName(Long freelancerProfileId);
