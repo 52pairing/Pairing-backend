@@ -40,6 +40,13 @@
 |---|---|
 | `401 GLOBAL_006` | 로그인 안 됨 / 만료 → 로그인 화면 |
 | `403 GLOBAL_005` | 관리자 API를 일반 회원이 호출 |
+| `409 GLOBAL_012` | 이미 존재하거나 다른 데이터가 참조 중 |
+| `413 GLOBAL_014` | 요청 크기가 서버 허용치 초과 |
+| `415 GLOBAL_015` | `Content-Type` 이 맞지 않음 |
+| `500 GLOBAL_013` | 서버 데이터 제약 위반 — **서버 문제이니 바로 알려주세요** |
+
+> `4xx` 는 요청을 고치면 풀립니다. **`5xx` 는 프론트가 고칠 수 있는 게 없으니
+> 재시도 안내만 띄우고 저에게 알려주세요.** `traceId` 를 같이 주시면 로그를 바로 찾습니다.
 
 ---
 
@@ -257,9 +264,30 @@ POST /api/v1/support/inquiries    성공 시 201
 
 ```
 POST /api/v1/files?purpose=INQUIRY_ATTACHMENT
-     multipart, 10MB, pdf/jpg/jpeg/png
-→ { "fileId": 42, ... }
+Content-Type: multipart/form-data
+
+  file = (바이너리)          ← 파트 이름은 반드시 "file"
+
+→ 201 { "fileId": 42, "originalName": "...", "url": "https://..." }
 ```
+
+| 제한 | 값 |
+|---|---|
+| 최대 용량 | **10MB** |
+| 허용 확장자 | pdf, jpg, jpeg, png |
+
+**두 가지를 자주 틀립니다.**
+
+- `purpose` 는 **쿼리 파라미터**입니다. body 에 넣으면 안 됩니다
+- 파트 이름은 **`file`** 고정입니다. `attachment` 같은 이름으로 보내면 실패합니다
+
+| 응답 | 의미 |
+|---|---|
+| `400 GLOBAL_002` | 파트 이름이 틀렸거나 `purpose` 누락 |
+| `400 GLOBAL_008` | 허용되지 않는 확장자 |
+| `400 FI_003` | 10MB 초과 |
+| `415 GLOBAL_015` | `Content-Type` 이 `multipart/form-data` 가 아님 |
+| `500 GLOBAL_007` | 스토리지 업로드 실패 — **서버 문제입니다. 재시도해도 안 되면 알려주세요** |
 
 **챗봇을 쓰지 않아도 언제든 접수할 수 있습니다.** 챗봇 → 문의로 이어지는 흐름을
 강제하지 않습니다.

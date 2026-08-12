@@ -4,22 +4,27 @@ import com.pairing.global.common.api.response.ErrorResponse;
 import com.pairing.global.filter.TraceIdFilter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import jakarta.validation.ConstraintViolationException;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.util.stream.Collectors;
 
@@ -169,6 +174,82 @@ public interface CommonExceptionAdvice {
         recordApiError("not_found");
 
         return toResponse(errorCode, errorCode.getMessage(), traceId);
+    }
+
+    // 5-1. 멀티파트 요청이 규격에 안 맞는 경우
+    //
+    //      셋 다 아래 Exception 핸들러로 떨어져 500 GLOBAL_001 로 나가던 것들이다.
+    //      파일 업로드는 프론트가 part 이름·Content-Type 을 틀리기 쉬운데, 500 이 오면
+    //      서버 장애로 읽혀 원인을 엉뚱한 데서 찾게 된다.
+    @ExceptionHandler({
+            MissingServletRequestPartException.class,
+            MaxUploadSizeExceededException.class,
+            HttpMediaTypeNotSupportedException.class
+    })
+    default ResponseEntity<ErrorResponse> handleMultipartExceptions(Exception e) {
+        String traceId = getOrCreateTraceId();
+        GlobalErrorCode errorCode;
+        String errorMessage;
+
+        if (e instanceof MissingServletRequestPartException missingPart) {
+            errorCode = GlobalErrorCode.INVALID_REQUEST;
+            errorMessage = String.format("필수 파일 파트 '%s'가 누락되었습니다.", missingPart.getRequestPartName());
+        } else if (e instanceof MaxUploadSizeExceededException) {
+            errorCode = GlobalErrorCode.PAYLOAD_TOO_LARGE;
+            errorMessage = errorCode.getMessage();
+        } else {
+            errorCode = GlobalErrorCode.UNSUPPORTED_MEDIA_TYPE;
+            errorMessage = "파일 업로드는 multipart/form-data 로 보내야 합니다.";
+        }
+
+        getLogger().warn("[MultipartException] traceId: {}, code: {}, message: {}",
+                traceId, errorCode.getCode(), errorMessage);
+        recordApiError("bad_request");
+
+        return toResponse(errorCode, errorMessage, traceId);
+    }
+
+    // 5-2. DB 제약 위반
+    //
+    //      이걸 안 잡으면 UNIQUE 중복부터 스키마가 코드와 어긋난 CHECK 위반까지 전부
+    //      GLOBAL_001 로 뭉개져, 응답만 보고는 사용자 잘못인지 서버 잘못인지 구분할 수 없다.
+    //      SQLState 로 갈라 원인을 구분하고, 어느 제약이 터졌는지 로그에 남긴다.
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    default ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(DataIntegrityViolationException e) {
+        String traceId = getOrCreateTraceId();
+        String sqlState = findSqlState(e);
+
+        // 23505 중복 / 23503 참조 무결성 -> 요청을 바꾸면 풀리므로 409.
+        // 23514 CHECK / 23502 NOT NULL -> 사용자가 손댈 수 없는 서버·스키마 문제라 500.
+        boolean conflict = "23505".equals(sqlState) || "23503".equals(sqlState);
+        GlobalErrorCode errorCode = conflict
+                ? GlobalErrorCode.DATA_CONFLICT
+                : GlobalErrorCode.DATA_INTEGRITY_ERROR;
+
+        if (conflict) {
+            getLogger().warn("[DataIntegrityViolation] traceId: {}, sqlState: {}, message: {}",
+                    traceId, sqlState, e.getMostSpecificCause().getMessage());
+        } else {
+            // 스키마 불일치는 배포로만 고칠 수 있다. 원인 메시지(제약 이름 포함)를 통째로 남긴다.
+            getLogger().error("[DataIntegrityViolation] traceId: {}, sqlState: {} - 스키마 제약 위반",
+                    traceId, sqlState, e);
+        }
+        recordApiError(conflict ? "data_conflict" : "data_integrity");
+
+        return toResponse(errorCode, errorCode.getMessage(), traceId);
+    }
+
+    /** 원인 사슬을 따라 내려가 JDBC 표준 SQLState 를 찾는다. 없으면 null. */
+    private static String findSqlState(Throwable e) {
+        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException) {
+                return sqlException.getSQLState();
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return null;
     }
 
     // 6. 그 외 예상치 못한 서버 에러 최후의 보루
