@@ -53,6 +53,77 @@ docker compose up -d
 > 역할·데이터베이스가 아직 없다면 [db/init/01-create-pairing-account.sql](db/init/01-create-pairing-account.sql)을 실행합니다.
 > `psql -U postgres -f db/init/01-create-pairing-account.sql`
 
+### 2-1) pgvector 설치 — **AI 매칭을 돌리려면 필수**
+
+AI 매칭은 프리랜서·포지션 임베딩을 `pgvector` 확장으로 저장합니다. **확장이 없으면 추천이 첫
+쿼리에서 실패합니다.** `postgres` 공식 이미지에도, 윈도우 설치본에도 기본 포함돼 있지 않습니다.
+
+**윈도우에 PostgreSQL을 직접 설치한 경우 (팀 표준, 2026-08-12)**
+
+1. Visual Studio Build Tools에서 **"C++를 사용한 데스크톱 개발"** 체크해서 설치
+2. **관리자 권한**으로 `x64 Native Tools Command Prompt` 실행
+3. 아래를 그대로 실행 (`PGROOT`는 설치한 PostgreSQL 경로에 맞출 것)
+
+```bat
+set "PGROOT=C:\Program Files\PostgreSQL\18"
+git clone https://github.com/pgvector/pgvector.git
+cd pgvector
+nmake /F Makefile.win
+nmake /F Makefile.win install
+```
+
+> `nmake`는 PowerShell에는 없습니다. **반드시 `vcvars64.bat`을 `call` 한 cmd** 또는
+> `x64 Native Tools Command Prompt`에서 실행하세요. `set "PGROOT=..."` 도 cmd 문법입니다.
+> pgvector는 레포 밖(`C:\` 등)에 클론하세요 — 레포 안에 받으면 `git status`에 잡힙니다.
+
+빌드가 끝나면 아래 두 파일이 생깁니다. **생겼으면 성공입니다.**
+
+```
+C:\Program Files\PostgreSQL\18\lib\vector.dll
+C:\Program Files\PostgreSQL\18\share\extension\vector.control
+```
+
+4. `pairing` 데이터베이스에 접속해 확장을 켜고(pgAdmin에서 해도 됩니다), AI 서버 테이블을 만듭니다.
+
+```sql
+CREATE EXTENSION vector;
+```
+
+```bat
+"C:\Program Files\PostgreSQL\18\bin\psql.exe" -U pairing -d pairing ^
+  -f C:\52_Pairing\Pairing-python\db\init\10-create-ai-schema.sql
+```
+
+> `psql`도 PATH에 없어서 전체 경로로 부릅니다. pgAdmin의 Query Tool에서 파일을 열어 실행해도 됩니다.
+>
+> 실행 중 `ivfflat index created with little data` 경고는 정상입니다 — 빈 테이블이라 그렇습니다.
+> 임베딩이 쌓인 뒤 `REINDEX INDEX idx_freelancer_embedding_cosine;` 을 한 번 해주면 됩니다.
+>
+> 이 SQL은 `ALTER TABLE ... ADD CONSTRAINT` 때문에 **두 번 실행하면 실패합니다**(파괴적이진 않습니다).
+
+**확인** — 아래가 다 나오면 준비 끝입니다.
+
+```sql
+SELECT extversion FROM pg_extension WHERE extname = 'vector';   -- 0.8.6 등
+SELECT count(*) FROM freelancer_embedding;                       -- 0 (에러만 안 나면 됨)
+SELECT count(*) FROM position_embedding;                         -- 0
+```
+
+**도커로 PostgreSQL을 쓰는 경우**
+
+빌드가 필요 없습니다. `docker-compose.yml`의 이미지를 `pgvector/pgvector:pg16`으로 바꾸고
+(같은 PG16이라 기존 볼륨이 그대로 붙습니다) 컨테이너를 다시 만든 뒤, 위 `10-create-ai-schema.sql`만
+실행하면 됩니다.
+
+> ⚠️ **두 방식을 동시에 켜지 마세요.** 도커와 네이티브가 둘 다 5432를 잡으면 앱이 어느 쪽에
+> 붙는지 알 수 없습니다(실제로 겪었습니다 — pgAdmin에서 고친 게 앱에 반영 안 되는 식으로 나타납니다).
+> 네이티브를 쓰면 `docker compose stop postgres` 후 Redis만 띄우세요: `docker compose up -d redis`
+
+> ⚠️ **임베딩 테이블(`freelancer_embedding`/`position_embedding`)을 자동으로 만드는 코드는
+> 어디에도 없습니다.** AI 서버는 `create_all`을 쓰지 않기로 했고(Pairing-python README), 스프링은
+> 이 테이블을 JPA 엔티티로 갖고 있지 않습니다. **위 SQL을 사람이 한 번 실행해야 합니다 —
+> 배포 DB도 마찬가지입니다.**
+
 프로파일 없이 실행하면 필수 환경변수 두 개가 반드시 필요합니다. 없으면 **기동 단계에서 무엇을 넣어야 하는지 안내와 함께 실패**합니다.
 
 ```bash

@@ -3,6 +3,8 @@ package com.pairing.home.presentation.api;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.contract.application.result.ContractDetail;
 import com.pairing.contract.application.usecase.ContractQueryUseCase;
+import com.pairing.global.config.SettlementResultStub;
+import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import com.pairing.global.config.ContractDetailStub;
 import com.pairing.account.domain.model.AccountStatus;
 import com.pairing.account.domain.model.Role;
@@ -36,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -105,6 +108,10 @@ class HomeIntegrationTest {
     // 리뷰를 만들려면 계약이 있어야 한다. 계약 생성 플로우까지 태우지 않고 조회만 대신한다.
     @MockitoBean
     private ContractQueryUseCase contractQueryUseCase;
+
+    // 리뷰 작성 조건 중 '본인 성공보수 납부' 확인용. 정산 도메인을 세우지 않고 결과만 대신한다.
+    @MockitoBean
+    private SettlementQueryUseCase settlementQueryUseCase;
 
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
@@ -279,6 +286,9 @@ class HomeIntegrationTest {
         ContractDetail contractDetail = ContractDetailStub.of(contractId, projectId, "페어링 웹 리뉴얼",
                 revieweeAccountId, "주식회사 페어링", null, "이프리");
         given(contractQueryUseCase.getDetail(eq(contractId), any())).willReturn(contractDetail);
+        // 리뷰 작성은 본인 성공보수 납부까지 본다. 홈 노출 검증이 목적이라 "냈다"로 고정한다.
+        given(settlementQueryUseCase.findMine(any(), any(), any(), any(), any()))
+                .willReturn(new PageImpl<>(List.of(SettlementResultStub.paidSuccessFee())));
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("contractId", contractId);

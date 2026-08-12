@@ -28,6 +28,10 @@ import com.pairing.auth.application.port.SessionRegistryPort;
 import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
+import com.pairing.global.config.SettlementResultStub;
+import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
+import com.pairing.settlement.domain.model.SettlementPhase;
+import com.pairing.settlement.domain.model.SettlementStatus;
 import com.pairing.review.infrastructure.persistence.SpringDataReviewRepository;
 import com.pairing.review.infrastructure.persistence.SpringDataSiteReviewRepository;
 import com.pairing.terms.domain.model.TermsCode;
@@ -117,6 +121,10 @@ class ReviewIntegrationTest {
     @MockitoBean
     private ContractQueryUseCase contractQueryUseCase;
 
+    // 성공보수 납부 여부. 정산 도메인을 통째로 세우지 않고 결과만 대신한다.
+    @MockitoBean
+    private SettlementQueryUseCase settlementQueryUseCase;
+
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
     @MockitoBean
@@ -182,6 +190,17 @@ class ReviewIntegrationTest {
         given(contractQueryUseCase.getDetail(eq(CONTRACT_ID), any())).willReturn(contractDetail);
         // 스텁하지 않으면 mock 이 null 을 돌려줘 작성 대기 조회가 NPE 로 죽는다.
         given(contractQueryUseCase.findMine(any(), any(), any(), any())).willReturn(Page.empty());
+
+        // 리뷰는 본인 성공보수 납부까지 확인한다. 기본값은 "냈다"로 두고, 안 낸 상황만 개별 테스트에서 뒤집는다.
+        givenSuccessFeePaid(true);
+    }
+
+    /** 본인 성공보수 결제 여부 스텁. 결제했으면 결과가 1건, 아니면 0건이다. */
+    private void givenSuccessFeePaid(boolean paid) {
+        given(settlementQueryUseCase.findMine(any(), any(), eq(SettlementPhase.SUCCESS_FEE),
+                eq(SettlementStatus.PAID), any()))
+                .willReturn(paid ? new PageImpl<>(List.of(SettlementResultStub.paidSuccessFee()))
+                        : Page.empty());
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {
@@ -368,6 +387,26 @@ class ReviewIntegrationTest {
                         .content(objectMapper.writeValueAsString(reviewCreateBody())))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("RV_004"));
+    }
+
+    @Test
+    @DisplayName("프로젝트가 CLOSED 여도 본인 성공보수를 안 냈으면 리뷰를 못 쓴다")
+    void reviewBlockedWhenOwnSuccessFeeUnpaid() throws Exception {
+        // 프로젝트 CLOSED 는 클라이언트가 성공보수를 냈다는 뜻일 뿐이다(P30).
+        // 프리랜서 본인이 안 냈으면 "대금 지급 완료 후 작성"(P51)을 만족하지 않는다.
+        givenSuccessFeePaid(false);
+
+        mockMvc.perform(post("/api/v1/reviews")
+                        .cookie(freelancerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.errorCode").value("RV_004"));
+
+        // 작성 대기 목록에서도 빠져야 한다. 목록에만 안 보이고 API 는 뚫리면 의미가 없다.
+        mockMvc.perform(get("/api/v1/reviews/pending").cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
     }
 
     @Test

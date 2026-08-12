@@ -1,19 +1,21 @@
 package com.pairing.matching.application.service;
 
 import com.pairing.freelancer.domain.model.FreelancerGrade;
-import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
 import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
 import com.pairing.matching.application.port.out.MatchingPort;
+import com.pairing.matching.application.port.out.NegotiationPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.matching.application.result.RankedFreelancer;
 import com.pairing.matching.domain.model.MatchingCandidate;
+import com.pairing.matching.domain.model.MatchingRequest;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingStatus;
 import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
+import com.pairing.matching.domain.repository.MatchingRequestRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
-import com.pairing.meta.domain.model.SkillCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -29,16 +32,18 @@ import java.util.stream.Collectors;
  *
  * <p>재추천(2일차)과 최초 추천(결제 완료 트리거, 3일차 예정) 둘 다 이 서비스를 공유한다.
  *
- * <p><b>알아둘 단순화(2026-08-07)</b>: similarity는 {@code MatchingPort.recommend()}가
- * Pairing-python 내부에서 Stage C~E를 한 번에 처리해 최종 순위만 돌려주므로, Spring이 별도로 받는
- * 유사도 값이 없다. 0.0을 임시로 채운다(참고용 필드라 랭킹/응답에는 안 쓰인다).
+ * <p><b>Stage F 가드 — G3·G4만 (2026-08-12 재설계)</b>
+ * <ul>
+ *   <li><b>G4</b>({@link LlmResponseGuard}) — LLM 응답 이상(중복 ID / 인원 초과 / 근거 누락).
+ *       <b>실제로 후보를 거르는 곳은 여기뿐이다.</b></li>
+ *   <li><b>G3</b>({@code evaluateBudgetCombination}) — 예산 조합. <b>탈락시키지 않고 사유만
+ *       기록한다.</b></li>
+ * </ul>
  *
- * <p><b>Stage F 가드(2026-08-09 구현)</b>: R02.3 요구사항 그대로 직무·스킬만 재검증한다("가드 AI로
- * 마지막 검증 (직무, 스킬 검증)"). 예산은 가드 대상이 아니다 — budgetCap은 협상 단계
- * ({@code NegotiationConditionCalculator})에서 이미 별도로 재검증되고, 요구사항에 "예산 조합"을
- * 가드에 넣으라는 근거가 없어서(이전에 STATE.md에 적혀있던 문구는 우리 자체 추정이었음, Stage B
- * 조건필터 폐기와 같은 사유) 넣지 않는다. 가드에 떨어진 후보는 노출되지 않고 다음 순위 후보가
- * 노출 인원 자리를 채운다.
+ * <p><b>직무·스킬 재검증은 뺐다.</b> 하드필터를 통과한 사람만 LLM에 가고 LLM은 그 풀 안에서만
+ * 고르므로, 가드에 도착한 후보는 이미 직무·스킬을 통과한 사람이다. 같은 걸 또 봐도 아무도 안 걸린다.
+ * (명세 R02.3이 "가드 AI로 마지막 검증(직무, 스킬 검증)"이라 글자상 어긋나는데, 설명은 "직무·스킬은
+ * 1차 필터에서 보장하고 가드는 예산 조합과 LLM 응답 이상을 막는다"로 한다 — `.ai/STATE.md` 참고.)
  *
  * <p>이전에 노출됐던 프리랜서(R02 예외조건 5, 프로젝트 전체 기준) 제외는 Pairing-python이 벡터 검색
  * 전에 미리 걸러준다(2026-08-09) — 여기서는 그 목록을 조회해서 넘기기만 한다.
@@ -47,15 +52,34 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 class MatchingRoundCreationService {
 
-    private static final int POOL_MULTIPLIER = 3;
+    static final int POOL_MULTIPLIER = 3;
     private static final double LOW_SCORE_THRESHOLD = 50.0;
+
+    /**
+     * G3 예산 조합의 허용 오차 20%(= x1.2). 개인 상한이 아니라 <b>조합 총액</b>에 정의된 값이다
+     * (설계 메모 §3 "조합 총액 ≤ 순예산 x 1.2"). 정수 연산으로 두는 건 원 단위 금액에 double을
+     * 쓰면 큰 금액에서 오차가 눈에 보이기 때문이다.
+     */
+    private static final long BUDGET_TOLERANCE_NUMERATOR = 12;
+    private static final long BUDGET_TOLERANCE_DENOMINATOR = 10;
+
+    /**
+     * 협상이 타결돼 <b>합의 금액이 존재하는</b> 상태들. 이 상태에서만 타결가를 조회한다 —
+     * 그 전에 부르면 협상 도메인이 NOT_AGREED 예외를 던진다.
+     */
+    private static final Set<MatchingStatus> AGREED_STATUSES = Set.of(
+            MatchingStatus.CONTRACT_PENDING, MatchingStatus.CONTRACTED, MatchingStatus.IN_PROGRESS,
+            MatchingStatus.COMPLETION_PENDING, MatchingStatus.CLOSED);
 
     private final MatchingPort matchingPort;
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingCandidateRepository matchingCandidateRepository;
+    private final MatchingRequestRepository matchingRequestRepository;
     private final ProjectDirectoryPort projectDirectoryPort;
     private final FreelancerDirectoryPort freelancerDirectoryPort;
+    private final NegotiationPort negotiationPort;
     private final ClientGradeResolver clientGradeResolver;
+    private final BudgetCapCalculator budgetCapCalculator;
 
     /** 회차 생성 + 후보 채우기를 한 번에. 이미 비동기 문맥에서 도는 최초 추천(모집 시작)이 쓴다. */
     MatchingRound createRound(Long projectId, Long positionId, RecommendationType roundType, int recruitCount,
@@ -91,21 +115,33 @@ class MatchingRoundCreationService {
         Long positionId = round.getPositionId();
         int recruitCount = round.getExposeCount();
 
+        // 포지션 조회가 추천 호출보다 앞이어야 한다 — budgetCap을 같이 넘겨야 해서다.
+        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
+        long budgetCap = budgetCapCalculator.calculate(projectId, position.budgetAmount(),
+                position.totalHeadcount(), position.periodValue(), position.periodUnit());
+
         List<Long> excludedFreelancerIds = matchingCandidateRepository.findFreelancerIdsByProjectId(projectId);
         MatchingRecommendation recommendation =
-                matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER, excludedFreelancerIds);
+                matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER, excludedFreelancerIds, budgetCap);
 
         if (recommendation.candidates().isEmpty()) {
             round.exhaust();
             return matchingRoundRepository.save(round);
         }
 
-        List<RankedFreelancer> ranked = breakScoreTiesByGrade(recommendation.candidates());
+        // G4: LLM 응답 이상을 먼저 걸러낸다. 순위 계산·저장 전에 해야 중복 ID가 등급 조회에서
+        // 예외를 내거나(Collectors.toMap 키 충돌) 그대로 저장되는 일이 없다.
+        List<RankedFreelancer> sane = LlmResponseGuard.sanitize(recommendation.candidates(), recruitCount);
+        if (sane.isEmpty()) {
+            round.exhaust();
+            return matchingRoundRepository.save(round);
+        }
 
-        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
+        List<RankedFreelancer> ranked = breakScoreTiesByGrade(sane);
+
         double gradeWeightPercent = clientGradeResolver.resolveMatchingWeightPercent(projectId);
         boolean lowScoreWarned =
-                persistCandidates(round, positionId, recruitCount, ranked, gradeWeightPercent, position);
+                persistCandidates(round, positionId, recruitCount, ranked, gradeWeightPercent, position, budgetCap);
 
         if (lowScoreWarned) {
             round.warnLowScore();
@@ -132,60 +168,115 @@ class MatchingRoundCreationService {
         return candidates.stream().sorted(byScoreThenGrade).toList();
     }
 
+    /**
+     * 후보를 저장하고 노출을 확정한다.
+     *
+     * <p><b>노출을 먼저 정하고 그다음에 G3를 판정한다(2026-08-12 재설계).</b> G3는 "노출 후보 전원의
+     * 합계"를 보는 포지션 단위 검증이라 후보를 한 명씩 보면서는 판정할 수 없다. 옛 구조(가드를 먼저
+     * 보고 통과한 사람만 노출)와 순서가 반대다.
+     */
     private boolean persistCandidates(MatchingRound round, Long positionId, int exposeCount,
                                       List<RankedFreelancer> ranked, double gradeWeightPercent,
-                                      ProjectPositionSummary position) {
+                                      ProjectPositionSummary position, long budgetCap) {
         List<MatchingCandidate> candidates = new ArrayList<>();
+        List<Long> exposedFreelancerIds = new ArrayList<>();
         boolean lowScoreWarned = false;
         int exposedCount = 0;
+
         for (RankedFreelancer item : ranked) {
             MatchingCandidate candidate = MatchingCandidate.createFromEmbedding(round.getId(), positionId,
-                    item.freelancerId(), 0.0);
+                    item.freelancerId(), item.similarity());
             candidate.applyLlmResult(item.score(), item.reason());
             candidate.applyGradeWeight(gradeWeightPercent);
 
-            GuardVerdict guard = evaluateGuard(item.freelancerId(), position);
-            candidate.applyGuard(guard.passed(), guard.reason());
-
-            if (guard.passed()) {
-                if (exposedCount < exposeCount) {
-                    candidate.expose(++exposedCount);
-                } else if (candidate.isBelowQualityThreshold(LOW_SCORE_THRESHOLD)) {
-                    lowScoreWarned = true;
-                }
+            if (exposedCount < exposeCount) {
+                candidate.expose(++exposedCount);
+                exposedFreelancerIds.add(item.freelancerId());
+            } else if (candidate.isBelowQualityThreshold(LOW_SCORE_THRESHOLD)) {
+                lowScoreWarned = true;
             }
             candidates.add(candidate);
         }
+
+        // G3: 노출이 확정된 뒤에야 조합 합계를 낼 수 있다. 탈락시키지 않고 사유만 남긴다.
+        String budgetWarning = evaluateBudgetCombination(positionId, position, budgetCap, exposedFreelancerIds);
+        for (MatchingCandidate candidate : candidates) {
+            candidate.applyGuard(true, candidate.isExposed() ? budgetWarning : null);
+        }
+
         matchingCandidateRepository.saveAll(candidates);
         return lowScoreWarned;
     }
 
-    /** Stage F 가드: 직무·스킬만 재검증한다(R02.3). 가드에 떨어져도 후보 기록은 남기고 노출만 안 한다. */
-    private GuardVerdict evaluateGuard(Long freelancerId, ProjectPositionSummary position) {
-        FreelancerConditionResponse condition = freelancerDirectoryPort.findCondition(freelancerId);
-
-        if (condition.jobRole() != position.jobRole()) {
-            return GuardVerdict.failed("직무 불일치: " + condition.jobRole());
+    /**
+     * 가드 G3 — 예산 조합. 노출 후보 전원의 월단가 합계가 남은 예산 안에 드는지 본다.
+     *
+     * <pre>
+     * 이 포지션 몫 월예산 = budgetCap x 모집 인원
+     * 이미 쓴 것          = Σ(자리를 차지 중인 사람의 월단가)   ← 타결가 우선, 없으면 희망 단가
+     * 남은 1인 상한       = (몫 - 이미 쓴 것) ÷ 남은 자리
+     * 판정                = Σ(노출 후보 월단가) ≤ 남은 1인 상한 x 노출 인원 x 1.2
+     * </pre>
+     *
+     * <p><b>탈락시키지 않는다.</b> 여기서 배제하면 Stage B 폐기 사유(단가로 거르면 사전검수가 안내한
+     * 후보 수와 어긋난다)가 그대로 되살아난다. 개인이 상한 안인지는 조건점수 단가 20점이 이미 본다.
+     *
+     * <p><b>개인별로 재지 않는 이유</b>: 순예산 2,700만에 시니어 1,100 + 주니어 800 + 800 = 2,700이면
+     * 딱 맞는데, 개인 상한 900만으로 재면 시니어가 걸린다. 정책도 "인원별 균등 분배 아님"이다.
+     *
+     * <p><b>이미 자리를 차지한 인원의 단가를 세는 이유</b>: 안 세면 자리가 찰수록 "항상 여유 있음"으로
+     * 나와 경고가 무의미해진다. 3명 중 1명이 1,500만에 계약됐는데 남은 2자리를 900만 기준으로 재는
+     * 식이 된다. 최초 추천에서는 차지한 사람이 없어 {@code 남은 1인 상한 == budgetCap}이다.
+     *
+     * @return 초과했을 때의 사유 문구. 예산 안이면 {@code null}
+     */
+    private String evaluateBudgetCombination(Long positionId, ProjectPositionSummary position,
+                                             long budgetCap, List<Long> exposedFreelancerIds) {
+        if (exposedFreelancerIds.isEmpty()) {
+            return null;
         }
 
-        Set<SkillCode> heldSkills = condition.skills().stream()
-                .map(FreelancerConditionResponse.Skill::skillCode)
-                .collect(Collectors.toSet());
-        List<SkillCode> missingSkills = position.requiredSkills().stream()
-                .filter(required -> !heldSkills.contains(required))
-                .toList();
-        if (!missingSkills.isEmpty()) {
-            return GuardVerdict.failed("요구 스킬 미달: " + missingSkills);
+        List<MatchingRequest> occupied = matchingRequestRepository
+                .findByPositionIdAndStatusNotIn(positionId, MatchingStatus.SLOT_RELEASED);
+        long spent = occupied.stream().mapToLong(this::resolveMonthlyPay).sum();
+
+        int vacancy = position.headcount() - occupied.size();
+        if (vacancy <= 0) {
+            // 자리가 없으면 재추천 자체가 MT_018로 막히므로 정상 흐름에선 오지 않는다.
+            return "예산 판정 불가: 남은 자리 없음";
         }
 
-        return GuardVerdict.PASSED;
+        long capPerHead = (budgetCap * position.headcount() - spent) / vacancy;
+        long limit = Math.max(0L, capPerHead * exposedFreelancerIds.size()
+                * BUDGET_TOLERANCE_NUMERATOR / BUDGET_TOLERANCE_DENOMINATOR);
+        long exposedSum = exposedFreelancerIds.stream()
+                .mapToLong(id -> MonthlyPayConverter.toMonthlyPay(freelancerDirectoryPort.findCondition(id)))
+                .sum();
+
+        if (exposedSum <= limit) {
+            return null;
+        }
+        return ("예산 조합 초과: 합계 %d원 > 상한 %d원 "
+                + "(남은 1인 %d원 x 노출 %d명 x 1.2, 확정 %d명 %d원 반영, 희망 단가 기준)")
+                .formatted(exposedSum, limit, capPerHead, exposedFreelancerIds.size(), occupied.size(), spent);
     }
 
-    private record GuardVerdict(boolean passed, String reason) {
-        private static final GuardVerdict PASSED = new GuardVerdict(true, null);
-
-        private static GuardVerdict failed(String reason) {
-            return new GuardVerdict(false, reason);
+    /**
+     * 자리를 차지 중인 요청 1건이 실제로 쓰는 월단가.
+     *
+     * <p>타결 이후면 <b>협상 타결가</b>를 쓴다. 그 전이면 희망 단가인데, 근사가 아니라 정확한 값이다 —
+     * 타결가가 아직 존재하지 않거나(협상 전), 애초에 예산 안에 들어와 협상할 금액 자체가 없었던
+     * 경우다(협상은 {@code monthlyPay > budgetCap}일 때만 AMOUNT 조건을 만든다).
+     *
+     * <p>타결 전에 타결가를 조회하면 예외가 나므로 상태로 먼저 거른다.
+     */
+    private long resolveMonthlyPay(MatchingRequest request) {
+        if (AGREED_STATUSES.contains(request.getStatus())) {
+            Optional<Long> agreed = negotiationPort.findAgreedMonthlyPay(request.getId());
+            if (agreed.isPresent()) {
+                return agreed.get();
+            }
         }
+        return MonthlyPayConverter.toMonthlyPay(freelancerDirectoryPort.findCondition(request.getFreelancerId()));
     }
 }

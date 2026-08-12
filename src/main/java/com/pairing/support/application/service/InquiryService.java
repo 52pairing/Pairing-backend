@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Objects;
 
 @Service
@@ -44,6 +45,7 @@ public class InquiryService implements InquiryUseCase, InquiryAdminUseCase {
     @Transactional
     public InquiryResult create(CreateInquiryCommand command) {
         Account writer = accountQueryUseCase.getById(command.writerAccountId());
+        requireOwnedFiles(command.fileIds(), command.writerAccountId());
         Inquiry inquiry = Inquiry.create(command.writerAccountId(), writer.getName(), writer.getRole(),
                 writer.getEmail(), command.title(), command.content(), command.fileIds());
         Inquiry saved = inquiryRepository.save(inquiry);
@@ -117,6 +119,25 @@ public class InquiryService implements InquiryUseCase, InquiryAdminUseCase {
                 inquiry.getFileIds().stream().map(this::resolveFile).filter(Objects::nonNull).toList(),
                 inquiry.getCreatedAt()
         );
+    }
+
+    /**
+     * 첨부로 넘어온 fileId 가 본인이 올린 파일인지 확인한다.
+     *
+     * <p>확인하지 않고 저장하면 {@code inquiry_file} 의 FK 에서 걸려 500 이 난다. 잘못 보낸 요청이므로
+     * 400 으로 끊는 게 맞고, 남의 파일을 자기 문의에 붙여 objectKey 를 들여다보는 것도 여기서 막힌다.
+     *
+     * <p>업로드는 됐는데 문의 등록 전에 파일을 지운 경우도 여기로 걸린다. 다시 올려야 한다.
+     */
+    private void requireOwnedFiles(List<Long> fileIds, Long writerAccountId) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            return;
+        }
+        boolean allOwned = fileIds.stream()
+                .allMatch(fileId -> fileQueryUseCase.isOwnedBy(fileId, writerAccountId));
+        if (!allOwned) {
+            throw new BusinessException(InquiryErrorCode.INVALID_ATTACHMENT);
+        }
     }
 
     private InquiryFileResult resolveFile(Long fileId) {

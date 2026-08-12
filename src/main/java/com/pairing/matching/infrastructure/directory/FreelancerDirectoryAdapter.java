@@ -7,6 +7,8 @@ import com.pairing.freelancer.application.result.ResumeResult;
 import com.pairing.freelancer.application.usecase.FreelancerCandidateSummaryUseCase;
 import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.freelancer.application.usecase.ResumeUseCase;
+import com.pairing.freelancer.domain.model.Career;
+import com.pairing.freelancer.domain.model.Education;
 import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
@@ -67,11 +69,15 @@ public class FreelancerDirectoryAdapter implements FreelancerDirectoryPort {
         ResumeResult resume = resumeUseCase.findMyResume(accountId)
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.FREELANCER_NOT_FOUND));
 
-        List<FreelancerResumeSummary.CareerEntry> careers = resume.careers().stream()
-                .map(career -> new FreelancerResumeSummary.CareerEntry(career.getCompanyName(),
-                        career.getDepartmentRank(), career.getJobDescription()))
+        // 학과·담당업무만 뽑는다. 학교명·회사명·부서/직급은 임베딩 대상이 아니다
+        // (`.ai/STATE.md` "[2][3] 임베딩 30 + 조건점수 70" 표).
+        List<String> majors = resume.educations().stream()
+                .map(Education::getMajor)
                 .toList();
-        return new FreelancerResumeSummary(resume.selfIntroduction(), careers);
+        List<String> careerDescriptions = resume.careers().stream()
+                .map(Career::getJobDescription)
+                .toList();
+        return new FreelancerResumeSummary(resume.selfIntroduction(), majors, careerDescriptions);
     }
 
     @Override
