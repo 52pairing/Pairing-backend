@@ -18,12 +18,18 @@ import java.util.Optional;
 public class MatchingRequestRepositoryAdapter implements MatchingRequestRepository {
 
     /**
-     * "더 이상 진행 중이 아닌" 상태. {@code MatchingRequest.isTerminal()}과 같은 목록이어야 한다 —
-     * 한쪽만 늘어나면 종결된 요청이 무료 재추천을 계속 막는다(P41은 전원 거절·만료됐을 때 허용).
+     * 무료 재추천 판정(P41)에서 "무료 재추천을 열어줘도 되는" 상태. {@code REJECTED} 하나뿐이다.
+     *
+     * <p><b>{@code MatchingRequest.isTerminal()}과 일부러 다르다.</b> 도메인의 isTerminal은
+     * NEGOTIATION_FAILED/TERMINATED/CLOSED도 종결로 보지만, 무료 재추천 판정에는 넣으면 안 된다 —
+     * P41이 "모든 프리랜서가 <b>전부 거절했거나 응답 기한 초과로 자동 만료된 경우에만</b>"으로
+     * 한정하고, 이어서 "<b>협상 결렬, 계약 전 파기, 계약 후 중도 종료는 무료 재추천 조건에
+     * 포함하지 않는다</b>"고 못 박고 있어서다. 무료 재추천은 "요청한 사람이 전원 거절해 아무도 못
+     * 구한" 경우의 보상이지, 협상까지 갔다가 틀어진 경우는 유료로 다시 찾아야 한다.
+     *
+     * <p>만료도 {@code REJECTED}로 저장되므로(P45) 이 하나로 두 경우가 다 커버된다.
      */
-    private static final List<MatchingStatus> NON_ACTIVE_STATUSES =
-            List.of(MatchingStatus.REJECTED, MatchingStatus.NEGOTIATION_FAILED,
-                    MatchingStatus.TERMINATED, MatchingStatus.CLOSED);
+    private static final List<MatchingStatus> NON_ACTIVE_STATUSES = List.of(MatchingStatus.REJECTED);
 
     private final SpringDataMatchingRequestRepository springDataRepository;
     private final MatchingRequestMapper matchingRequestMapper;

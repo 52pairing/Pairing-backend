@@ -31,6 +31,7 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
     private final ProjectDirectoryPort projectDirectoryPort;
     private final MatchingPort matchingPort;
     private final MatchingSnapshotRepository matchingSnapshotRepository;
+    private final FreelancerEmbeddingRefresher freelancerEmbeddingRefresher;
 
     /**
      * 컨트롤러가 부르는 진입점. 프록시를 거쳐야 {@code @Async}가 실제로 적용되므로 자기 자신을
@@ -60,8 +61,9 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
         int fail = 0;
         for (Long freelancerId : freelancerIds) {
             try {
-                var summary = freelancerDirectoryPort.findResumeSummary(freelancerId);
-                matchingPort.upsertFreelancerEmbedding(freelancerId, FreelancerEmbeddingTextBuilder.buildText(summary));
+                // 이력서·조건 저장 경로와 같은 조립을 써야 한다. 여기서만 따로 만들면 재색인 전후로
+                // 같은 사람의 벡터가 달라진다.
+                freelancerEmbeddingRefresher.refreshByFreelancerId(freelancerId);
                 success++;
             } catch (Exception e) {
                 fail++;

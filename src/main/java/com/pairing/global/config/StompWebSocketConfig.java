@@ -1,10 +1,13 @@
 package com.pairing.global.config;
 
 import com.pairing.global.websocket.JwtHandshakeInterceptor;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
@@ -79,9 +82,55 @@ public class StompWebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
+    /**
+     * 하트비트 주기(ms). {서버가 보내는 주기, 서버가 기대하는 수신 주기}.
+     *
+     * <p>ALB 대상 그룹의 idle timeout(60초)보다 충분히 짧아야 한다. 협상은 A2A 왕복이
+     * 조건마다 15초 안팎이라 <b>사람도 대리인도 아무것도 보내지 않는 구간이 1분을 쉽게 넘긴다.</b>
+     * 그 사이 연결이 끊기면 클라이언트는 끊긴 줄 모른 채 타결 이벤트를 놓친다.
+     */
+    private static final long[] HEARTBEAT = {10_000L, 10_000L};
+
+    /**
+     * 하트비트 전용 스케줄러. <b>일부러 빈으로 등록하지 않는다.</b>
+     *
+     * <p>스프링이 이미 {@code messageBrokerTaskScheduler} 를 등록해 두는데, 그게 이 컨텍스트의
+     * 유일한 {@link TaskScheduler} 라서 {@code @Scheduled}(매칭 만료 배치 등)도 그걸 쓰고 있다.
+     * 여기서 스케줄러를 {@code @Bean} 으로 하나 더 올리면 타입이 둘이 되어 {@code @Scheduled}
+     * 의 스케줄러 해석이 모호해지고, 배치가 조용히 다른 스레드 풀로 옮겨간다. 하트비트 하나
+     * 켜자고 건드릴 범위가 아니다.
+     *
+     * <p>기존 {@code messageBrokerTaskScheduler} 를 주입받는 방법도 있지만, 그 빈은 이 클래스를
+     * 설정자로 수집하는 구성 클래스가 만든다 — 생성자 주입하면 순환이 된다.
+     */
+    private final ThreadPoolTaskScheduler heartbeatScheduler = createHeartbeatScheduler();
+
+    private static ThreadPoolTaskScheduler createHeartbeatScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("ws-heartbeat-");
+        scheduler.initialize();
+        return scheduler;
+    }
+
+    @PreDestroy
+    void shutdownHeartbeatScheduler() {
+        heartbeatScheduler.shutdown();
+    }
+
+    /**
+     * 브로커 설정.
+     *
+     * <p>{@link #HEARTBEAT} 를 켜지 않으면 서버가 {@code CONNECTED} 에 {@code heart-beat:0,0}
+     * 을 실어 보낸다. STOMP 규약상 <b>한쪽이 0이면 양방향 모두 비활성</b>이라, 프론트가
+     * {@code 10000,10000} 을 요청해도 결과적으로 아무 프레임도 흐르지 않는다.
+     * 실제로 그 상태에서 타결 이벤트가 상대 창에 도달하지 않는 것을 확인했다(2026-08-11).
+     */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/topic", "/queue");
+        registry.enableSimpleBroker("/topic", "/queue")
+                .setHeartbeatValue(HEARTBEAT)
+                .setTaskScheduler(heartbeatScheduler);
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
     }

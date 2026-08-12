@@ -3,6 +3,8 @@ package com.pairing.matching.domain.model;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+import java.util.List;
+
 /**
  * 인원별(매칭 요청 1건) 상태. (요구사항 R19)
  *
@@ -24,6 +26,15 @@ public enum MatchingStatus {
     COMPLETION_PENDING("완료 대기"),
     CLOSED("종료"),
     TERMINATED("중도 종료");
+
+    /**
+     * 포지션 자리를 다시 비워주는 종결 상태. 인원 계산에서 빼야 그 자리를 다시 채울 수 있다
+     * (명세의 "2/3명 진행 중 · 1명 계약 종료" 화면이 이 경우다).
+     *
+     * <p>정상 완료(CLOSED)는 자리를 비우지 않는다 — 그 인원은 이미 뽑아서 일까지 끝낸 것이라
+     * 다시 뽑을 대상이 아니다.
+     */
+    public static final List<MatchingStatus> SLOT_RELEASED = List.of(REJECTED, NEGOTIATION_FAILED, TERMINATED);
 
     private final String label;
 }

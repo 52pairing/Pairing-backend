@@ -66,6 +66,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -434,6 +435,62 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.candidates[0].rejected").value(true));
     }
 
+    /** 화면에 안 나오는 후보(가드 탈락 또는 대기 순번). 클라이언트는 이 candidateId를 알 수 없어야 정상이다. */
+    private MatchingCandidate seedHiddenCandidate(Long roundId, boolean guardPassed) {
+        MatchingCandidate candidate = MatchingCandidate.createFromEmbedding(roundId, POSITION_ID,
+                freelancerAccountId, 0.8);
+        candidate.applyLlmResult(88.0, "요구 스킬 3개 중 3개 일치|경력 조건 충족");
+        candidate.applyGradeWeight(0.0);
+        candidate.applyGuard(guardPassed, guardPassed ? null : "직무 불일치: FRONTEND");
+        return matchingCandidateRepository.save(candidate);
+    }
+
+    private ResultActions sendRequest(Long candidateId) throws Exception {
+        Map<String, Object> body = Map.of("positionId", POSITION_ID, "candidateIds", List.of(candidateId));
+        return mockMvc.perform(post("/api/v1/matchings/requests")
+                .cookie(clientAccessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)));
+    }
+
+    @Test
+    @DisplayName("가드에 떨어진 후보에게는 candidateId를 직접 넣어도 요청이 나가지 않는다")
+    void sendRequestRejectsGuardFailedCandidate() throws Exception {
+        MatchingRound round = seedRound(2);
+        // 이 검증이 없으면 Stage F 가드(직무·스킬 재검증)가 API 한 번으로 통째로 무력화된다.
+        MatchingCandidate candidate = seedHiddenCandidate(round.getId(), false);
+
+        sendRequest(candidate.getId())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_017"));
+    }
+
+    @Test
+    @DisplayName("노출 인원 밖(대기 순번) 후보에게는 요청이 나가지 않는다")
+    void sendRequestRejectsNotExposedCandidate() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedHiddenCandidate(round.getId(), true);
+
+        sendRequest(candidate.getId())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_017"));
+    }
+
+    @Test
+    @DisplayName("클라이언트가 이미 내린 후보에게는 요청이 나가지 않는다")
+    void sendRequestRejectsAlreadyRejectedCandidate() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+
+        mockMvc.perform(post("/api/v1/matchings/candidates/" + candidate.getId() + "/rejection")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk());
+
+        sendRequest(candidate.getId())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_017"));
+    }
+
     @Test
     @DisplayName("매칭 요청을 보내면 실제 프로젝트/회사 정보로 카드가 채워지고 양쪽 목록에 나타난다")
     void sendRequestPopulatesRealProjectAndShowsInBothLists() throws Exception {
@@ -528,6 +585,31 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("조건이 전부 맞으면 즉시 타결되고, 수락 응답도 계약 대기로 나간다")
+    void acceptWithNoMismatchReturnsContractPending() throws Exception {
+        // 프로젝트 조건을 프리랜서 조건(REMOTE/FULL_TIME/6개월/월 650만)에 맞춰 불일치를 0개로 만든다.
+        // 예산은 budgetCap(순예산 ÷ 인원 ÷ 개월)이 희망 단가를 넘도록 올린다.
+        jdbcTemplate.update("UPDATE project SET work_style = 'REMOTE', budget_amount = ?, "
+                        + "start_desired_date = ? WHERE id = ?",
+                200_000_000L, LocalDate.now().plusDays(14), PROJECT_ID);
+
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 협상 라운드를 돌지 않고 바로 타결되므로 CONTRACT_PENDING 이 나가야 한다.
+        // 응답을 저장 전 객체로 만들면 DB(CONTRACT_PENDING)와 다른 NEGOTIATING 이 나간다.
+        mockMvc.perform(post("/api/v1/matchings/requests/" + requestId + "/acceptance")
+                        .cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CONTRACT_PENDING"));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM matching_request WHERE id = ?", String.class, requestId))
+                .isEqualTo("CONTRACT_PENDING");
+    }
+
+    @Test
     @DisplayName("매칭 요청을 보내면 받은 프리랜서에게 알림이 간다")
     void sendingRequestNotifiesFreelancer() throws Exception {
         MatchingRound round = seedRound(2);
@@ -559,16 +641,91 @@ class MatchingIntegrationTest {
     }
 
     @Test
-    @DisplayName("계약 후 중도 종료(TERMINATED)된 요청은 무료 재추천을 막지 않는다")
-    void terminatedRequestDoesNotBlockFreeRerecommend() throws Exception {
+    @DisplayName("모집 인원이 다 찬 포지션은 진행중이어도 재추천을 막는다")
+    void rerecommendBlockedWhenPositionAlreadyFilled() throws Exception {
         MatchingRound round = seedRound(2);
         MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
         Long requestId = sendRequestAndGetId(candidate.getId());
 
-        // 종결 상태(TERMINATED/CLOSED)는 "아직 진행 중"이 아니므로 무료 재추천을 막으면 안 된다.
-        // NON_ACTIVE_STATUSES에 빠져 있으면 여기서 MT_008로 거부된다.
-        jdbcTemplate.update("UPDATE matching_request SET status = 'TERMINATED' WHERE id = ?", requestId);
+        // 계약까지 가서 자리를 차지한 상태. headcount를 1로 줄여 "자리가 다 찬 포지션"을 만든다.
+        jdbcTemplate.update("UPDATE matching_request SET status = 'IN_PROGRESS' WHERE id = ?", requestId);
+        jdbcTemplate.update("UPDATE project_position SET headcount = 1 WHERE id = ?", POSITION_ID);
 
+        // 막지 않으면 유료 재추천이 결제되고, 정작 그 결과로 요청을 보낼 때 인원 초과(MT_005)로 막힌다.
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":1}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_018"));
+    }
+
+    @Test
+    @DisplayName("남은 자리보다 많은 인원으로 유료 재추천하면 결제 전에 막는다")
+    void paidRerecommendBlockedWhenQuantityExceedsVacancy() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // headcount 2 중 1자리를 이미 쓰고 있으므로 남은 자리는 1이다.
+        jdbcTemplate.update("UPDATE matching_request SET status = 'IN_PROGRESS' WHERE id = ?", requestId);
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_005"));
+    }
+
+    @Test
+    @DisplayName("중도 종료로 자리가 다시 비면 진행중인 프로젝트에서도 재추천할 수 있다")
+    void rerecommendAllowedWhenTerminationReopensSlot() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // "2/3명 진행 중 · 1명 계약 종료" 화면. 상태(진행중)로 막았다면 여기서 다시 못 뽑는다.
+        jdbcTemplate.update("UPDATE matching_request SET status = 'TERMINATED' WHERE id = ?", requestId);
+        jdbcTemplate.update("UPDATE project_position SET headcount = 1 WHERE id = ?", POSITION_ID);
+        jdbcTemplate.update("UPDATE project SET status = 'IN_PROGRESS' WHERE id = ?", PROJECT_ID);
+
+        given(matchingPort.recommend(eq(POSITION_ID), eq(1), eq(3), eq(List.of(freelancerAccountId))))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":1}"""))
+                .andExpect(status().isAccepted());
+    }
+
+    @Test
+    @DisplayName("계약 후 중도 종료·협상 결렬은 무료 재추천 조건에 포함되지 않는다(P41)")
+    void terminatedOrNegotiationFailedDoesNotUnlockFreeRerecommend() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // P41: "협상 결렬, 계약 전 파기, 계약 후 중도 종료는 무료 재추천 조건에 포함하지 않는다."
+        // 전원 거절·만료된 경우에만 열어줘야 하므로, 아래 두 상태에서는 계속 막혀야 한다.
+        for (String status : List.of("TERMINATED", "NEGOTIATION_FAILED")) {
+            jdbcTemplate.update("UPDATE matching_request SET status = ? WHERE id = ?", status, requestId);
+
+            mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                            .cookie(clientAccessToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"type":"FREE"}"""))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("MT_008"));
+        }
+
+        // 거절(만료 포함)이면 그때는 열린다.
+        jdbcTemplate.update("UPDATE matching_request SET status = 'REJECTED' WHERE id = ?", requestId);
         given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash", List.of()));
 
@@ -726,6 +883,33 @@ class MatchingIntegrationTest {
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 4_000_000L, 3_500_000L,
                 LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 2,
                 List.of(new UpsertConditionCommand.Skill(SkillCode.PYTHON, SkillLevel.ADVANCED))));
+    }
+
+    @Test
+    @DisplayName("조건에 맞는 후보가 없으면 장애가 아니라 후보 소진으로 닫고 그렇게 안내한다")
+    void rerecommendEmptyPoolIsExhaustedNotFailed() throws Exception {
+        seedRound(2);
+        // AI 서버가 "조건에 맞는 후보 없음"으로 답한 상황(어댑터가 빈 결과로 바꿔서 넘긴다).
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash", List.of()));
+
+        mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
+                        .cookie(clientAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"type":"PAID","quantity":2}"""))
+                .andExpect(status().isAccepted());
+
+        // 장애가 아니므로 FAILED 가 아니라 EXHAUSTED 로 닫혀야 한다.
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM matching_round WHERE position_id = ? ORDER BY id DESC LIMIT 1",
+                String.class, POSITION_ID))
+                .isEqualTo("EXHAUSTED");
+
+        // 안내 문구도 "일시적 오류, 다시 시도"가 아니라 "더 없다"여야 한다.
+        // 후보는 다시 시도해도 안 생기므로 재시도를 권하면 사용자가 계속 누르게 된다.
+        assertThat(notificationTitles(clientAccountId, "MATCHING_RECOMMENDED"))
+                .anyMatch(title -> title.contains("더 없습니다"));
     }
 
     @Test

@@ -40,8 +40,9 @@ public class SettlementRepositoryAdapter implements SettlementRepository {
     }
 
     @Override
-    public Optional<Settlement> findByContractId(Long contractId) {
-        return springDataRepository.findByContractId(contractId).map(settlementMapper::toDomain);
+    public Optional<Settlement> findByContractIdAndPhase(Long contractId, SettlementPhase phase) {
+        return springDataRepository.findByContractIdAndPhase(contractId, phase)
+                .map(settlementMapper::toDomain);
     }
 
     @Override

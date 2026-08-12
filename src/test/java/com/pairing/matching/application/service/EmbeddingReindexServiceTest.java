@@ -35,7 +35,8 @@ class EmbeddingReindexServiceTest {
             Mockito.mock(MatchingSnapshotRepository.class);
 
     private final EmbeddingReindexService service = new EmbeddingReindexService(
-            freelancerDirectoryPort, projectDirectoryPort, matchingPort, matchingSnapshotRepository);
+            freelancerDirectoryPort, projectDirectoryPort, matchingPort, matchingSnapshotRepository,
+            new FreelancerEmbeddingRefresher(freelancerDirectoryPort, matchingPort));
 
     @Test
     @DisplayName("이력서 있는 프리랜서 전체 + 모집 시작한 포지션 전체를 다시 임베딩한다")
