@@ -77,6 +77,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -692,7 +693,7 @@ class MatchingIntegrationTest {
         jdbcTemplate.update("UPDATE project_position SET headcount = 1 WHERE id = ?", POSITION_ID);
         jdbcTemplate.update("UPDATE project SET status = 'IN_PROGRESS' WHERE id = ?", PROJECT_ID);
 
-        given(matchingPort.recommend(eq(POSITION_ID), eq(1), eq(3), eq(List.of(freelancerAccountId))))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(1), eq(3), eq(List.of(freelancerAccountId)), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));
 
         mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
@@ -726,7 +727,7 @@ class MatchingIntegrationTest {
 
         // 거절(만료 포함)이면 그때는 열린다.
         jdbcTemplate.update("UPDATE matching_request SET status = 'REJECTED' WHERE id = ?", requestId);
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId)), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash", List.of()));
 
         mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
@@ -765,7 +766,7 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.status").value("REJECTED"))
                 .andExpect(jsonPath("$.data.rejectReason").value("EXPIRED"));
 
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId)), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));
 
         // 만료 처리 후에는 "전원 거절"로 간주돼 무료 재추천을 쓸 수 있다.
@@ -802,7 +803,7 @@ class MatchingIntegrationTest {
     @DisplayName("재추천을 요청하면 AI 서버(Pairing-python) 응답으로 새 회차/후보가 만들어진다")
     void rerecommendCreatesNewRoundFromAiServerResponse() throws Exception {
         seedRound(2);
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
                         List.of(new RankedFreelancer(freelancerAccountId, 91.0,
                                 "요구 스킬 3개 중 3개 일치|경력 조건 충족"))));
@@ -828,7 +829,7 @@ class MatchingIntegrationTest {
         MatchingRound firstRound = seedRound(2);
         seedExposedCandidate(firstRound.getId(), 1);
 
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId))))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId)), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));
 
         mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
@@ -838,7 +839,8 @@ class MatchingIntegrationTest {
                                 {"type":"PAID","quantity":2}"""))
                 .andExpect(status().isAccepted());
 
-        verify(matchingPort).recommend(POSITION_ID, 2, 3, List.of(freelancerAccountId));
+        // 마지막 인자는 budgetCap: 총예산 6000만 - 수수료 10% = 5400만 ÷ 총인원 2 ÷ 6개월 = 450만.
+        verify(matchingPort).recommend(POSITION_ID, 2, 3, List.of(freelancerAccountId), 4_500_000L);
     }
 
     @Test
@@ -848,7 +850,7 @@ class MatchingIntegrationTest {
         long guardFailFreelancerId = 7_009_001L;
         seedGuardFailingFreelancer(guardFailFreelancerId);
 
-        given(matchingPort.recommend(eq(POSITION_ID), eq(1), eq(3), eq(List.of()))).willReturn(
+        given(matchingPort.recommend(eq(POSITION_ID), eq(1), eq(3), eq(List.of()), anyLong())).willReturn(
                 new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
                         new RankedFreelancer(guardFailFreelancerId, 95.0, "경력 우수"),
                         new RankedFreelancer(freelancerAccountId, 80.0, "요구 스킬 3개 중 3개 일치"))));
@@ -890,7 +892,7 @@ class MatchingIntegrationTest {
     void rerecommendEmptyPoolIsExhaustedNotFailed() throws Exception {
         seedRound(2);
         // AI 서버가 "조건에 맞는 후보 없음"으로 답한 상황(어댑터가 빈 결과로 바꿔서 넘긴다).
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash", List.of()));
 
         mockMvc.perform(post("/api/v1/matchings/positions/" + POSITION_ID + "/rerecommendations")
@@ -916,7 +918,7 @@ class MatchingIntegrationTest {
     @DisplayName("AI 호출이 실패하면 회차를 FAILED로 닫고, 그 회차는 재추천 한도를 쓴 걸로 치지 않는다")
     void rerecommendMarksRoundFailedAndDoesNotConsumeQuotaWhenAiFails() throws Exception {
         seedRound(2);
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willThrow(new IllegalStateException("AI 서버 응답 없음"));
 
         // 재추천 요청 자체는 접수된다(실패는 비동기 처리 뒤에 알림으로 알려준다).
@@ -934,7 +936,7 @@ class MatchingIntegrationTest {
         assertThat(failedCount).isEqualTo(1);
 
         // 실패한 회차는 한도를 쓴 게 아니므로 유료 재추천을 다시 시도할 수 있어야 한다.
-        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of())))
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-3.5-flash",
                         List.of(new RankedFreelancer(freelancerAccountId, 91.0, "경력 조건 충족"))));
 

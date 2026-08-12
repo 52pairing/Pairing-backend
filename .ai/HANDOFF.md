@@ -247,10 +247,21 @@ budgetCap 버그 수정(2건)과 결제 완료 → 매칭 초기 추천 이벤�
 > `preferred_note`(포지션별 우대사항)는 **쓸 수 없다** — 우대사항이 프로젝트 단위로 통일되며
 > 폐기됐다(3번 확인). `extra_note`만 쓴다.
 
-### B2. 2단계 — budgetCap 전달 (Java → Python)
+### B2. 2단계 — budgetCap 전달 (Java → Python) — **완료 (2026-08-12)**
 
-- [ ] Java: `BudgetCapCalculator` 결과(월단가)를 `/recommendations` 요청에 추가
-- [ ] Python: 요청 스키마에 `budget_cap` 추가
+Java는 B1과 같은 브랜치, Python은 `feature/matching-condition-score`(B3도 여기서 이어간다).
+
+- [x] `MatchingPort.recommend(..., long budgetCap)` 파라미터 추가.
+      `PythonMatchingAdapter`가 `budget_cap`으로 실어 보낸다
+- [x] `MatchingRoundCreationService.fillCandidates`에서 **포지션 조회를 추천 호출보다 앞으로**
+      옮기고 `BudgetCapCalculator`로 계산해 넘긴다
+- [x] `@CircuitBreaker` 폴백(`recommendFallback`) 시그니처도 같이 맞춤 — **어긋나면 컴파일은
+      통과하고 서킷이 열릴 때만 터진다**
+- [x] Python: `MatchingRequest.budget_cap`(선택) → `service.recommend` → `_build_prompt`.
+      값이 있으면 후보 희망급여를 월단가로 환산(시급 ×209h / 일급 ×21d)해 상한과 직접 비교시키고,
+      **없으면 단가 비교를 금지**한다(총예산은 전체 인원×전체 기간이라 1인 월급과 자릿수가 달라,
+      비교시키면 멀쩡한 후보가 전부 예산 초과로 감점된다 — 옛 배포와 섞여 도는 동안 실제로 난다)
+- [x] 테스트: Java 2건(값 관통 + 통합테스트 verify), Python 3건
 
 > 단가는 SQL 혼자 계산 못 한다. 프리랜서는 시급/일급→월단가 환산이, 포지션은 순예산
 > (수수료율에 **클라이언트 등급** 필요 = account 도메인) ÷ 인원 ÷ 개월이 필요하다.

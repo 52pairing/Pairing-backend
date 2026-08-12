@@ -56,6 +56,7 @@ class MatchingRoundCreationService {
     private final ProjectDirectoryPort projectDirectoryPort;
     private final FreelancerDirectoryPort freelancerDirectoryPort;
     private final ClientGradeResolver clientGradeResolver;
+    private final BudgetCapCalculator budgetCapCalculator;
 
     /** 회차 생성 + 후보 채우기를 한 번에. 이미 비동기 문맥에서 도는 최초 추천(모집 시작)이 쓴다. */
     MatchingRound createRound(Long projectId, Long positionId, RecommendationType roundType, int recruitCount,
@@ -91,9 +92,14 @@ class MatchingRoundCreationService {
         Long positionId = round.getPositionId();
         int recruitCount = round.getExposeCount();
 
+        // 포지션 조회가 추천 호출보다 앞이어야 한다 — budgetCap을 같이 넘겨야 해서다.
+        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
+        long budgetCap = budgetCapCalculator.calculate(projectId, position.budgetAmount(),
+                position.totalHeadcount(), position.periodValue(), position.periodUnit());
+
         List<Long> excludedFreelancerIds = matchingCandidateRepository.findFreelancerIdsByProjectId(projectId);
         MatchingRecommendation recommendation =
-                matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER, excludedFreelancerIds);
+                matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER, excludedFreelancerIds, budgetCap);
 
         if (recommendation.candidates().isEmpty()) {
             round.exhaust();
@@ -102,7 +108,6 @@ class MatchingRoundCreationService {
 
         List<RankedFreelancer> ranked = breakScoreTiesByGrade(recommendation.candidates());
 
-        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
         double gradeWeightPercent = clientGradeResolver.resolveMatchingWeightPercent(projectId);
         boolean lowScoreWarned =
                 persistCandidates(round, positionId, recruitCount, ranked, gradeWeightPercent, position);

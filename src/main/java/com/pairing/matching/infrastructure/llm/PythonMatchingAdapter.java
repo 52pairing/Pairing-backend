@@ -74,12 +74,13 @@ public class PythonMatchingAdapter implements MatchingPort {
     @Override
     @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "recommendFallback")
     public MatchingRecommendation recommend(Long positionId, int recruitCount, int poolMultiplier,
-                                            List<Long> excludedFreelancerIds) {
+                                            List<Long> excludedFreelancerIds, long budgetCap) {
         Map<String, Object> requestBody = Map.of(
                 "position_id", positionId,
                 "recruit_count", recruitCount,
                 "pool_multiplier", poolMultiplier,
-                "excluded_freelancer_ids", excludedFreelancerIds
+                "excluded_freelancer_ids", excludedFreelancerIds,
+                "budget_cap", budgetCap
         );
 
         PythonApiResponse<RecommendationData> response;
@@ -168,8 +169,11 @@ public class PythonMatchingAdapter implements MatchingPort {
         return e.getResponseBodyAsString().contains(CANDIDATE_POOL_EMPTY_CODE);
     }
 
+    // 파라미터가 원본 메서드와 정확히 같아야(+ 끝에 Throwable) resilience4j가 폴백으로 인식한다.
+    // 어긋나면 컴파일은 통과하고 서킷이 열릴 때만 터진다.
     private MatchingRecommendation recommendFallback(Long positionId, int recruitCount, int poolMultiplier,
-                                                      List<Long> excludedFreelancerIds, Throwable t) {
+                                                      List<Long> excludedFreelancerIds, long budgetCap,
+                                                      Throwable t) {
         log.error("[Pairing-python] 추천 실패/서킷 오픈 (positionId={}, 원인: {})", positionId, t.getMessage());
         throw new BusinessException(MatchingErrorCode.AI_SERVER_CALL_FAILED);
     }

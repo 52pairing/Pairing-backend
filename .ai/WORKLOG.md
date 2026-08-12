@@ -697,3 +697,28 @@ PR 3개(A1/A2/A3) 전부 머지됨. develop에서 `feature/matching-embedding-te
 **`currentSituation`은 옮기기만 하면 됐다.** project 도메인의 `ProjectPositionSummary`에 이미
 있었고 매칭 쪽 DTO에만 없었다. 요청 카드에는 계속 안 나간다(2026-08-09 3번 확인) — 임베딩
 전용 필드라는 걸 DTO 주석에 적어뒀다.
+
+## 2026-08-12 — B2(2단계) budgetCap 전달
+
+`MatchingPort.recommend`에 `budgetCap`을 붙여 AI 서버로 넘긴다. Java는 B1과 같은 브랜치,
+Python은 `feature/matching-condition-score`(B3를 이어서 할 브랜치).
+
+**포지션 조회를 추천 호출보다 앞으로 옮겼다.** `fillCandidates`는 원래 추천을 부른 뒤에
+`findPositionSummary`를 했는데, budgetCap을 계산하려면 그 값이 먼저 필요하다. 후보 0명이면
+포지션 조회 1회가 헛돌지만, 읽기 한 번이라 순서를 바꾸는 쪽이 낫다.
+
+**`@CircuitBreaker` 폴백 시그니처를 같이 고쳤다.** resilience4j는 폴백 메서드를 이름+시그니처로
+찾는데(원본 파라미터 + 끝에 `Throwable`), 안 맞으면 **컴파일은 통과하고 서킷이 열릴 때만
+터진다.** 파라미터를 추가할 때 제일 놓치기 쉬운 자리라 코드에 주석으로 박아뒀다.
+
+**Python: budget_cap이 없을 때 단가 비교를 금지한다.**
+
+기존 프롬프트엔 "총예산은 전체 인원·전체 기간 합계니 그대로 비교하지 말고 알아서 감안해라"는
+우회 지시가 있었다. budget_cap이 오면 후보 희망급여와 **단위가 같아져서** 바로 비교할 수 있으므로
+그 문단을 실제 상한 비교로 바꿨다(시급 ×209h / 일급 ×21d 환산 기준도 명시).
+
+값이 없을 때는 "비교하지 마라"를 더 세게 박았다 — 프롬프트에 남는 건 총예산뿐인데 1인 월급과
+자릿수가 다르다. 스프링 배포가 아직 옛 버전이고 AI 서버만 먼저 올라간 구간에서 실제로 나올 수
+있는 조합이라, 두 경우 다 테스트로 고정했다.
+
+**검증**: Java `./gradlew clean build` 통과, Python 54건 통과 + ruff 통과.
