@@ -70,8 +70,17 @@ public class NegotiationJpaEntity {
     private LocalDateTime freelancerLastReadAt;
 
     // 애그리거트: 조건은 협상과 생명주기를 함께한다(cascade + orphanRemoval).
+    //
+    // @OrderBy 가 없으면 DB 가 돌려주는 순서를 그대로 쓴다 — 즉 매번 달라질 수 있다.
+    // 그래서 sort_order 컬럼에 1..5 가 멀쩡히 들어 있는데도 아무도 안 보고 있었고,
+    // 실제로 두 군데에서 티가 났다(2026-08-12 실측).
+    //   1) 화면 — 조건 배지 순서가 새로고침할 때마다 바뀐다
+    //   2) AI — A2A 프롬프트의 쟁점 나열 순서가 호출마다 달라진다. LLM 은 앞에 온 항목에
+    //      더 영향을 받으므로, 같은 입력에 결과가 흔들리는 원인이 된다(재현성)
+    // id 를 2차 정렬로 두는 건 sort_order 가 같은 옛 데이터에서도 순서가 고정되게 하려는 것이다.
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @JoinColumn(name = "negotiation_id")
+    @OrderBy("sortOrder ASC, id ASC")
     private List<NegotiationConditionJpaEntity> conditions = new ArrayList<>();
 
     public NegotiationJpaEntity(Long id, Long requestId, Long projectId, Long positionId, Long freelancerId,
