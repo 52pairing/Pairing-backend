@@ -14,11 +14,18 @@ import java.util.List;
  * 사람에게 보여 주는 화면이 아니라 계약서에 박을 확정값만 넘기기 때문.
  *
  * <p>{@code agreedValue} 표기는 {@code NegotiationConditionCalculator} 가 조건을 만들 때 쓰는 것과 같다.
- * AMOUNT={@code "42000000"}, PERIOD={@code "4 MONTH"}, START_DATE={@code "2026-09-01"},
+ * AMOUNT={@code "4200000"}, PERIOD={@code "4 MONTH"}, START_DATE={@code "2026-09-01"},
  * WORK_STYLE/WORK_FORM=enum 이름, SCOPE/OTHER=자유 텍스트.
  * AI 제안값도 {@code NegotiationAgreedValueNormalizer} 가 이 표기로 정규화한 뒤에만 락되므로 그대로 신뢰해도 된다.
  *
- * <p>총액은 {@code agreedAmount}(Long)를 쓰면 된다. AMOUNT 조건의 {@code agreedValue} 와 같은 값이라 파싱이 필요 없다.
+ * <p><b>{@code agreedAmount} 는 월 단가(원)다. 총액이 아니다.</b> AMOUNT 조건의 {@code agreedValue} 와
+ * 같은 값이라 파싱이 필요 없다. <b>총액이 필요하면 받는 쪽에서 개월 수를 곱해야 한다</b> —
+ * 계약 도메인이 {@code Contract.create} 에서 {@code salaryAmount * months} 로 그렇게 하고 있고,
+ * 매칭이 예산 가드에 쓸 때는 {@code budgetCap}(이것도 월 단가 상한)과 같은 단위라 그대로 비교하면 된다.
+ *
+ * <p>협상·화면·계약이 모두 월 단가로 통일돼 있다. 예전엔 한 조건 안에서 클라는 총액, 프리는 월 단가를
+ * 써서 합의된 값이 어느 단위인지 정의되지 않는 문제가 있었고, 그래서 월 단가로 맞췄다
+ * ({@code NegotiationConditionCalculator} 의 AMOUNT 주석 참고).
  */
 public record AgreedNegotiationView(
         Long negotiationId,
