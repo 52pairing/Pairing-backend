@@ -68,6 +68,15 @@ spring:
 server:
   port: 8080
   forward-headers-strategy: native
+  tomcat:
+    mbeanregistry:
+      # 톰캣 스레드풀 메트릭(tomcat_threads_busy_threads / _current_threads / _config_max)을
+      # 켠다. 기본값 false 라 켜지 않으면 액추에이터에 아예 안 나온다.
+      #
+      # 이게 필요한 이유: 요청이 느려질 때 원인이 "처리가 느림"인지 "스레드가 없어서 큐에서
+      # 기다림"인지 구분해야 한다. busy/max 비율이 1에 가까우면 후자다. 이 지표가 없으면
+      # 지연 그래프만 보고 애플리케이션 코드를 뒤지게 된다.
+      enabled: true
 
 logging:
   level:
@@ -193,16 +202,67 @@ cloud:
       static: ${AWS_REGION:ap-northeast-2}
 
 management:
+  server:
+    # 액추에이터를 어느 포트로 열지. 기본값은 server.port 와 같은 8080이다.
+    #
+    # 8080(=server.port와 동일)이면 스프링은 관리 컨텍스트를 따로 만들지 않고 기존 포트를 쓴다.
+    # 즉 /actuator/health 가 지금 위치에 그대로 남는다. ALB 타깃그룹 헬스체크가 이 경로를
+    # 보고 있으므로(README 참고) 기본값을 바꾸면 안 된다.
+    #
+    # 9090으로 분리하려면 아래 순서를 지켜야 한다. 순서를 어기면 타깃이 전부 unhealthy 로
+    # 빠져 서비스가 내려간다. management.server.port 를 다른 값으로 주는 순간 /actuator/**
+    # '전체'가 그 포트로 옮겨가고, 8080의 /actuator/health 는 404가 되기 때문이다.
+    #
+    #   1) 태스크 정의에 컨테이너 포트 9090 매핑 추가
+    #   2) 앱 태스크 SG 인바운드 9090 에 모니터링 EC2 SG 허용
+    #   3) ALB 타깃그룹 헬스체크를 포트 9090 / 경로 /actuator/health 로 변경
+    #   4) 모니터링 레포 prometheus/prometheus.yml 의 pairing-backend job 포트를 9090 으로
+    #   5) 그다음에 MANAGEMENT_PORT=9090 주입
+    #
+    # 참고로 8080에 둬도 ALB 는 /api/* 만 백엔드로 보내므로 /actuator/prometheus 는
+    # 인터넷에서 라우팅되지 않는다. (헬스체크는 리스너 규칙을 우회해 타깃에 직접 붙는다)
+    # 즉 분리하지 않아도 외부 노출은 없다. ALB 규칙에 catch-all 이 있는지만 확인하면 된다.
+    port: ${MANAGEMENT_PORT:8080}
+
   endpoints:
     web:
       exposure:
-        include: health, info
+        # prometheus 추가: 모니터링 서버의 Prometheus 가 /actuator/prometheus 를 긁는다.
+        include: health, info, prometheus
+
   endpoint:
     health:
       show-details: always
+
   health:
     mail:
       # SMTP 헬스체크를 끈다. 켜두면 메일 계정이 주입되지 않았거나 메일 서버가 잠깐 흔들릴 때
       # /actuator/health 가 통째로 DOWN(503)이 되고, 오케스트레이터가 멀쩡한 컨테이너를 재시작한다.
       # 메일은 인증 흐름의 부가 기능이지 요청을 못 받을 이유가 아니다.
       enabled: false
+
+  metrics:
+    tags:
+      # 모든 메트릭에 공통으로 붙는 라벨. 대시보드에서 서비스·환경을 구분하는 데 쓴다.
+      # 태스크 구분은 Prometheus 가 instance/task 라벨로 붙여주므로 여기서 넣지 않는다.
+      # (ECS 태스크 ID 를 앱이 알아내려면 메타데이터 엔드포인트를 호출해야 해서 값이 안 맞다)
+      application: ${spring.application.name}
+      env: ${APP_ENV:dev}
+
+    distribution:
+      # 지연 시간을 '히스토그램 버킷'으로 낸다. 이게 핵심이다.
+      #
+      # Micrometer 기본값은 태스크별로 계산된 백분위수(percentile)만 주는데, 이미 계산된
+      # 백분위수는 태스크 간에 합산할 수 없다. 태스크 3개의 p95 를 평균한 값은 전체 p95 가
+      # 아니다. ECS 태스크가 여러 개인 환경에서 "전체 p95" 를 보려면 버킷이 필요하다.
+      # 버킷이 있으면 PromQL 의 histogram_quantile 이 태스크를 합쳐서 정확히 계산한다.
+      #
+      # percentiles-histogram 을 켜면 버킷이 70개 넘게 생겨서 t3.small 에는 부담이다.
+      # 그래서 필요한 경계만 지정한다. 아래 값이 곧 그래프의 해상도가 된다.
+      slo:
+        http.server.requests: 50ms, 100ms, 200ms, 500ms, 1s, 2s, 5s, 10s, 30s
+      # 위 경계 밖의 최소·최대값은 버킷으로 안 잡히므로 별도로 남긴다.
+      minimum-expected-value:
+        http.server.requests: 10ms
+      maximum-expected-value:
+        http.server.requests: 60s
