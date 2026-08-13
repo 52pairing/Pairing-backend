@@ -1,5 +1,6 @@
 package com.pairing.chat.application.port.out;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -17,6 +18,17 @@ public interface ChatDirectoryPort {
 
     /** 계정 표시 정보(메시지 보낸 사람). 프리랜서=이름, 클라이언트=회사명. */
     Optional<DisplayProfile> findDisplayProfile(Long accountId);
+
+    /**
+     * 이 계정이 당사자인 협상 중, <b>계약은 체결됐는데 채팅방이 없는</b> 협상 ID.
+     *
+     * <p>체결 시점의 방 개설이 실패한 건을 조회 시점에 복구하기 위한 것이다(재처리 배치 대신).
+     * 정상이면 빈 목록이다 — 방은 체결과 함께 열리므로 여기 걸리는 건은 사고 흔적이다.
+     */
+    List<Long> findNegotiationIdsMissingRoom(Long accountId);
+
+    /** 이 협상의 계약이 체결됐는가. 방이 없을 때 열어도 되는지 판정한다. */
+    boolean isContractConcluded(Long negotiationId);
 
     /**
      * 표시용 계정 정보.
