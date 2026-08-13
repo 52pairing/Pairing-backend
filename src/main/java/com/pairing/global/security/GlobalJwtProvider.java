@@ -6,7 +6,9 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
@@ -165,6 +167,21 @@ public class GlobalJwtProvider {
         }
 
         return builder.build();
+    }
+
+    /**
+     * 인증 쿠키 두 개를 즉시 만료시키는 Set-Cookie 헤더를 응답에 싣는다.
+     *
+     * <p>쿠키가 HttpOnly 라 프론트엔드는 이걸 지울 수단이 없다. 세션이 끊긴 401 응답에
+     * 만료 헤더를 빠뜨리면 브라우저에 죽은 토큰이 그대로 남아, 다음 요청도 같은 401을 받는다.
+     * 그러면 프론트는 "다른 기기에서 로그인되었습니다" 모달을 무한히 다시 띄우고,
+     * 사용자는 로그인 화면에 도달조차 못 한다. 그래서 서버가 지워 주는 것이 유일한 탈출구다.
+     *
+     * <p>응답 본문을 쓰기 전에 호출해야 한다. 커밋된 응답에는 헤더를 더할 수 없다.
+     */
+    public void expireAuthCookies(HttpServletResponse response) {
+        response.addHeader(HttpHeaders.SET_COOKIE, deleteCookie(ACCESS_TOKEN_COOKIE).toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, deleteCookie(REFRESH_TOKEN_COOKIE).toString());
     }
 
     public ResponseCookie deleteCookie(String name) {

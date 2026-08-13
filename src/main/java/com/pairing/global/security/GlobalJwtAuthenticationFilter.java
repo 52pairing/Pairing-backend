@@ -76,13 +76,14 @@ public class GlobalJwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
 
-        try {
-            String token = resolveToken(request);
+        // 쿠키에서 온 토큰인지 기억해 둔다. 아래에서 "못 쓰는 쿠키를 지워도 되는지" 판단에 쓴다.
+        ResolvedToken resolved = resolveToken(request);
 
-            if (token != null) {
+        try {
+            if (resolved != null) {
                 // validateToken(boolean)을 쓰면 만료/위조 사유가 사라져 아래 catch가 죽은 코드가 된다.
                 // 클라이언트가 "재발급하면 되는 상황"과 "다시 로그인해야 하는 상황"을 구분할 수 있어야 한다.
-                Claims claims = globalJwtProvider.parseClaims(token);
+                Claims claims = globalJwtProvider.parseClaims(resolved.value());
                 String subject = claims.getSubject();
                 String role = claims.get("role", String.class);
                 String sessionId = claims.get(GlobalJwtProvider.SESSION_ID_CLAIM, String.class);
@@ -91,6 +92,7 @@ public class GlobalJwtAuthenticationFilter extends OncePerRequestFilter {
                 // 만료(GLOBAL_009)와 구분되는 코드를 내려야 프론트가 "다른 기기 로그인" 모달을 띄울 수 있다.
                 if (!isSessionAlive(subject, sessionId)) {
                     log.warn("종료된 세션의 토큰: subject={}", subject);
+                    expireCookiesIfFromCookie(response, resolved);
                     errorResponseWriter.write(response, GlobalErrorCode.SESSION_TERMINATED);
                     return;
                 }
@@ -105,12 +107,17 @@ public class GlobalJwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             }
         } catch (ExpiredJwtException e) {
+            // 여기서는 쿠키를 지우지 않는다. 액세스 토큰 만료는 리프레시 토큰으로 복구되는 정상 흐름이고,
+            // 지워 버리면 재발급에 쓸 refreshToken 쿠키까지 함께 날아가 멀쩡한 로그인이 끊긴다.
             log.warn("토큰 만료: {}", e.getMessage());
             errorResponseWriter.write(response, GlobalErrorCode.TOKEN_EXPIRED);
             return;
 
         } catch (JwtException | IllegalArgumentException e) {
+            // 서명 불일치·형식 오류는 시간이 지나도 절대 유효해지지 않는다. 쿠키에 남겨두면
+            // 모든 요청이 이 401을 받으므로 세션 종료와 똑같이 만료시킨다.
             log.warn("유효하지 않은 토큰: {}", e.getMessage());
+            expireCookiesIfFromCookie(response, resolved);
             errorResponseWriter.write(response, GlobalErrorCode.TOKEN_INVALID);
             return;
 
@@ -131,11 +138,28 @@ public class GlobalJwtAuthenticationFilter extends OncePerRequestFilter {
         return tokenSessionValidator.get().isAlive(subject, sessionId);
     }
 
-    private String resolveToken(HttpServletRequest request) {
+    /**
+     * 못 쓰는 토큰이 쿠키에서 왔을 때만 쿠키를 만료시킨다.
+     *
+     * <p>Authorization 헤더로 들어온 토큰까지 쿠키를 지우면, Swagger나 스크립트에서 낡은
+     * Bearer 토큰 한 번 잘못 보낸 것 때문에 같은 브라우저의 멀쩡한 로그인 쿠키가 날아간다.
+     * 헤더 토큰은 쿠키와 무관하므로 건드리지 않는다.
+     */
+    private void expireCookiesIfFromCookie(HttpServletResponse response, ResolvedToken resolved) {
+        if (resolved != null && resolved.fromCookie()) {
+            globalJwtProvider.expireAuthCookies(response);
+        }
+    }
+
+    /** 토큰과 그 출처. 출처를 알아야 "이 쿠키를 지워도 되는지"를 판단할 수 있다. */
+    private record ResolvedToken(String value, boolean fromCookie) {
+    }
+
+    private ResolvedToken resolveToken(HttpServletRequest request) {
         // 1. Authorization: Bearer {token}
         String header = request.getHeader("Authorization");
         if (StringUtils.hasText(header) && header.startsWith(BEARER_PREFIX)) {
-            return header.substring(BEARER_PREFIX.length());
+            return new ResolvedToken(header.substring(BEARER_PREFIX.length()), false);
         }
 
         // 2. accessToken 쿠키
@@ -145,7 +169,7 @@ public class GlobalJwtAuthenticationFilter extends OncePerRequestFilter {
             for (Cookie cookie : request.getCookies()) {
                 if (GlobalJwtProvider.ACCESS_TOKEN_COOKIE.equals(cookie.getName())
                         && StringUtils.hasText(cookie.getValue())) {
-                    return cookie.getValue();
+                    return new ResolvedToken(cookie.getValue(), true);
                 }
             }
         }

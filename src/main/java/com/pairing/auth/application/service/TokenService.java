@@ -59,7 +59,23 @@ public class TokenService implements TokenUseCase {
             throw new BusinessException(AuthErrorCode.REFRESH_TOKEN_INVALID);
         }
         if (!stored.get().equals(refreshToken)) {
-            // 값이 다르다 = 다른 기기가 로그인해 저장값을 덮어썼다.
+            // 저장값과 다른 토큰이다. 원인이 두 가지 섞여 있어 세션 레지스트리로 갈라낸다.
+            //
+            //   - sid 가 이미 교체됐다 → 다른 기기가 로그인해 세션을 가져갔다. (AU_015)
+            //   - sid 는 그대로다 → 같은 세션에서 재발급이 겹쳐 옛 토큰으로 들어온 것이다. (AU_016)
+            //
+            // 두 번째는 탭을 두 개 열어두면 일상적으로 생긴다. 둘이 동시에 액세스 토큰 만료를 만나
+            // 같은 리프레시 토큰으로 재발급을 요청하면, 늦게 처리된 쪽은 이미 덮어써진 저장값과 어긋난다.
+            // 이때 AU_015 를 주면 멀쩡히 로그인된 사용자에게 "다른 기기에서 로그인" 모달을 띄우고,
+            // 아래 컨트롤러가 쿠키까지 지워 두 탭이 전부 로그아웃된다. sid 가 살아 있으면 세션은
+            // 끊긴 게 아니므로 재발급만 거절하고 쿠키는 건드리지 않는다. (이긴 쪽이 갱신해 둔 쿠키다)
+            boolean sessionStillOurs = sessionId != null && !sessionId.isBlank()
+                    && sessionRegistryPort.isAlive(accountId, sessionId);
+
+            if (sessionStillOurs) {
+                log.warn("같은 세션의 중복 재발급으로 판단해 거절한다: accountId={}", accountId);
+                throw new BusinessException(AuthErrorCode.REFRESH_TOKEN_INVALID);
+            }
             throw new BusinessException(AuthErrorCode.SESSION_TERMINATED);
         }
 
