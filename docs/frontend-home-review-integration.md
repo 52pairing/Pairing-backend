@@ -1,8 +1,9 @@
 # 메인 노출 리뷰 프론트 연동 가이드
 
 > 담당: 리뷰 · 등급 · 마이페이지 · 이력서 · 결제수단 · 1:1문의 · 챗봇 · 알림 · 홈
-> 기준일: 2026-08-12
-> 마이페이지 → `frontend-mypage-integration.md` / 고객지원 → `frontend-support-integration.md` / 알림 → `frontend-notification-integration.md`
+> 기준일: 2026-08-13
+> 마이페이지 → `frontend-mypage-integration.md` / 고객지원 → `frontend-support-integration.md`
+> 알림 → `frontend-notification-integration.md` / 회원 탈퇴 → `frontend-withdrawal-integration.md`
 
 ---
 
@@ -15,7 +16,7 @@ GET /api/v1/home/site-reviews?size=6
 **로그인 불필요.** 비로그인 방문자에게 보여주는 영역이라 토큰 없이 호출합니다.
 `credentials: 'include'` 도 필요 없습니다.
 
-관리자가 **공개 + 홍보 활용**으로 켠 **4점 이상** 후기만 내려갑니다. 작성자명은 마스킹됩니다.
+관리자가 **홍보 활용**으로 켠 **4점 이상** 후기만 내려갑니다. 작성자명은 마스킹됩니다.
 
 ---
 
@@ -51,7 +52,6 @@ GET /api/v1/home/site-reviews?size=3   → 3개
       "score": 5,
       "content": "매칭 속도가 빠르고 AI 협상 기능이 정말 유용했습니다.",
       "projectTitle": "페어링 웹 리뉴얼",
-      "visibility": "PUBLIC",
       "promoted": true,
       "createdAt": "2026-08-01T09:30:00"
     }
@@ -69,16 +69,18 @@ GET /api/v1/home/site-reviews?size=3   → 3개
 | `score` | 1~5. **여기 내려오는 건 항상 4 또는 5** 입니다 |
 | `content` | 후기 본문. **`null` 일 수 있습니다** |
 | `projectTitle` | 대상 프로젝트명. **`null` 일 수 있습니다** |
-| `visibility` | 항상 `"PUBLIC"` (조건상 다른 값이 올 수 없음) |
 | `promoted` | 항상 `true` (조건상 다른 값이 올 수 없음) |
 | `createdAt` | 작성 시각 |
+
+> **`visibility` 필드는 없어졌습니다.** (2026-08-13) 공개/비공개 개념 자체를 없앴습니다.
+> 응답에서 이 필드를 읽고 계셨다면 지워주세요. 나머지는 그대로입니다.
 
 ### null 이 오는 경우
 
 - **`content`** — 별점만 주고 글은 안 쓴 후기입니다. 카드에 빈 영역이 생기지 않게 처리해주세요
 - **`projectTitle`** — 프로젝트가 삭제된 경우입니다. 후기 자체는 그대로 보여줍니다
 
-`visibility` 와 `promoted` 는 이 API 에서는 항상 같은 값이라 **화면에서 쓸 일이 없습니다.**
+`promoted` 는 이 API 에서는 항상 `true` 라 **화면에서 쓸 일이 없습니다.**
 관리자 화면과 응답 형태를 맞추느라 남아 있는 필드입니다.
 
 ---
@@ -99,13 +101,15 @@ GET /api/v1/home/site-reviews?size=3   → 3개
 
 ## 4. 어떤 후기가 여기 나오나
 
-세 조건을 **모두** 만족해야 합니다.
+두 조건을 **모두** 만족해야 합니다.
 
 | 조건 | 값 | 정하는 사람 |
 |---|---|---|
-| 공개 여부 | `PUBLIC` | 작성 시 **기본값**. 관리자가 부적절한 것만 비공개로 내림 |
 | 홍보 활용 | `true` | **관리자가 직접 켬** |
 | 별점 | **4점 이상** | 서버 고정값 |
+
+> 예전에는 `공개 여부` 조건이 하나 더 있었는데 없앴습니다. **후기 원문은 관리자 화면 밖으로
+> 나가지 않아서**, 홍보를 끄면 이미 안 보이는 상태였습니다. 아무것도 바꾸지 않는 스위치였습니다.
 
 **홍보 활용은 관리자가 켜야 합니다.** 후기를 아무리 많이 써도 관리자가 켜지 않으면
 이 API 는 **빈 배열**을 돌려줍니다.

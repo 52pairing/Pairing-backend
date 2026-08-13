@@ -1,7 +1,6 @@
 package com.pairing.review.infrastructure.persistence;
 
 import com.pairing.meta.domain.model.PartyRole;
-import com.pairing.review.domain.model.SiteReviewVisibility;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -55,10 +54,13 @@ public class SiteReviewJpaEntity {
     @Column(name = "content", length = 500)
     private String content;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "visibility", nullable = false, length = 10)
-    private SiteReviewVisibility visibility;
-
+    /**
+     * 홍보 활용 여부. 사용자에게 후기가 보이느냐를 결정하는 <b>유일한</b> 스위치다.
+     *
+     * <p>테이블의 {@code visibility} 컬럼은 매핑하지 않는다. 홍보를 끄면 이미 안 보이는데
+     * 그 위에 공개 여부를 또 두는 것은 아무것도 바꾸지 않는 스위치였다. 컬럼은 기본값이
+     * 있어 INSERT 에 지장이 없고, 지우는 것은 운영 배포 때 따로 정리한다.
+     */
     @Column(name = "promoted", nullable = false)
     private boolean promoted;
 
@@ -66,7 +68,7 @@ public class SiteReviewJpaEntity {
     private LocalDateTime createdAt;
 
     public SiteReviewJpaEntity(Long id, Long contractId, Long projectId, Long writerAccountId,
-                               PartyRole writerRole, int score, String content, SiteReviewVisibility visibility,
+                               PartyRole writerRole, int score, String content,
                                boolean promoted, LocalDateTime createdAt) {
         this.id = id;
         this.contractId = contractId;
@@ -75,7 +77,6 @@ public class SiteReviewJpaEntity {
         this.writerRole = writerRole;
         this.score = score;
         this.content = content;
-        this.visibility = visibility;
         this.promoted = promoted;
         this.createdAt = createdAt;
     }

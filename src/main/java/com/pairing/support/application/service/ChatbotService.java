@@ -42,18 +42,20 @@ public class ChatbotService implements ChatbotUseCase {
 
         ChatbotSession session = resolveSession(command.accountId(), command.sessionId());
         ChatbotAiPort.Answer aiAnswer = chatbotAiPort.ask(command.question());
+
+        // 역할에 맞지 않는 화면이면 버튼만 뺀다. 답변은 그대로 나간다.
+        // 걸러낸 결과를 저장한다 — 화면에 실제로 띄운 것이 이력에도 그대로 남아야 한다.
+        ChatbotIntent intent = ChatbotIntent.from(aiAnswer.intent())
+                .filterFor(accountQueryUseCase.getById(command.accountId()).getRole());
+
         ChatbotMessage saved = messageRepository.save(
-                ChatbotMessage.create(session.getId(), command.question(), aiAnswer.answer()));
+                ChatbotMessage.create(session.getId(), command.question(), aiAnswer.answer(), intent));
 
         // AI 호출이 성공했을 때만 사용량을 반영한다.
         ChatbotQuota persistedQuota = saveQuotaSafely(command.accountId(), quota);
 
-        // 역할에 맞지 않는 화면이면 버튼만 뺀다. 답변은 그대로 나간다.
-        ChatbotIntent intent = ChatbotIntent.from(aiAnswer.intent())
-                .filterFor(accountQueryUseCase.getById(command.accountId()).getRole());
-
         return new ChatbotAnswerResult(session.getId(), saved.getQuestion(), saved.getAnswer(),
-                intent, persistedQuota.remaining(), saved.getCreatedAt());
+                saved.getIntent(), persistedQuota.remaining(), saved.getCreatedAt());
     }
 
     /**
@@ -85,9 +87,9 @@ public class ChatbotService implements ChatbotUseCase {
     public List<ChatbotAnswerResult> findTodayMessages(Long accountId) {
         int remaining = getQuota(accountId).remainingCount();
         return messageRepository.findByAccountIdAndDate(accountId, LocalDate.now()).stream()
-                // 지난 대화는 intent 를 저장하지 않아 버튼 없이 텍스트만 나간다.
+                // 버튼도 함께 복원한다. 버튼을 눌러 이동했다가 돌아와도 그대로 남아 있어야 한다.
                 .map(message -> new ChatbotAnswerResult(message.getSessionId(), message.getQuestion(),
-                        message.getAnswer(), ChatbotIntent.NONE, remaining, message.getCreatedAt()))
+                        message.getAnswer(), message.getIntent(), remaining, message.getCreatedAt()))
                 .toList();
     }
 

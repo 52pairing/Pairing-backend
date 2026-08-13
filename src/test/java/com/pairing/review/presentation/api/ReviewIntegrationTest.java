@@ -32,7 +32,6 @@ import com.pairing.global.config.SettlementResultStub;
 import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
-import com.pairing.review.domain.model.SiteReviewVisibility;
 import com.pairing.review.infrastructure.persistence.SiteReviewJpaEntity;
 import com.pairing.review.infrastructure.persistence.SpringDataReviewRepository;
 import com.pairing.review.infrastructure.persistence.SpringDataSiteReviewRepository;
@@ -487,10 +486,10 @@ class ReviewIntegrationTest {
     }
 
     @Test
-    @DisplayName("사이트 리뷰는 작성 시 공개·홍보 제외 상태로 저장된다")
-    void siteReviewIsPublicButNotPromotedOnCreate() throws Exception {
-        // 공개·홍보 설정 API 는 관리자 서버(pairing-admin)로 옮겼다. 여기서는 저장된 기본값만 본다.
-        // 공개가 기본이라 사후 관리가 가능하고, 홍보는 꺼져 있어 메인에 바로 뜨지 않는다.
+    @DisplayName("사이트 리뷰는 작성 시 홍보 제외 상태로 저장된다")
+    void siteReviewIsNotPromotedOnCreate() throws Exception {
+        // 홍보 설정 API 는 관리자 서버(pairing-admin)로 옮겼다. 여기서는 저장된 기본값만 본다.
+        // 홍보가 꺼져 있어야 관리자가 고르기 전까지 메인에 뜨지 않는다.
         mockMvc.perform(post("/api/v1/reviews")
                         .cookie(freelancerAccessToken)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -498,7 +497,6 @@ class ReviewIntegrationTest {
                 .andExpect(status().isCreated());
 
         SiteReviewJpaEntity saved = siteReviewRepository.findAll().get(0);
-        assertThat(saved.getVisibility()).isEqualTo(SiteReviewVisibility.PUBLIC);
         assertThat(saved.isPromoted()).isFalse();
     }
 }

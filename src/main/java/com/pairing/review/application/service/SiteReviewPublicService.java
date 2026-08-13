@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * 비로그인 메인에 노출할 사이트 리뷰 조회.
  *
- * <p>공개·홍보 설정은 <b>관리자 서버(pairing-admin)</b>가 한다. 이 서비스는 그 결과를 읽어
+ * <p>홍보 설정은 <b>관리자 서버(pairing-admin)</b>가 한다. 이 서비스는 그 결과를 읽어
  * 메인에 내려주기만 한다. 관리자가 아무것도 켜지 않으면 빈 목록이다.
  */
 @Service
@@ -59,7 +59,6 @@ public class SiteReviewPublicService implements SiteReviewPublicUseCase {
                 siteReview.getScore(),
                 siteReview.getContent(),
                 projectTitle,
-                siteReview.getVisibility(),
                 siteReview.isPromoted(),
                 siteReview.getCreatedAt());
     }

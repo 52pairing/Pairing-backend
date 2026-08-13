@@ -789,8 +789,10 @@ CREATE TABLE "review" (
 );
 
 -- 사이트 이용 후기.
---   visibility 는 작성 시 PUBLIC 이 기본이다(사후 관리). 관리자가 부적절한 후기만 PRIVATE 로 내린다.
---   promoted 는 별개다. 메인 노출은 PUBLIC + promoted + score >= 4 를 모두 만족해야 한다.
+--   후기 원문은 관리자 화면 밖으로 나가지 않는다. 사용자가 보는 것은 관리자가 홍보로 고른
+--   후기와 평균 별점뿐이라, 노출을 정하는 스위치는 promoted 하나다.
+--   메인 노출 조건은 promoted AND score >= 4 다.
+--   (공개/비공개 컬럼은 없앴다 — 홍보를 끄면 이미 안 보여서 아무것도 바꾸지 않는 스위치였다)
 CREATE TABLE "site_review" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "contract_id" BIGINT NOT NULL,
@@ -799,7 +801,6 @@ CREATE TABLE "site_review" (
     "writer_role" VARCHAR(10) NOT NULL,
     "score" INTEGER NOT NULL,
     "content" VARCHAR(500),
-    "visibility" VARCHAR(10) DEFAULT 'PUBLIC' NOT NULL,
     "promoted" BOOLEAN DEFAULT FALSE NOT NULL,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
@@ -819,22 +820,25 @@ CREATE TABLE "notification" (
     PRIMARY KEY ("id")
 );
 
+-- 챗봇 세션. 열고 닫는 개념이 없어 status/closed_at 을 두지 않는다.
+-- 화면이 하루치 대화를 통째로 보여주므로 세션은 "이 대화가 누구 것인가"만 알면 된다.
 CREATE TABLE "chatbot_session" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
-    "account_id" BIGINT NOT NULL,
-    "status" VARCHAR(20) DEFAULT 'ACTIVE' NOT NULL,
-    "started_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "closed_at" TIMESTAMP,
+    "owner_account_id" BIGINT NOT NULL,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
 );
 
+-- 챗봇 대화. 한 행이 질문 1건과 그 답변이다(발신자별로 나누지 않는다).
+--   intent 는 답변 아래 띄운 이동 버튼의 화면 코드다. 저장하지 않으면 버튼을 눌러
+--   이동했다가 돌아왔을 때 버튼이 사라진다 — 즉 쓸수록 없어지는 화면이 된다.
+--   CHECK 제약을 걸지 않는다. 화면이 하나 늘 때마다 운영에서 INSERT 가 막힌다.
 CREATE TABLE "chatbot_message" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "session_id" BIGINT NOT NULL,
-    "sender_type" VARCHAR(20) NOT NULL,
-    "content" TEXT NOT NULL,
+    "question" VARCHAR(500) NOT NULL,
+    "answer" VARCHAR(2000) NOT NULL,
+    "intent" VARCHAR(30),
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
 );
@@ -1039,7 +1043,7 @@ ALTER TABLE "review" ADD CONSTRAINT "fk_review_reviewee" FOREIGN KEY ("reviewee_
 ALTER TABLE "site_review" ADD CONSTRAINT "fk_site_review_contract" FOREIGN KEY ("contract_id") REFERENCES "contract" ("id");
 ALTER TABLE "site_review" ADD CONSTRAINT "fk_site_review_project" FOREIGN KEY ("project_id") REFERENCES "project" ("id");
 ALTER TABLE "site_review" ADD CONSTRAINT "fk_site_review_writer" FOREIGN KEY ("writer_account_id") REFERENCES "account" ("id");
-ALTER TABLE "chatbot_session" ADD CONSTRAINT "fk_chatbot_session_account" FOREIGN KEY ("account_id") REFERENCES "account" ("id");
+ALTER TABLE "chatbot_session" ADD CONSTRAINT "fk_chatbot_session_account" FOREIGN KEY ("owner_account_id") REFERENCES "account" ("id");
 ALTER TABLE "chatbot_message" ADD CONSTRAINT "fk_chatbot_message_session" FOREIGN KEY ("session_id") REFERENCES "chatbot_session" ("id");
 ALTER TABLE "chatbot_quota" ADD CONSTRAINT "fk_chatbot_quota_account" FOREIGN KEY ("account_id") REFERENCES "account" ("id");
 ALTER TABLE "inquiry" ADD CONSTRAINT "fk_inquiry_writer" FOREIGN KEY ("writer_account_id") REFERENCES "account" ("id");
@@ -1137,11 +1141,11 @@ CREATE INDEX "idx_rerecommend_ledger" ON "rerecommend_purchase" ("ledger_entry_i
 CREATE INDEX "idx_review_reviewee" ON "review" ("reviewee_account_id", "created_at");
 CREATE INDEX "idx_review_reviewer" ON "review" ("reviewer_account_id");
 CREATE INDEX "idx_review_project" ON "review" ("project_id");
--- 비로그인 메인 노출 조회: visibility=PUBLIC AND promoted AND score>=4, 최신순
-CREATE INDEX "idx_site_review_home" ON "site_review" ("visibility", "promoted", "score", "created_at");
+-- 비로그인 메인 노출 조회: promoted AND score>=4, 최신순
+CREATE INDEX "idx_site_review_home" ON "site_review" ("promoted", "score", "created_at");
 CREATE INDEX "idx_site_review_writer" ON "site_review" ("writer_account_id");
 CREATE INDEX "idx_notification_owner" ON "notification" ("owner_account_id", "read", "created_at");
-CREATE INDEX "idx_chatbot_session_account" ON "chatbot_session" ("account_id", "status");
+CREATE INDEX "idx_chatbot_session_account" ON "chatbot_session" ("owner_account_id");
 CREATE INDEX "idx_chatbot_message_session" ON "chatbot_message" ("session_id", "created_at");
 CREATE INDEX "idx_inquiry_writer" ON "inquiry" ("writer_account_id", "status");
 CREATE INDEX "idx_inquiry_status" ON "inquiry" ("status", "created_at");
@@ -1200,11 +1204,10 @@ COMMENT ON COLUMN "review"."reviewer_role" IS 'CLIENT / FREELANCER. 작성 시�
 COMMENT ON COLUMN "review"."reviewee_account_id" IS '대상자 account FK';
 COMMENT ON COLUMN "review"."reviewee_role" IS 'CLIENT / FREELANCER';
 COMMENT ON COLUMN "review"."score" IS '별점 1~5(1점 단위, 필수)';
-COMMENT ON TABLE "site_review" IS '사이트 이용후기(기본 비공개, 관리자 공개 설정)';
+COMMENT ON TABLE "site_review" IS '사이트 이용후기(관리자가 홍보로 켠 것만 사용자에게 노출)';
 COMMENT ON COLUMN "site_review"."writer_account_id" IS '작성자 account FK';
 COMMENT ON COLUMN "site_review"."score" IS '별점 1~5(필수)';
-COMMENT ON COLUMN "site_review"."visibility" IS 'PUBLIC(공개) / PRIVATE(비공개). 작성 시 기본 PUBLIC, 관리자가 사후 관리';
-COMMENT ON COLUMN "site_review"."promoted" IS '홍보 활용 여부. 관리자가 선별한다';
+COMMENT ON COLUMN "site_review"."promoted" IS '홍보 활용 여부. 관리자가 선별한다. 노출을 정하는 유일한 스위치';
 COMMENT ON TABLE "notification" IS '알림(사용자 삭제 시 즉시 hard delete)';
 COMMENT ON COLUMN "notification"."owner_account_id" IS '수신자 account FK';
 COMMENT ON COLUMN "notification"."read" IS '읽음 여부';
@@ -1650,13 +1653,13 @@ COMMENT ON COLUMN "notification"."link_url" IS '클릭 시 이동 경로';
 COMMENT ON COLUMN "notification"."read_at" IS '읽은 시각';
 
 COMMENT ON COLUMN "chatbot_session"."id" IS 'PK';
-COMMENT ON COLUMN "chatbot_session"."account_id" IS '사용자 FK';
-COMMENT ON COLUMN "chatbot_session"."status" IS 'ACTIVE / CLOSED. 1:1 문의로의 전환 상태는 두지 않는다(두 창구가 독립)';
+COMMENT ON COLUMN "chatbot_session"."owner_account_id" IS '사용자 FK';
 
 COMMENT ON COLUMN "chatbot_message"."id" IS 'PK';
 COMMENT ON COLUMN "chatbot_message"."session_id" IS '세션 FK';
-COMMENT ON COLUMN "chatbot_message"."sender_type" IS 'USER / BOT';
-COMMENT ON COLUMN "chatbot_message"."content" IS '메시지';
+COMMENT ON COLUMN "chatbot_message"."question" IS '사용자 질문';
+COMMENT ON COLUMN "chatbot_message"."answer" IS '챗봇 답변';
+COMMENT ON COLUMN "chatbot_message"."intent" IS '답변에 딸린 이동 버튼의 화면 코드(ChatbotIntent). 없으면 NONE 또는 NULL';
 
 COMMENT ON COLUMN "chatbot_quota"."id" IS 'PK';
 COMMENT ON COLUMN "chatbot_quota"."account_id" IS '사용자 FK';
@@ -1766,7 +1769,6 @@ CREATE TRIGGER "trg_penalty_updated_at" BEFORE UPDATE ON "penalty"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER "trg_rerecommend_purchase_updated_at" BEFORE UPDATE ON "rerecommend_purchase"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER "trg_chatbot_session_updated_at" BEFORE UPDATE ON "chatbot_session"
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+-- chatbot_session 은 updated_at 이 없다(한 번 만들고 바뀌지 않는다). 트리거를 두지 않는다.
 CREATE TRIGGER "trg_chatbot_quota_updated_at" BEFORE UPDATE ON "chatbot_quota"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
