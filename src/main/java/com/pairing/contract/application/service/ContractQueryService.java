@@ -79,6 +79,14 @@ public class ContractQueryService implements ContractQueryUseCase {
                 toSummary(contract, accountId, paidContractIds, payableSettlementIds));
     }
 
+    /**
+     * 탭 배지. 목록과 달리 프로젝트명·상대 이름 같은 외부 조회를 타지 않아 쿼리 한 번으로 끝난다.
+     */
+    @Override
+    public Map<ContractTab, Long> countMyTabs(Long accountId, Long projectId) {
+        return contractRepository.countMyTabs(accountId, projectId);
+    }
+
     @Override
     public ContractDetail getDetail(Long contractId, Long accountId) {
         Contract contract = contractRepository.findById(contractId)

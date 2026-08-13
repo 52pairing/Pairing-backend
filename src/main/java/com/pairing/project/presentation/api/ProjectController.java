@@ -18,6 +18,7 @@ import com.pairing.project.domain.model.ProjectStatus;
 import com.pairing.project.application.usecase.ProjectCommandUseCase;
 import com.pairing.project.application.usecase.ProjectPreReviewUseCase;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
+import com.pairing.project.application.result.ProjectAttachment;
 import com.pairing.project.exception.ProjectErrorCode;
 import com.pairing.project.presentation.api.request.ProjectCreateRequest;
 import com.pairing.project.domain.model.ProjectTab;
@@ -33,7 +34,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,6 +49,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -97,6 +102,32 @@ public class ProjectController {
     ) {
         return ResponseEntity.ok(ApiResponse.success("PROJECT_FOUND", "조회에 성공했습니다.",
                 ProjectResponse.from(projectQueryUseCase.getDetailForOwner(projectId, accountId))));
+    }
+
+    @GetMapping("/{projectId}/files/{fileId}/download")
+    @PreAuthorize("hasRole('CLIENT')")
+    @Operation(summary = "첨부 자료 다운로드",
+            description = "첨부 파일을 내려받습니다. 상세 조회와 같은 범위로, 본인이 등록한 프로젝트의 첨부만 받을 수 있습니다. "
+                    + "상세 응답의 fileUrl 은 CDN 직링크라 브라우저가 이미지·PDF 를 그냥 열어버리므로, "
+                    + "저장이 필요하면 이 API 를 쓰세요.")
+    @ApiErrorCodeExample(domain = ProjectErrorCode.class, value = {"PROJECT_NOT_FOUND", "NOT_PROJECT_OWNER"})
+    @ApiErrorCodeExample(domain = FileErrorCode.class, value = {"FILE_NOT_FOUND"})
+    public ResponseEntity<byte[]> downloadAttachment(
+            @PathVariable Long projectId,
+            @PathVariable Long fileId,
+            @CurrentAccountId Long accountId
+    ) {
+        ProjectAttachment attachment = projectQueryUseCase.downloadAttachment(projectId, fileId, accountId);
+
+        return ResponseEntity.ok()
+                // 첨부는 jpg·pdf·zip 아무거나 올 수 있다. 옥텟이면 브라우저가 타입을 따지지 않고 저장한다.
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                // 한글 파일명이 흔해서 RFC 5987 형식으로 준다. 계약서 PDF 와 같은 방식이다.
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(attachment.originalName(), StandardCharsets.UTF_8)
+                                .build().toString())
+                .body(attachment.content());
     }
 
     @PutMapping("/{projectId}")

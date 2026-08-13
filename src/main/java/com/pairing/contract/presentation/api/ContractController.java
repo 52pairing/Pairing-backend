@@ -11,6 +11,7 @@ import com.pairing.contract.presentation.api.request.ContractSignRequest;
 import com.pairing.contract.presentation.api.request.ContractTerminateRequest;
 import com.pairing.contract.presentation.api.response.ContractResponse;
 import com.pairing.contract.presentation.api.response.ContractSummaryResponse;
+import com.pairing.contract.presentation.api.response.ContractTabCountResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
@@ -36,6 +37,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 표준계약서. (요구사항 R25, R43)
@@ -86,6 +90,28 @@ public class ContractController {
 
         return ResponseEntity.ok(ApiResponse.success("CONTRACTS_FOUND", "조회에 성공했습니다.",
                 PageResponse.from(data)));
+    }
+
+    @GetMapping("/mine/tab-counts")
+    @Operation(summary = "내 계약 탭별 건수",
+            description = "탭 옆 배지 숫자입니다. 건수가 0인 탭도 내려갑니다.\n\n"
+                    + "**탭 7개를 모두 돌려줍니다.** 클라이언트 계약관리와 프리랜서 내 계약이 그중 "
+                    + "다른 5개씩을 나눠 쓰므로, 화면이 자기에게 필요한 탭만 골라 그리면 됩니다. "
+                    + "한 계정이 클라이언트이면서 프리랜서일 수 있어 서버가 역할로 가르지 않습니다.\n\n"
+                    + "- 클라이언트: ALL · AWAITING_ME · AWAITING_COUNTERPART · CONCLUDED\n"
+                    + "- 프리랜서: ALL · AWAITING_ME · IN_PROGRESS · SETTLEMENT_PENDING · COMPLETED\n\n"
+                    + "projectId 를 주면 그 프로젝트의 내 계약만 셉니다. 목록 API 와 같은 규칙입니다.")
+    public ResponseEntity<ApiResponse<List<ContractTabCountResponse>>> findMyTabCounts(
+            @RequestParam(required = false) Long projectId,
+            @CurrentAccountId Long accountId
+    ) {
+        Map<ContractTab, Long> counts = contractQueryUseCase.countMyTabs(accountId, projectId);
+
+        List<ContractTabCountResponse> data = Arrays.stream(ContractTab.values())
+                .map(tab -> ContractTabCountResponse.of(tab, counts.getOrDefault(tab, 0L)))
+                .toList();
+
+        return ResponseEntity.ok(ApiResponse.success("TAB_COUNTS_FOUND", "조회에 성공했습니다.", data));
     }
 
     @GetMapping("/{contractId}")

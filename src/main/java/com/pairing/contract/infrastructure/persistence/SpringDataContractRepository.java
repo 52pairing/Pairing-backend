@@ -65,4 +65,26 @@ public interface SpringDataContractRepository extends JpaRepository<ContractJpaE
                                         @Param("mySignatureStatus") SignatureStatus mySignatureStatus,
                                         @Param("tabStatuses") List<ContractStatus> tabStatuses,
                                         Pageable pageable);
+
+    /**
+     * 탭 배지용 집계. (계약 상태 x 내 서명 상태) 조합별 건수를 <b>한 번에</b> 돌려준다.
+     *
+     * <p>탭마다 세면 7번 나간다. 두 축으로 묶어 한 번 받고 탭으로 접는 일은 어댑터가 한다.
+     * 접는 규칙이 {@code ContractTab} 한 곳에만 있어 목록과 배지가 어긋날 수 없다.
+     *
+     * <p>{@code findByParty} 는 {@code EXISTS} 를 쓰는데 여기는 {@code JOIN} 이다.
+     * 서명 행의 상태를 <b>결과로 꺼내야</b> 하기 때문이다. 계약 1건에 서명은 갑·을 2행뿐이고
+     * {@code accountId} 로 걸어 그중 1행만 남으므로 건수가 부풀지 않는다
+     * ({@code uk_contract_signature} 가 (계약, 당사자) 중복을 막는다).
+     */
+    @Query("""
+            SELECT new com.pairing.contract.infrastructure.persistence.ContractStatusCountRow(
+                       c.status, s.status, COUNT(c))
+              FROM ContractJpaEntity c
+              JOIN ContractSignatureJpaEntity s ON s.contract = c AND s.accountId = :accountId
+             WHERE (:projectId IS NULL OR c.projectId = :projectId)
+             GROUP BY c.status, s.status
+            """)
+    List<ContractStatusCountRow> countByPartyGroupedByStatus(@Param("accountId") Long accountId,
+                                                             @Param("projectId") Long projectId);
 }

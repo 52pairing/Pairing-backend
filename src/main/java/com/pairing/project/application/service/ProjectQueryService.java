@@ -1,9 +1,11 @@
 package com.pairing.project.application.service;
 
+import com.pairing.file.exception.FileErrorCode;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.project.application.port.ClientProfileReaderPort;
 import com.pairing.project.application.port.ProjectFileReaderPort;
 import com.pairing.project.application.port.SettlementReaderPort;
+import com.pairing.project.application.result.ProjectAttachment;
 import com.pairing.project.application.result.ProjectDetail;
 import com.pairing.project.application.result.ProjectPositionSummary;
 import com.pairing.project.application.result.ProjectSummary;
@@ -145,6 +147,28 @@ public class ProjectQueryService implements ProjectQueryUseCase {
     @Override
     public ProjectDetail getDetailForOwner(Long projectId, Long accountId) {
         return toDetail(getByIdForOwner(projectId, accountId));
+    }
+
+    /**
+     * 순서가 중요하다. 소유자 확인 -&gt; 첨부 소속 확인 -&gt; 읽기 순으로 좁힌다.
+     *
+     * <p>읽기를 먼저 하면 남의 파일을 스토리지에서 꺼낸 뒤에 버리게 된다. 응답으로는 안 나가지만
+     * 응답 시간 차이로 그 fileId 가 실존하는지 알 수 있다.
+     */
+    @Override
+    public ProjectAttachment downloadAttachment(Long projectId, Long fileId, Long accountId) {
+        Project project = getByIdForOwner(projectId, accountId);
+
+        if (fileId == null || !project.getFileIds().contains(fileId)) {
+            throw new BusinessException(FileErrorCode.FILE_NOT_FOUND);
+        }
+
+        // 지워진 파일이면 여기서 FI_001 이 올라온다. 목록에는 남아 있는데 스토리지에만 없는 경우다.
+        ProjectFileReaderPort.ProjectFileView meta = projectFileReaderPort.getAllByIds(List.of(fileId)).get(0);
+        byte[] content = projectFileReaderPort.readContent(fileId)
+                .orElseThrow(() -> new BusinessException(FileErrorCode.FILE_NOT_FOUND));
+
+        return new ProjectAttachment(content, meta.originalName());
     }
 
     @Override
