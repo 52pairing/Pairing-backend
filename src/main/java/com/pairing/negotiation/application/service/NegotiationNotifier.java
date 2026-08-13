@@ -10,6 +10,8 @@ import com.pairing.notification.domain.model.NotificationType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
@@ -28,6 +30,12 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *
  * <p>{@code @Async} 는 붙이지 않았다. 알림 저장은 insert 한 건이라 대리인 스레드를 잡아 둘 만한
  * 시간이 아니고, 발송 순서(시작 → 제안)가 그대로 유지되는 편이 낫다.
+ *
+ * <p><b>{@code REQUIRES_NEW} 를 지우지 말 것.</b> {@code AFTER_COMMIT} 시점에는 끝난 트랜잭션이
+ * 아직 스레드에 묶여 있다. 그 상태에서 {@code create()}(REQUIRED)를 부르면 <b>이미 커밋을 마친
+ * 트랜잭션에 합류</b>해, INSERT 는 실행되지만 커밋할 주체가 없어 정리 단계에서 조용히 버려진다.
+ * 예외도 안 나므로 try-catch 도 걸리지 않는다 — 2026-08-13 운영에서 알림이 0건이던 원인이 이것이다.
+ * 같은 이유로 {@code ContractDraftListener}·{@code ContractChatListener} 도 이 조합을 쓴다.
  */
 @Slf4j
 @Component
@@ -47,6 +55,7 @@ public class NegotiationNotifier {
     private final ProjectReaderPort projectReaderPort;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void on(NegotiationNotificationRequested event) {
         try {
             send(event);
