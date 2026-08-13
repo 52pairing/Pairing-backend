@@ -133,7 +133,7 @@ class ChatbotIntegrationTest {
         given(verifiedMarkerPort.isVerified(anyString(), any())).willReturn(true);
         given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
         given(chatbotAiPort.ask(anyString()))
-                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "RESUME_EDIT"));
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "RESUME_EDIT", false));
 
         writerAccessToken = signUpAndLoginFreelancer(WRITER_EMAIL, "이프리", "010-3333-4444", "110-123-456789");
         otherAccessToken = signUpAndLoginFreelancer(OTHER_EMAIL, "김다른", "010-5555-6666", "110-987-654321");
@@ -222,7 +222,7 @@ class ChatbotIntegrationTest {
     void unknownIntentFallsBackToNoAction() throws Exception {
         // 프롬프트로 목록을 닫아 두지만 모델이 어길 수 있다. 그때 답변까지 막히면 안 된다.
         given(chatbotAiPort.ask(anyString()))
-                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "GO_TO_MARS"));
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "GO_TO_MARS", false));
 
         mockMvc.perform(post("/api/v1/support/chatbot/questions")
                         .cookie(writerAccessToken)
@@ -238,7 +238,7 @@ class ChatbotIntegrationTest {
     void intentNotAllowedForRoleIsDropped() throws Exception {
         // 프리랜서 계정인데 AI 가 클라이언트 전용 화면을 골랐다. 눌러도 막히는 버튼이라 뺀다.
         given(chatbotAiPort.ask(anyString()))
-                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "PROJECT_CREATE"));
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "PROJECT_CREATE", false));
 
         mockMvc.perform(post("/api/v1/support/chatbot/questions")
                         .cookie(writerAccessToken)
@@ -268,12 +268,40 @@ class ChatbotIntegrationTest {
     @DisplayName("버튼이 없던 답변은 이력에서도 버튼 없이 나온다")
     void historyKeepsNoActionAnswerEmpty() throws Exception {
         given(chatbotAiPort.ask(anyString()))
-                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, null));
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, null, false));
         ask(writerAccessToken, null, "페어링은 어떤 서비스인가요?");
 
         mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].actions.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("페어링과 무관한 질문은 하루 횟수를 차감하지 않는다")
+    void outOfScopeQuestionDoesNotConsumeQuota() throws Exception {
+        // AI 서버가 임베딩 유사도로 걸러 out_of_scope 로 내려준 상황.
+        // 답을 못 받았는데 횟수만 빠지면 오타 한 번에 하루 10회 중 1회가 날아간다.
+        given(chatbotAiPort.ask(anyString())).willReturn(
+                new ChatbotAiPort.Answer("페어링 서비스 관련 질문에만 답변드릴 수 있어요.", "NONE", true));
+
+        mockMvc.perform(post("/api/v1/support/chatbot/questions")
+                        .cookie(writerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(askBody(null, "1+1은?"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.actions.length()").value(0))
+                // 차감되지 않았으므로 10회가 그대로 남아 있다
+                .andExpect(jsonPath("$.data.remainingQuota").value(10));
+
+        mockMvc.perform(get("/api/v1/support/chatbot/quota").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.usedCount").value(0));
+
+        // 대화 자체는 남는다. 새로고침했을 때 방금 한 질문이 사라지면 그게 더 이상하다.
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].question").value("1+1은?"));
     }
 
     @Test

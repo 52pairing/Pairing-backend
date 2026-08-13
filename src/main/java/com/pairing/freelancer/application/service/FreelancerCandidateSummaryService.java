@@ -36,7 +36,7 @@ public class FreelancerCandidateSummaryService implements FreelancerCandidateSum
                 profile.getAccountId(),
                 account.getName(),
                 fileQueryUseCase.findObjectKey(profile.getProfileFileId()).orElse(null),
-                FreelancerGrade.valueOf(profile.getGrade()),
+                FreelancerGrade.of(profile.getGrade()),
                 reviewSummary.averageScore(),
                 reviewSummary.reviewCount()
         );

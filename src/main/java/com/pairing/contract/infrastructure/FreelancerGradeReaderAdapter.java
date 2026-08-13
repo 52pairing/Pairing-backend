@@ -24,15 +24,7 @@ public class FreelancerGradeReaderAdapter implements FreelancerGradeReaderPort {
     public FreelancerGrade findGrade(Long freelancerProfileId) {
         return accountQueryUseCase.findFreelancerProfileById(freelancerProfileId)
                 .map(FreelancerProfile::getGrade)
-                .map(this::toGrade)
+                .map(FreelancerGrade::of)
                 .orElse(FreelancerGrade.JUNIOR);
-    }
-
-    private FreelancerGrade toGrade(String grade) {
-        try {
-            return FreelancerGrade.valueOf(grade);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            return FreelancerGrade.JUNIOR;
-        }
     }
 }

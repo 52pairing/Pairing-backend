@@ -48,7 +48,7 @@ public class FreelancerQueryService implements FreelancerQueryUseCase {
                 profile.getAddress(),
                 fileQueryUseCase.findObjectKey(profile.getProfileFileId()).orElse(null),
                 profile.isAiMatchingAgreed(),
-                FreelancerGrade.valueOf(profile.getGrade()),
+                FreelancerGrade.of(profile.getGrade()),
                 reviewSummary.averageScore(),
                 reviewSummary.reviewCount(),
                 resumeCompleted,

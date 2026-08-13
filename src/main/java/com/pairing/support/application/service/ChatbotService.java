@@ -51,6 +51,17 @@ public class ChatbotService implements ChatbotUseCase {
         ChatbotMessage saved = messageRepository.save(
                 ChatbotMessage.create(session.getId(), command.question(), aiAnswer.answer(), intent));
 
+        // 페어링과 무관한 질문이면 사용량을 차감하지 않는다. 답을 못 받았는데 횟수만 빠지면
+        // 오타 한 번에 하루 10회 중 1회가 날아간다. quota 는 위에서 메모리로만 증가시켰으므로
+        // 저장하지 않으면 그대로 없던 일이 된다.
+        //
+        // 대화 자체는 남긴다. 새로고침했을 때 방금 한 질문이 사라지면 그게 더 이상하다.
+        if (aiAnswer.outOfScope()) {
+            return new ChatbotAnswerResult(session.getId(), saved.getQuestion(), saved.getAnswer(),
+                    saved.getIntent(), getQuota(command.accountId()).remainingCount(),
+                    saved.getCreatedAt());
+        }
+
         // AI 호출이 성공했을 때만 사용량을 반영한다.
         ChatbotQuota persistedQuota = saveQuotaSafely(command.accountId(), quota);
 

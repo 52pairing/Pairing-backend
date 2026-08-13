@@ -148,6 +148,11 @@ public record GradeTier(
 
         for (int i = 0; i < tiers.size() - 1; i++) {
             GradeTier tier = tiers.get(i);
+            // 기준값이 비어 있으면 더 올라갈 수 없는 칸이다. 최고 등급이 마지막이라 지금은 걸리지
+            // 않지만, 기준표에 값이 빠진 칸이 생겨도 승급 판정이 터지지 않고 거기서 멈추게 둔다.
+            if (tier.minRatingForNext() == null || tier.minCompletedForNext() == null) {
+                break;
+            }
             boolean ratingMet = ratingAverage != null && ratingAverage >= tier.minRatingForNext();
             boolean countMet = completedCount >= tier.minCompletedForNext();
             if (!ratingMet || !countMet) {
