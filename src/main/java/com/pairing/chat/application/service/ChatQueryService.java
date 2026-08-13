@@ -14,6 +14,7 @@ import com.pairing.chat.domain.repository.ChatRoomRepository;
 import com.pairing.chat.exception.ChatErrorCode;
 import com.pairing.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -32,9 +34,14 @@ public class ChatQueryService implements ChatQueryUseCase {
     private final ChatRoomRepository chatRoomRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ChatDirectoryPort chatDirectoryPort;
+    private final ChatRoomRepairer chatRoomRepairer;
 
     @Override
     public List<ChatRoomView> findMyRooms(Long accountId) {
+        // 체결됐는데 안 열린 방을 먼저 되살린다. 조회를 뒤에 두는 순서가 중요하다 — 복구된 방이
+        // 이번 응답에 바로 들어가야 사용자가 다시 들어오지 않아도 된다(READ COMMITTED 라 보인다).
+        repair(() -> chatRoomRepairer.repairMyRooms(accountId), accountId);
+
         return chatRoomRepository.findActiveRoomsByAccountId(accountId).stream()
                 .map(room -> toRoomView(room, accountId))
                 .toList();
@@ -50,9 +57,32 @@ public class ChatQueryService implements ChatQueryUseCase {
     @Override
     public ChatRoomView getRoomByNegotiation(Long negotiationId, Long accountId) {
         ChatRoom room = chatRoomRepository.findByNegotiationId(negotiationId)
-                .orElseThrow(() -> new BusinessException(ChatErrorCode.CHAT_ROOM_NOT_FOUND));
+                .orElseGet(() -> openIfMissing(negotiationId, accountId));
         room.requireParticipant(accountId);
         return toRoomView(room, accountId);
+    }
+
+    /**
+     * 방이 없을 때 한 번만 시도한다. 체결된 계약이면 열리고, 아니면 그대로 {@code CH_001} 이다
+     * (협상만 타결된 건은 아직 방이 없는 게 정상이다).
+     */
+    private ChatRoom openIfMissing(Long negotiationId, Long accountId) {
+        repair(() -> chatRoomRepairer.repairIfConcluded(negotiationId), accountId);
+        return chatRoomRepository.findByNegotiationId(negotiationId)
+                .orElseThrow(() -> new BusinessException(ChatErrorCode.CHAT_ROOM_NOT_FOUND));
+    }
+
+    /**
+     * 복구는 <b>부가 동작</b>이다. 실패해도 조회는 성공해야 한다 — 방이 하나 안 열린 것 때문에
+     * 채팅 목록 전체가 500 이 되면 더 나쁘다. 예외를 여기서 잡는 이유는
+     * {@code ChatRoomRepairer} 주석 참고(안에서 잡으면 경계에서 다시 터진다).
+     */
+    private void repair(Runnable repair, Long accountId) {
+        try {
+            repair.run();
+        } catch (Exception e) {
+            log.warn("[채팅방 복구 실패 - 조회는 계속한다] accountId={}", accountId, e);
+        }
     }
 
     @Override

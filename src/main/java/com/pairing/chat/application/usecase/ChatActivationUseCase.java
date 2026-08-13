@@ -9,9 +9,11 @@ package com.pairing.chat.application.usecase;
  * <p>채팅 명령 전체({@link ChatCommandUseCase})가 아니라 이 메서드만 열어 두는 이유는, 계약 도메인이
  * 메시지 전송·나가기 같은 다른 명령까지 알 필요가 없기 때문이다.
  *
- * <p><b>주의: 이 포트를 부르는 곳이 아직 없다.</b> 계약 도메인의 서비스 계층이 구현되면 체결 처리
- * 끝에 {@code chatActivationUseCase.openForSignedContract(negotiationId)} 한 줄을 넣으면 된다.
- * 그때까지는 협상이 타결돼도 채팅방이 생기지 않는다.
+ * <p>호출부는 계약 도메인의 {@code ContractChatListener} 다. 체결 이벤트를 <b>커밋 후 새 트랜잭션</b>
+ * 으로 받아 부르므로, 방 개설이 실패해도 서명은 되돌아가지 않는다.
+ *
+ * <p>그 개설이 실패한 건은 채팅 조회 시점에 {@code ChatRoomRepairer} 가 같은 메서드로 되살린다.
+ * <b>체결 여부는 부르는 쪽이 확인한다</b> — 이 메서드는 "체결됐다"를 전제로 방만 만든다.
  */
 public interface ChatActivationUseCase {
 
