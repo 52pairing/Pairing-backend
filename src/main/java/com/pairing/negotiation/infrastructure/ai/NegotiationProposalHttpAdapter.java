@@ -10,6 +10,7 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -77,7 +78,23 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(CONNECT_TIMEOUT_MS);
         factory.setReadTimeout(timeoutMs);
-        this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
+        // 파이썬이 정상 JSON 본문을 application/octet-stream 으로 내려주는 경우가 있어(실측 2026-08-13)
+        // 기본 컨버터로는 읽을 수 없어 예외 → 전량 stub 폴백이 됐다. Jackson 컨버터가 octet-stream
+        // 응답도 JSON 으로 읽도록 지원 미디어타입을 넓힌다. 파이썬/프록시가 무엇을 보내든 견고해진다.
+        this.restClient = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(factory)
+                .messageConverters(converters -> converters.stream()
+                        .filter(MappingJackson2HttpMessageConverter.class::isInstance)
+                        .map(MappingJackson2HttpMessageConverter.class::cast)
+                        .forEach(converter -> {
+                            List<MediaType> types = new ArrayList<>(converter.getSupportedMediaTypes());
+                            if (!types.contains(MediaType.APPLICATION_OCTET_STREAM)) {
+                                types.add(MediaType.APPLICATION_OCTET_STREAM);
+                                converter.setSupportedMediaTypes(types);
+                            }
+                        }))
+                .build();
         this.internalApiKey = internalApiKey;
     }
 

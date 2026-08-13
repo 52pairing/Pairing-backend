@@ -4,9 +4,13 @@ import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort.ConditionInput;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort.ProposalContext;
 import com.pairing.negotiation.domain.model.ConditionType;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,5 +43,46 @@ class NegotiationProposalHttpAdapterTest {
         assertThat(result.messages()).isNotEmpty();
         assertThat(result.messages())
                 .allMatch(m -> m.conditionId().equals(401L) || m.conditionId().equals(402L));
+    }
+
+    @Test
+    @DisplayName("파이썬이 application/octet-stream 으로 내려줘도 JSON 으로 파싱한다 — stub 폴백 안 함")
+    void parsesOctetStreamResponseAsJson() throws Exception {
+        // 파이썬 대화값(5500000)을 담은 정상 JSON 본문을, content-type 만 octet-stream 으로 내려준다.
+        String body = "{\"code\":\"NEGOTIATION_PROPOSED\",\"message\":\"ok\",\"data\":{"
+                + "\"negotiation_id\":1,\"model\":\"m\","
+                + "\"messages\":[{\"sender\":\"CLIENT_AGENT\",\"condition_id\":401,\"kind\":\"PROPOSAL\","
+                + "\"proposed_value\":\"5000000\",\"content\":\"c\",\"reason\":\"r\"},"
+                + "{\"sender\":\"FREELANCER_AGENT\",\"condition_id\":401,\"kind\":\"ACCEPT\","
+                + "\"proposed_value\":\"5500000\",\"content\":\"c\",\"reason\":\"r\"}],"
+                + "\"outcomes\":[{\"condition_id\":401,\"proposed_value\":\"5500000\",\"agreed\":true}]}}";
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v1/negotiations/propose", exchange -> {
+            byte[] out = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
+            exchange.sendResponseHeaders(200, out.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(out);
+            }
+        });
+        server.start();
+        try {
+            int port = server.getAddress().getPort();
+            NegotiationProposalHttpAdapter adapter =
+                    new NegotiationProposalHttpAdapter("http://127.0.0.1:" + port, "test-key", 2000);
+            ProposalContext context = new ProposalContext(1L, 1, 5_000_000L, List.of(
+                    new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null)));
+
+            NegotiationProposalPort.A2AResult result = adapter.propose(context);
+
+            // 파이썬 값(5500000)이 쓰였으면 octet-stream 을 JSON 으로 파싱한 것.
+            // stub 폴백이었다면 중간값(5000000)이 나온다.
+            assertThat(result.outcomes()).hasSize(1);
+            assertThat(result.outcomes().get(0).proposedValue()).isEqualTo("5500000");
+            assertThat(result.outcomes().get(0).agreed()).isTrue();
+        } finally {
+            server.stop(0);
+        }
     }
 }
