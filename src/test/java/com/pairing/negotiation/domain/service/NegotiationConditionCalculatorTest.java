@@ -63,8 +63,11 @@ class NegotiationConditionCalculatorTest {
     }
 
     @Test
-    @DisplayName("minAcceptAmount는 AMOUNT 프리 마지노선(floor)으로 프리필된다")
-    void minAcceptPrefillsFreelancerFloor() {
+    @DisplayName("마지노선은 어느 쪽도 미리 채우지 않는다 — 양측이 직접 입력한다")
+    void doesNotPrefillAnyFloor() {
+        // 예전에는 minAcceptAmount 를 프리 floor 로 프리필했다. 클라는 직접 입력하는데 프리만
+        // 자동으로 채워져 화면이 비대칭이 되고, 그 값을 낮추면 R09 하한 가드가 무력화됐다.
+        // 이제 등록 최저 수용가는 마지노선을 받는 시점에 검증한다(NG_012).
         FreelancerConditionSnapshot freelancer = new FreelancerConditionSnapshot(
                 PayUnit.MONTHLY, 6_000_000L, WorkStyle.ANY, WorkForm.ANY, null, true,
                 5_500_000L, null, null);
@@ -73,8 +76,8 @@ class NegotiationConditionCalculatorTest {
                 4_800_000L, freelancer, WorkStyle.ANY, WorkForm.ANY, null, true, null, null);
 
         NegotiationCondition amount = result.get(0);
-        assertThat(amount.floorForViewer(PartyRole.FREELANCER)).isEqualTo("5500000");
-        assertThat(amount.floorForViewer(PartyRole.CLIENT)).isNull();   // 상대 floor는 안 건드림
+        assertThat(amount.floorForViewer(PartyRole.FREELANCER)).isNull();
+        assertThat(amount.floorForViewer(PartyRole.CLIENT)).isNull();
     }
 
     @Test

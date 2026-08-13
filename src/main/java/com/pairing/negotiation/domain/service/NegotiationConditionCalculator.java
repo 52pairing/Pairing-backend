@@ -17,8 +17,8 @@ import java.util.List;
  *
  * <p>규칙(설계 확정):
  * <ul>
- *   <li>AMOUNT: 프리 월단가(환산) &gt; 예산 상한(budgetCap) 이면 불일치. 프리 minAcceptAmount(가드 하한)를
- *       프리 floor 로 프리필한다.</li>
+ *   <li>AMOUNT: 프리 월단가(환산) &gt; 예산 상한(budgetCap) 이면 불일치. <b>floor 는 채우지 않는다</b> —
+ *       양측이 직접 입력하고, 등록 최저 수용가는 마지노선을 받을 때 검증한다(NG_012).</li>
  *   <li>WORK_STYLE/WORK_FORM: 한쪽이라도 ANY 면 일치, 아니면 값이 다를 때 불일치</li>
  *   <li>START_DATE: 어느 한쪽이라도 협의 가능이면 일치, 아니면 프리 착수일이 희망일보다 늦으면 불일치</li>
  *   <li>PERIOD: 조건부 — 프리 기간값이 있을 때만 비교(주 단위 정규화)해 다르면 불일치. 없으면 제외.</li>
@@ -44,19 +44,20 @@ public final class NegotiationConditionCalculator {
     ) {
         List<NegotiationCondition> conditions = new ArrayList<>();
 
-        // AMOUNT: 예산 상한(가드) 대비 프리 월단가. minAcceptAmount 를 프리 floor 로 프리필.
+        // AMOUNT: 예산 상한(가드) 대비 프리 월단가.
+        //
+        // 예전에는 프리 minAcceptAmount 를 프리 floor 로 프리필했다. 지웠다 — 클라는 직접 입력하는데
+        // 프리만 자동으로 채워져 화면이 비대칭이 되고(프론트가 그 때문에 한 번 막혔다), 프리필을 수정해
+        // 더 낮추면 R09 하한 가드가 오히려 무력화됐다. 이제 양측이 직접 입력하고, 등록 최저 수용가는
+        // 마지노선을 받을 때 검증한다(NegotiationLoopService, NG_012).
         //
         // 클라 희망값도 budgetCap(월 단가 상한)을 쓴다. 예전엔 projectBudgetAmount(계약 기간 전체 총액)를
         // 넣어 한 조건 안에서 클라=총액 / 프리=월단가로 단위가 갈렸고, 그 사이에서 합의된 값은 어느
         // 단위인지 정의되지 않았다. 협상·화면·계약 모두 월 단가로 통일한다.
         long monthlyPay = freelancer.monthlyPay();
         if (monthlyPay > budgetCap) {
-            NegotiationCondition amount = NegotiationCondition.create(ConditionType.AMOUNT,
-                    String.valueOf(budgetCap), String.valueOf(monthlyPay), conditions.size());
-            if (freelancer.minAcceptAmount() != null) {
-                amount.submitFloor(PartyRole.FREELANCER, String.valueOf(freelancer.minAcceptAmount()));
-            }
-            conditions.add(amount);
+            conditions.add(NegotiationCondition.create(ConditionType.AMOUNT,
+                    String.valueOf(budgetCap), String.valueOf(monthlyPay), conditions.size()));
         }
 
         // WORK_STYLE
