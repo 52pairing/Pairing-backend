@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.util.UUID;
@@ -87,6 +88,52 @@ public class S3StorageAdapter implements FileStoragePort {
             log.error("[S3 Upload Error] 로컬 파일 업로드 실패: bucket={}, key={}, cause={}",
                     s3Settings.getBucket(), targetKey, e.toString(), e);
             throw new BusinessException(GlobalErrorCode.FILE_UPLOAD_FAILED);
+        }
+    }
+
+    @Override
+    public String uploadBytes(byte[] content, String directory, String extension, String contentType) {
+        if (content == null || content.length == 0) return null;
+
+        String key = s3Settings.withPrefix(directory + "/" + UUID.randomUUID() + extension);
+
+        try {
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(s3Settings.getBucket())
+                    .key(key)
+                    .contentType(contentType)
+                    .build();
+
+            s3Client.putObject(putObjectRequest, RequestBody.fromBytes(content));
+            return key;
+        } catch (Exception e) {
+            log.error("[S3 Upload Error] 바이트 업로드 실패: bucket={}, key={}, cause={}",
+                    s3Settings.getBucket(), key, e.toString(), e);
+            throw new BusinessException(GlobalErrorCode.FILE_UPLOAD_FAILED);
+        }
+    }
+
+    /**
+     * 읽기는 예외를 던지지 않고 empty 를 돌려준다.
+     *
+     * <p>호출부(계약서 조회)가 실패했을 때 그 자리에서 다시 그리는 대안을 갖고 있다. 여기서 던지면
+     * 스토리지가 잠깐 흔들린 것만으로 계약서를 아예 못 보게 된다.
+     */
+    @Override
+    public java.util.Optional<byte[]> readFile(String key) {
+        if (key == null || key.isBlank()) return java.util.Optional.empty();
+
+        try {
+            return java.util.Optional.of(s3Client.getObjectAsBytes(
+                    GetObjectRequest.builder()
+                            .bucket(s3Settings.getBucket())
+                            .key(key)
+                            .build())
+                    .asByteArray());
+        } catch (Exception e) {
+            log.warn("[S3 Read Error] 파일 읽기 실패: bucket={}, key={}, cause={}",
+                    s3Settings.getBucket(), key, e.toString());
+            return java.util.Optional.empty();
         }
     }
 }

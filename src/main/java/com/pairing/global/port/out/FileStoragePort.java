@@ -21,4 +21,20 @@ public interface FileStoragePort {
 
     /** 로컬 파일을 지정한 key로 업로드하고 그 key를 반환한다. (비동기/배치 업로드용) */
     String uploadFile(java.io.File file, String targetKey);
+
+    /**
+     * 메모리에 있는 바이트를 업로드하고 object key를 반환한다.
+     *
+     * <p>서버가 만들어 낸 문서(계약서 PDF 등)를 저장할 때 쓴다. {@code MultipartFile} 은 HTTP 업로드
+     * 전제라 그런 경우에 쓸 수 없고, 임시 파일로 떨어뜨렸다 지우는 것도 실패 시 찌꺼기가 남는다.
+     */
+    String uploadBytes(byte[] content, String directory, String extension, String contentType);
+
+    /**
+     * object key로 파일 내용을 읽는다. 없거나 실패하면 empty.
+     *
+     * <p>CDN 직링크로 못 내보내는 파일에 쓴다. 계약서는 당사자만 열람할 수 있어야 해서 서버가
+     * 권한을 확인한 뒤 바이트를 실어 보내야 한다.
+     */
+    java.util.Optional<byte[]> readFile(String key);
 }

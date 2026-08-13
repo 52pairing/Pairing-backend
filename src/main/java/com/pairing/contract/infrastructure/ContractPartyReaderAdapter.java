@@ -88,6 +88,17 @@ public class ContractPartyReaderAdapter implements ContractPartyReaderPort {
                 .orElse(FreelancerParty.EMPTY);
     }
 
+    @Override
+    public Optional<byte[]> settlementAccountSnapshot(Long freelancerProfileId) {
+        return Optional.ofNullable(findFreelancer(freelancerProfileId).settlementAccount())
+                .map(dataEncryptionPort::encrypt);
+    }
+
+    @Override
+    public String restoreSettlementAccount(byte[] snapshot) {
+        return snapshot == null ? null : dataEncryptionPort.decrypt(snapshot);
+    }
+
     /** 가입 시 계좌가 필수라 보통 한 건 있다. 탈퇴·삭제로 비어 있으면 계좌 칸만 빈다. */
     private Optional<PaymentMethod> bankAccount(Long accountId) {
         return accountQueryUseCase.findMyPaymentMethods(accountId).stream()

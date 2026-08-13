@@ -1,6 +1,7 @@
 package com.pairing.file.application.service;
 
 import com.pairing.file.application.command.UploadFileCommand;
+import com.pairing.file.application.command.UploadGeneratedFileCommand;
 import com.pairing.file.application.result.FileResult;
 import com.pairing.file.application.usecase.FileCommandUseCase;
 import com.pairing.file.domain.model.FilePurpose;
@@ -37,6 +38,41 @@ public class FileCommandService implements FileCommandUseCase {
         return FileResult.from(fileRepository.save(uploaded));
     }
 
+    /**
+     * 서버가 만든 바이트를 저장한다.
+     *
+     * <p>확장자 검증을 건너뛰는 이유는 원본 파일명이 없기 때문이다. 사용자 업로드는 파일명을
+     * 믿을 수 없어 내용을 뜯어보지만, 여기 오는 바이트는 서버가 방금 만든 것이라 내용과 MIME 을
+     * 이미 안다. 크기 상한은 그대로 본다 — 렌더링이 잘못돼 거대한 파일이 올라가는 것은 막아야 한다.
+     */
+    @Override
+    public FileResult uploadGenerated(UploadGeneratedFileCommand command) {
+        byte[] content = command.content();
+        if (content == null || content.length == 0) {
+            throw new BusinessException(GlobalErrorCode.INVALID_FILE_TYPE);
+        }
+        long maxBytes = command.purpose().getMaxSizeMb() * 1024L * 1024L;
+        if (content.length > maxBytes) {
+            throw new BusinessException(FileErrorCode.FILE_TOO_LARGE);
+        }
+
+        String directory = command.purpose().name().toLowerCase();
+        String objectKey = fileStoragePort.uploadBytes(content, directory,
+                extensionOf(command.originalName()), command.contentType());
+
+        UploadedFile uploaded = UploadedFile.create(command.ownerAccountId(), command.purpose(), objectKey,
+                command.originalName(), command.contentType(), (long) content.length);
+        return FileResult.from(fileRepository.save(uploaded));
+    }
+
+    /** object key 에 붙일 확장자. 없으면 빈 문자열. */
+    private String extensionOf(String originalName) {
+        if (originalName == null || !originalName.contains(".")) {
+            return "";
+        }
+        return originalName.substring(originalName.lastIndexOf('.'));
+    }
+
     @Override
     public void delete(Long fileId, Long accountId) {
         UploadedFile file = fileRepository.findById(fileId)
@@ -65,7 +101,7 @@ public class FileCommandService implements FileCommandUseCase {
     private boolean isAllowed(FilePurpose purpose, FileType detected) {
         return switch (purpose) {
             case PROFILE_IMAGE, COMPANY_LOGO, SIGNATURE -> detected == FileType.IMAGE;
-            case PORTFOLIO -> detected == FileType.PDF;
+            case PORTFOLIO, CONTRACT -> detected == FileType.PDF;
             case PROJECT_FILE, INQUIRY_ATTACHMENT -> detected == FileType.PDF || detected == FileType.IMAGE;
         };
     }

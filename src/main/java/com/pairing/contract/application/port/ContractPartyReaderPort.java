@@ -2,6 +2,8 @@ package com.pairing.contract.application.port;
 
 import com.pairing.account.domain.model.BusinessField;
 
+import java.util.Optional;
+
 /**
  * 계약 당사자 정보. 계약서 머리말의 갑·을 표시에 쓴다.
  *
@@ -40,6 +42,21 @@ public interface ContractPartyReaderPort {
     FreelancerParty findFreelancer(Long freelancerProfileId);
 
     /**
+     * 체결 시점 정산 계좌를 <b>암호문 한 줄</b>로 뽑는다. 계좌가 없으면 empty.
+     *
+     * <p>계약서 제5조에 찍히는 표기("카카오뱅크 3333012345678 (예금주: 김민준)")를 그대로 굳힌다.
+     * 은행·번호·예금주를 따로 담지 않는 이유는, 계약서에 남아야 하는 것이 <b>그때 문서에 적혔던
+     * 그 한 줄</b>이기 때문이다. 나중에 은행 표기 규칙이 바뀌어도 문서는 안 바뀐다.
+     *
+     * <p>평문을 계약 테이블에 복사하면 계좌번호 평문이 한 벌 더 생긴다. {@code payment_method} 가
+     * 암호문만 두는 것과 같은 기준으로 여기서 암호화해 넘긴다.
+     */
+    Optional<byte[]> settlementAccountSnapshot(Long freelancerProfileId);
+
+    /** 굳혀둔 정산 계좌를 복호화한다. null 이면 null. */
+    String restoreSettlementAccount(byte[] snapshot);
+
+    /**
      * 계약서의 갑.
      *
      * <p>{@code representative} 는 계정 이름이다. 클라이언트 계정의 이름이 곧 대표자명이고
@@ -64,12 +81,37 @@ public interface ContractPartyReaderPort {
      * <p>{@code accountNo} 는 복호화된 평문이다. 계약 당사자 둘만 볼 수 있는 문서라 전체를 적는다.
      */
     record FreelancerParty(Long accountId, String name, String phone,
-                           String bankName, String accountNo, String accountHolder) {
+                           String bankName, String accountNo, String accountHolder,
+                           String frozenAccount) {
 
         public static final FreelancerParty EMPTY = new FreelancerParty(null, null, null, null, null, null);
 
-        /** 계약서 제5조와 을 표시에 찍는 한 줄. 계좌가 없으면 null. */
+        /**
+         * 굳혀둔 계좌 없이 만든다. 체결 전 계약과 목록 조회가 쓴다.
+         *
+         * <p>기존 형태를 그대로 남겨 이 레코드를 만드는 다른 곳이 바뀌지 않게 한다.
+         */
+        public FreelancerParty(Long accountId, String name, String phone,
+                               String bankName, String accountNo, String accountHolder) {
+            this(accountId, name, phone, bankName, accountNo, accountHolder, null);
+        }
+
+        /** 체결 시점에 굳혀둔 계좌를 얹은 사본. null 이면 그대로 둔다. */
+        public FreelancerParty withFrozenAccount(String frozen) {
+            return frozen == null ? this
+                    : new FreelancerParty(accountId, name, phone, bankName, accountNo, accountHolder, frozen);
+        }
+
+        /**
+         * 계약서 제5조와 을 표시에 찍는 한 줄. 계좌가 없으면 null.
+         *
+         * <p>체결 시점에 굳혀둔 값이 있으면 <b>그것을 쓴다.</b> 프리랜서가 나중에 계좌를 바꿔도
+         * 이미 체결된 계약서의 표시는 그대로여야 한다.
+         */
         public String settlementAccount() {
+            if (frozenAccount != null) {
+                return frozenAccount;
+            }
             if (bankName == null || accountNo == null) {
                 return null;
             }
