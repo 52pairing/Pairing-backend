@@ -71,6 +71,11 @@ public class AccountRepositoryAdapter implements AccountRepository {
     }
 
     @Override
+    public List<Long> findActiveIdsByRole(Role role, Long afterId, int limit) {
+        return springDataRepository.findActiveIdsByRole(role, afterId, PageRequest.of(0, limit));
+    }
+
+    @Override
     public List<Account> findPurgeTargets(LocalDateTime now, int limit) {
         return springDataRepository
                 .findByPurgeAtBeforeOrderByPurgeAtAsc(now, PageRequest.of(0, limit)).stream()

@@ -73,6 +73,21 @@ public class ClientProfile {
 
     /** 마이페이지 기업정보 수정. 사업자등록번호·사업 분야는 여기서 바꿀 수 없다. */
     /**
+     * 등급 산정 결과 반영. (정책 P01)
+     *
+     * <p>사용자가 바꿀 수 없다. 등급 도메인의 월간 산정만 이 메서드를 부른다.
+     * {@code gradeCheckedAt} 은 <b>등급이 그대로여도 갱신한다</b> — "언제 확인했는가"가
+     * "언제 바뀌었는가"보다 중요하다. 확인 시각이 안 움직이면 배치가 돌았는지 알 수 없다.
+     */
+    public void applyGrade(String grade, LocalDateTime checkedAt) {
+        if (grade == null || grade.isBlank()) {
+            throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
+        }
+        this.grade = grade;
+        this.gradeCheckedAt = checkedAt;
+    }
+
+    /**
      * 기업 정보 수정. 사업자등록번호·사업 분야는 바꾸지 않는다.
      *
      * <p>{@code logoFileId} 는 null 이면 기존 로고를 그대로 둔다. 수정 화면이 로고를 건드리지 않고

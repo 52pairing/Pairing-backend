@@ -9,6 +9,7 @@ import com.pairing.account.application.command.WithdrawAccountCommand;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.PaymentMethod;
+import com.pairing.account.domain.model.Role;
 
 /**
  * 계정 상태를 바꾸는 인바운드 포트.
@@ -77,4 +78,14 @@ public interface AccountCommandUseCase {
      * @return 이번에 파기한 계정 수
      */
     int purgeExpiredPersonalData();
+
+    /**
+     * 등급 산정 결과를 프로필에 반영한다. (정책 P01)
+     *
+     * <p>등급 도메인의 월간 산정만 호출한다. 사용자가 바꿀 수 있는 값이 아니라 마이페이지 수정
+     * 경로에는 없다. 프로필이 없으면 아무것도 하지 않는다 — 가입이 중간에 끊긴 계정이다.
+     *
+     * @return 실제로 등급이 바뀌었으면 true. 확인 시각만 갱신됐으면 false
+     */
+    boolean applyGrade(Long accountId, Role role, String gradeCode);
 }

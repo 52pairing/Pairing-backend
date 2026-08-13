@@ -74,6 +74,16 @@ public interface AccountQueryUseCase {
     List<Long> filterActiveAiMatchingAgreed(Collection<Long> accountIds);
 
     /**
+     * 등급 산정 대상 계정 id. 활성 계정만, id 오름차순.
+     *
+     * <p>전체를 한 번에 올리지 않고 {@code afterId} 로 이어서 읽는다. 회원이 늘어도 배치 한 번이
+     * 메모리를 통째로 잡지 않는다.
+     *
+     * @param afterId 이 id 보다 큰 것만. 첫 페이지는 0
+     */
+    List<Long> findActiveAccountIdsByRole(Role role, Long afterId, int limit);
+
+    /**
      * 내 결제수단. 가입 시 만들어진 카드 1건과 계좌 1건이 함께 나온다.
      *
      * <p>삭제된 건은 제외한다. 수수료 결제 화면은 {@code methodType == CARD} 만 골라 쓴다.

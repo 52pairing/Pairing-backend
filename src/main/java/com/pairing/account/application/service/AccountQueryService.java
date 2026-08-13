@@ -114,6 +114,11 @@ public class AccountQueryService implements AccountQueryUseCase {
     }
 
     @Override
+    public List<Long> findActiveAccountIdsByRole(Role role, Long afterId, int limit) {
+        return accountRepository.findActiveIdsByRole(role, afterId == null ? 0L : afterId, limit);
+    }
+
+    @Override
     public Optional<ClientProfile> findClientProfileById(Long clientProfileId) {
         return clientProfileRepository.findById(clientProfileId);
     }
