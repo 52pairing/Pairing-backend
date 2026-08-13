@@ -27,4 +27,20 @@ public class PartyProfileAdapter implements PartyProfilePort {
     public Optional<Long> findFreelancerProfileIdByAccountId(Long accountId) {
         return freelancerProfileRepository.findByAccountId(accountId).map(FreelancerProfile::getId);
     }
+
+    @Override
+    public Optional<Long> findAccountIdByClientProfileId(Long clientProfileId) {
+        if (clientProfileId == null) {
+            return Optional.empty();
+        }
+        return clientProfileRepository.findById(clientProfileId).map(ClientProfile::getAccountId);
+    }
+
+    @Override
+    public Optional<Long> findAccountIdByFreelancerProfileId(Long freelancerProfileId) {
+        if (freelancerProfileId == null) {
+            return Optional.empty();
+        }
+        return freelancerProfileRepository.findById(freelancerProfileId).map(FreelancerProfile::getAccountId);
+    }
 }
