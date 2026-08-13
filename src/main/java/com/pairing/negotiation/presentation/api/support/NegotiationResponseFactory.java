@@ -3,6 +3,7 @@ package com.pairing.negotiation.presentation.api.support;
 import com.pairing.negotiation.application.result.NegotiationView;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
+import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
 import com.pairing.negotiation.domain.model.PartyRole;
@@ -47,6 +48,10 @@ public final class NegotiationResponseFactory {
                 n.getAgreedAmount(),
                 view.chatRoomId(),          // 타결 후 채팅 이동용(없으면 null)
                 n.getAiOutAt(),
+                n.getEndedAt(),
+                // 종료 사유는 결렬일 때만 내보낸다. 타결에도 값이 들어가면 "왜 끝났는지"를 묻는
+                // 화면이 성공 카드에까지 사유를 붙이게 된다 — 타결은 사유가 없는 게 맞다.
+                n.getStatus() == NegotiationStatus.FAILED ? n.getEndReason() : null,
                 false,                      // finalApprovalRequired: 15회 자동 결렬 채택으로 항상 false
                 conditions
         );

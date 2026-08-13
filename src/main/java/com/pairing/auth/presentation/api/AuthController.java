@@ -11,6 +11,7 @@ import com.pairing.auth.presentation.api.response.LoginResponse;
 import com.pairing.auth.presentation.api.response.MeResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
+import com.pairing.global.exception.BusinessException;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.global.security.GlobalJwtProvider;
@@ -81,13 +82,29 @@ public class AuthController {
 
     @PostMapping("/refresh")
     @Operation(summary = "액세스 토큰 재발급",
-            description = "refreshToken 쿠키로 재발급합니다. 다른 기기가 로그인했다면 AU_015로 실패합니다.")
+            description = "refreshToken 쿠키로 재발급합니다. 다른 기기가 로그인했다면 AU_015로 실패하며, "
+                    + "이때 accessToken/refreshToken 쿠키가 함께 만료됩니다.")
     @ApiErrorCodeExample(domain = AuthErrorCode.class, value = {"REFRESH_TOKEN_INVALID", "SESSION_TERMINATED"})
     public ResponseEntity<ApiResponse<LoginResponse>> refresh(
             HttpServletRequest request,
             HttpServletResponse response
     ) {
-        LoginResult result = tokenUseCase.reissue(resolveRefreshToken(request));
+        LoginResult result;
+        try {
+            result = tokenUseCase.reissue(resolveRefreshToken(request));
+        } catch (BusinessException e) {
+            // 세션이 끊긴 게 확정된 경우에만 쿠키를 만료시킨다.
+            // 프론트는 HttpOnly 쿠키를 지울 수 없어서, 여기서 안 지우면 죽은 토큰이 브라우저에 남고
+            // 이후 모든 요청이 같은 401을 받아 "다른 기기에서 로그인" 모달이 무한히 반복된다.
+            //
+            // AU_016(REFRESH_TOKEN_INVALID)에는 붙이지 않는다. 같은 세션의 중복 재발급이 여기로 오는데
+            // (TokenService 참고) 그 경우 쿠키에는 이미 갱신된 유효한 토큰이 들어 있다.
+            if (e.getErrorCode() == AuthErrorCode.SESSION_TERMINATED) {
+                authCookieWriter.clear(response);
+            }
+            throw e;
+        }
+
         authCookieWriter.write(response, result);
 
         return ResponseEntity.ok(ApiResponse.success("TOKEN_REISSUED", "토큰이 재발급되었습니다.",

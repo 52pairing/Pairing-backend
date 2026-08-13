@@ -52,6 +52,11 @@ public class ContractDraftAdapter implements ContractDraftPort {
                     .header(INTERNAL_KEY_HEADER, internalApiKey)
                     .headers(headers -> traceId().ifPresent(id -> headers.add(TRACE_ID_HEADER, id)))
                     .contentType(MediaType.APPLICATION_JSON)
+                    // Accept 를 안 보내면 상대가 application/octet-stream 으로 내려줄 수 있고, 그러면
+                    // 이 응답을 읽을 컨버터가 없어 예외가 난다. 협상 어댑터에서 실제로 겪은
+                    // 실패다(2026-08-11 실측). 여기서는 기본 문구로 조용히 대체되므로,
+                    // AI 문구가 아예 안 붙은 계약서가 나가고도 아무도 눈치채지 못한다.
+                    .accept(MediaType.APPLICATION_JSON)
                     .body(toRequest(command))
                     .retrieve()
                     .body(DraftApiResponse.class);

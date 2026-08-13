@@ -37,6 +37,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -443,5 +444,88 @@ class AuthFlowIntegrationTest {
         mockMvc.perform(get("/api/v1/auth/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.errorCode").value("GLOBAL_006"));
+    }
+
+    // ==========================================
+    // 세션 종료 시 쿠키 만료
+    //
+    // 쿠키는 HttpOnly 라 프론트가 지울 수 없다. 서버가 만료시켜 주지 않으면 죽은 토큰이
+    // 브라우저에 남아 로그인 화면에서까지 같은 401이 반복되고, "다른 기기에서 로그인" 모달을
+    // 무한히 다시 띄운다. 아래 테스트들이 그 탈출구를 고정한다.
+    // ==========================================
+
+    @Test
+    @DisplayName("다른 기기가 로그인하면 GLOBAL_011과 함께 인증 쿠키가 만료된다")
+    void terminatedSessionExpiresAuthCookies() throws Exception {
+        signUpClient();
+        Cookie accessToken = login().getResponse().getCookie("accessToken");
+
+        // 다른 기기가 로그인해 SESSION:{accountId} 가 새 sid 로 덮어써진 상황.
+        given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(false);
+
+        MvcResult result = mockMvc.perform(get("/api/v1/auth/me").cookie(accessToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("GLOBAL_011"))
+                .andReturn();
+
+        assertCookiesExpired(result);
+    }
+
+    @Test
+    @DisplayName("재발급도 다른 기기 로그인이면 AU_015와 함께 쿠키를 만료시킨다")
+    void reissueAfterOtherDeviceLoginExpiresAuthCookies() throws Exception {
+        signUpClient();
+        Cookie refreshToken = login().getResponse().getCookie("refreshToken");
+
+        // 저장값이 다른 토큰으로 덮어써졌고, sid 도 이미 교체됐다 = 다른 기기가 세션을 가져갔다.
+        given(tokenStorePort.find(any())).willReturn(Optional.of("another-device-refresh-token"));
+        given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(false);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/refresh").cookie(refreshToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AU_015"))
+                .andReturn();
+
+        assertCookiesExpired(result);
+    }
+
+    @Test
+    @DisplayName("같은 세션의 중복 재발급은 AU_016으로 거절하고 쿠키는 건드리지 않는다")
+    void concurrentReissueInSameSessionKeepsAuthCookies() throws Exception {
+        signUpClient();
+        Cookie refreshToken = login().getResponse().getCookie("refreshToken");
+
+        // 탭 두 개가 동시에 재발급을 요청해 저장값은 이미 갱신됐지만, sid 는 그대로다.
+        // 세션이 끊긴 게 아니므로 AU_015 로 응답하거나 쿠키를 지우면 멀쩡한 로그인이 날아간다.
+        given(tokenStorePort.find(any())).willReturn(Optional.of("token-from-the-winning-tab"));
+        given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
+
+        MvcResult result = mockMvc.perform(post("/api/v1/auth/refresh").cookie(refreshToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.errorCode").value("AU_016"))
+                .andReturn();
+
+        assertThat(result.getResponse().getCookies()).isEmpty();
+    }
+
+    private MvcResult login() throws Exception {
+        return mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"owner@pairing.com","password":"Passw0rd!","role":"CLIENT"}"""))
+                .andExpect(status().isOk())
+                .andReturn();
+    }
+
+    /** 두 쿠키 모두 값이 비고 수명이 0이어야 브라우저가 즉시 삭제한다. */
+    private void assertCookiesExpired(MvcResult result) {
+        for (String name : List.of("accessToken", "refreshToken")) {
+            Cookie cookie = result.getResponse().getCookie(name);
+            assertThat(cookie).as("%s 만료 쿠키", name).isNotNull();
+            assertThat(cookie.getValue()).isEmpty();
+            assertThat(cookie.getMaxAge()).isZero();
+            // 삭제 쿠키도 생성 때와 같은 Path 여야 브라우저가 같은 쿠키로 인식한다.
+            assertThat(cookie.getPath()).isEqualTo("/");
+        }
     }
 }

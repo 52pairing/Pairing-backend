@@ -8,6 +8,7 @@ import com.pairing.global.security.CurrentAccountId;
 import com.pairing.matching.application.usecase.EmbeddingReindexUseCase;
 import com.pairing.matching.application.usecase.MatchingCandidateCommandUseCase;
 import com.pairing.matching.application.usecase.MatchingCandidateQueryUseCase;
+import com.pairing.matching.application.usecase.MatchingAdminUseCase;
 import com.pairing.matching.application.usecase.MatchingRequestCommandUseCase;
 import com.pairing.matching.application.usecase.MatchingRequestQueryUseCase;
 import com.pairing.matching.application.usecase.MatchingRerecommendUseCase;
@@ -18,10 +19,16 @@ import com.pairing.matching.presentation.api.request.MatchingRequestCreateReques
 import com.pairing.matching.presentation.api.request.RerecommendRequest;
 import com.pairing.matching.presentation.api.response.CandidateListResponse;
 import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
+import com.pairing.matching.presentation.api.response.admin.AiLogResponse;
+import com.pairing.matching.presentation.api.response.admin.EmbeddingMissingResponse;
+import com.pairing.matching.presentation.api.response.admin.MatchingDiagnosticsResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -33,6 +40,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -53,6 +61,7 @@ public class MatchingController {
     private final MatchingRequestQueryUseCase matchingRequestQueryUseCase;
     private final MatchingRerecommendUseCase matchingRerecommendUseCase;
     private final EmbeddingReindexUseCase embeddingReindexUseCase;
+    private final MatchingAdminUseCase matchingAdminUseCase;
 
     @GetMapping("/positions/{positionId}/candidates")
     @PreAuthorize("hasRole('CLIENT')")
@@ -188,5 +197,74 @@ public class MatchingController {
         embeddingReindexUseCase.startReindexAll();
         return ResponseEntity.accepted()
                 .body(ApiResponse.accepted("EMBEDDINGS_REINDEX_STARTED", "임베딩 재색인을 시작했습니다."));
+    }
+
+    @GetMapping("/admin/embeddings/missing")
+    @Operation(summary = "[관리자] 임베딩 누락 대상 조회",
+            description = "프리랜서/포지션 중 임베딩이 없는 대상을 조회합니다. targetType은 ALL, FREELANCER, POSITION을 지원합니다.")
+    public ResponseEntity<ApiResponse<EmbeddingMissingResponse>> findMissingEmbeddings(
+            @RequestParam(defaultValue = "ALL") String targetType,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        Pageable pageable = PageRequest.of(page, size);
+        EmbeddingMissingResponse response = EmbeddingMissingResponse.from(
+                matchingAdminUseCase.findMissingEmbeddings(targetType, pageable));
+        return ResponseEntity.ok(ApiResponse.success("MISSING_EMBEDDINGS_FOUND", "조회에 성공했습니다.", response));
+    }
+
+    @PostMapping("/admin/embeddings/freelancers/{freelancerId}/reindex")
+    @Operation(summary = "[관리자] 프리랜서 임베딩 개별 재색인",
+            description = "특정 프리랜서의 이력서 기반 임베딩을 백그라운드에서 다시 생성합니다.")
+    public ResponseEntity<ApiResponse<Void>> reindexFreelancerEmbedding(
+            @PathVariable Long freelancerId
+    ) {
+        matchingAdminUseCase.reindexFreelancer(freelancerId);
+        return ResponseEntity.accepted()
+                .body(ApiResponse.accepted("FREELANCER_REINDEX_STARTED", "프리랜서 임베딩 재색인을 시작했습니다."));
+    }
+
+    @PostMapping("/admin/embeddings/positions/{positionId}/reindex")
+    @Operation(summary = "[관리자] 포지션 임베딩 개별 재색인",
+            description = "특정 포지션의 프로젝트/포지션 요약 기반 임베딩을 백그라운드에서 다시 생성합니다. projectId는 요약 조회에 필요합니다.")
+    public ResponseEntity<ApiResponse<Void>> reindexPositionEmbedding(
+            @PathVariable Long positionId,
+            @RequestParam Long projectId
+    ) {
+        matchingAdminUseCase.reindexPosition(projectId, positionId);
+        return ResponseEntity.accepted()
+                .body(ApiResponse.accepted("POSITION_REINDEX_STARTED", "포지션 임베딩 재색인을 시작했습니다."));
+    }
+
+    @GetMapping("/admin/ai-logs")
+    @Operation(summary = "[관리자] AI 로그 조회",
+            description = "ai_agent_log를 조회합니다. agentType/refType/refId/status/기간 필터를 지원합니다.")
+    public ResponseEntity<ApiResponse<PageResponse<AiLogResponse>>> findAiLogs(
+            @RequestParam(required = false) String agentType,
+            @RequestParam(required = false) String refType,
+            @RequestParam(required = false) Long refId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime to,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        Pageable pageable = PageRequest.of(page, size);
+        PageResponse<AiLogResponse> response = PageResponse.from(
+                matchingAdminUseCase.findAiLogs(agentType, refType, refId, status, from, to, pageable)
+                        .map(AiLogResponse::from));
+        return ResponseEntity.ok(ApiResponse.success("AI_LOGS_FOUND", "조회에 성공했습니다.", response));
+    }
+
+    @GetMapping("/admin/diagnostics")
+    @Operation(summary = "[관리자] 매칭 상태 디버깅",
+            description = "프로젝트/포지션 기준으로 스냅샷, 임베딩, 라운드, 후보, 요청 생성 여부를 확인합니다.")
+    public ResponseEntity<ApiResponse<MatchingDiagnosticsResponse>> findDiagnostics(
+            @RequestParam Long projectId,
+            @RequestParam Long positionId
+    ) {
+        MatchingDiagnosticsResponse response = MatchingDiagnosticsResponse.from(
+                matchingAdminUseCase.findDiagnostics(projectId, positionId));
+        return ResponseEntity.ok(ApiResponse.success("MATCHING_DIAGNOSTICS_FOUND", "조회에 성공했습니다.", response));
     }
 }

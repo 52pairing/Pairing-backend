@@ -12,6 +12,7 @@ import com.pairing.matching.exception.MatchingErrorCode;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
@@ -146,6 +147,10 @@ public class PythonMatchingAdapter implements MatchingPort {
     private void withCommonHeaders(org.springframework.http.HttpHeaders headers) {
         headers.add(INTERNAL_API_KEY_HEADER, internalApiKey);
         headers.add(TRACE_ID_HEADER, TraceIdFilter.currentTraceId());
+        // Accept 를 안 보내면 상대가 application/octet-stream 으로 내려줄 수 있고, 그러면 이 응답을
+        // 읽을 컨버터가 없어 예외가 난다. 협상 어댑터에서 실제로 겪은 실패다(2026-08-11 실측) —
+        // 그때는 폴백이 있어 대화가 통째로 가짜가 됐고, 여기는 폴백이 없어 호출이 그냥 실패한다.
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
     }
 
     private <T> T requireData(PythonApiResponse<T> response) {

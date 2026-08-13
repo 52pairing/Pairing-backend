@@ -64,6 +64,16 @@ public record NegotiationResponse(
         @Schema(description = "AI 협상 종료(AI Out) 시각")
         LocalDateTime aiOutAt,
 
+        @Schema(description = "협상이 끝난 시각. 진행 중이면 null. 타결·결렬 모두 채워진다")
+        LocalDateTime endedAt,
+
+        @Schema(description = "종료 사유. **결렬일 때만** 값이 있다(타결은 사유가 없으므로 null). "
+                + "사람이 포기하면 입력한 사유가, 사유를 안 적었으면 \"협상 포기\"가, "
+                + "라운드 상한을 다 쓰면 \"라운드 상한(15회) 소진으로 자동 결렬\"이 온다. "
+                + "**사람이 쓴 문장이 그대로 오므로 화면에 그대로 노출하기 전에 이스케이프할 것**",
+                example = "근무 형태 조건 차이가 좁혀지지 않아 협상을 종료합니다.")
+        String endReason,
+
         @Schema(description = "[미사용] 15회 자동 결렬 채택으로 폐기. 항상 false", example = "false")
         boolean finalApprovalRequired,
 

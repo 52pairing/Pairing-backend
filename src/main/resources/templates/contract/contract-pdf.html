@@ -10,18 +10,29 @@
          */
         @page { size: A4; margin: 20mm 18mm; }
 
-        body { font-family: "NotoSansKR", sans-serif; font-size: 10pt; line-height: 1.7; color: #1a1a1a; }
+        /*
+         * 글자는 전부 검정으로 둔다. 계약서는 인쇄해서 보관하는 문서라, 화면에서 옅어 보이는
+         * 정도가 종이에서는 더 심해진다. 항목 이름과 값의 구분은 색이 아니라 표의 좌우 칸이 한다.
+         */
+        /*
+         * font-weight 는 렌더러가 등록한 굵기(400 · 700)에만 대응한다. 그 사이 값을 쓰면
+         * PDFBox 가 가까운 쪽으로 맞추므로 400 과 700 만 쓴다.
+         */
+        body { font-family: "NotoSansKR", sans-serif; font-size: 10pt; line-height: 1.7;
+               color: #000; font-weight: 400; }
 
-        h1 { font-size: 18pt; text-align: center; margin: 0 0 4mm; letter-spacing: 2pt; }
-        .subtitle { text-align: center; font-size: 8.5pt; color: #666; margin-bottom: 10mm; }
+        h1 { font-size: 18pt; text-align: center; margin: 0 0 4mm; letter-spacing: 2pt;
+             font-weight: 700; }
+        .subtitle { text-align: center; font-size: 8.5pt; color: #000; margin-bottom: 10mm; }
 
-        h2 { font-size: 11pt; margin: 7mm 0 2mm; padding-bottom: 1.5mm; border-bottom: 1px solid #2c3e6b; }
+        h2 { font-size: 11pt; margin: 7mm 0 2mm; padding-bottom: 1.5mm;
+             border-bottom: 1px solid #2c3e6b; font-weight: 700; }
 
         .parties { width: 100%; border-collapse: collapse; margin-bottom: 6mm; }
         .parties td { width: 50%; vertical-align: top; padding: 0 3mm; }
 
         table.info { width: 100%; border-collapse: collapse; font-size: 9pt; }
-        table.info th { width: 32%; text-align: left; color: #666; font-weight: normal;
+        table.info th { width: 32%; text-align: left; color: #000; font-weight: normal;
                         padding: 1.2mm 0; vertical-align: top; }
         table.info td { padding: 1.2mm 0; vertical-align: top; }
 
@@ -36,13 +47,13 @@
         .sign-box { width: 100%; border-collapse: collapse; }
         .sign-box td { width: 50%; border: 1px solid #ddd; padding: 4mm; text-align: center;
                        vertical-align: top; height: 38mm; }
-        .sign-role { font-size: 8.5pt; color: #666; }
+        .sign-role { font-size: 8.5pt; color: #000; }
         .sign-name { font-size: 12pt; margin: 2mm 0; }
         .sign-image { max-height: 20mm; }
-        .sign-at { font-size: 8pt; color: #888; }
+        .sign-at { font-size: 8pt; color: #000; }
         .sign-pending { font-size: 9pt; color: #b00; }
 
-        .footer { margin-top: 8mm; text-align: center; font-size: 8pt; color: #888; }
+        .footer { margin-top: 8mm; text-align: center; font-size: 8pt; color: #000; }
     </style>
 </head>
 <body>
