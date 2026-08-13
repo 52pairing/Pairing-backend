@@ -10,6 +10,8 @@ import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
+import com.pairing.account.domain.model.ClientProfile;
+import com.pairing.project.domain.model.Project;
 import com.pairing.settlement.application.result.SettlementResult;
 import com.pairing.settlement.application.usecase.SettlementPaymentUseCase;
 import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
@@ -18,6 +20,7 @@ import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
 import com.pairing.settlement.exception.SettlementErrorCode;
 import com.pairing.settlement.presentation.api.request.SettlementPayRequest;
+import com.pairing.settlement.presentation.api.response.MySettlementSummaryResponse;
 import com.pairing.settlement.presentation.api.response.PenaltyResponse;
 import com.pairing.settlement.presentation.api.response.SettlementResponse;
 import com.pairing.settlement.presentation.api.response.SettlementSummaryResponse;
@@ -77,7 +80,7 @@ public class SettlementController {
             @CurrentAccountId Long accountId
     ) {
         // 여러 정산이 같은 프로젝트를 가리키는 경우가 많아 요청 단위로 이름 조회를 모은다.
-        Map<Long, String> titleCache = new HashMap<>();
+        Map<Long, ProjectInfo> titleCache = new HashMap<>();
         Map<Long, String> methodLabels = paymentMethodLabels(accountId);
 
         Page<SettlementResponse> data = settlementQueryUseCase
@@ -86,6 +89,25 @@ public class SettlementController {
 
         return ResponseEntity.ok(ApiResponse.success("SETTLEMENTS_FOUND", "조회에 성공했습니다.",
                 PageResponse.from(data)));
+    }
+
+    @GetMapping("/mine/summary")
+    @Operation(summary = "내 결제 내역 요약",
+            description = "마이페이지 결제 내역 상단 카드와 요약 줄에 사용합니다. "
+                    + "**결제 완료된 수수료만** 셉니다 — 문구가 '총 납부 수수료'라 실제로 낸 것만 세야 합니다.\n\n"
+                    + "목록 API 로는 만들 수 없습니다. 페이징이라 한 페이지 몫만 더하게 되어 2페이지부터 틀립니다.\n\n"
+                    + "클라이언트와 프리랜서가 같은 응답을 받아 필요한 칸만 고릅니다.\n"
+                    + "- 클라이언트: totalAmount · depositAmount · successFeeAmount\n"
+                    + "- 프리랜서: successFeeAmount · successFeeProjectCount(완료 프로젝트 수)\n\n"
+                    + "탭을 바꿔도 값이 안 바뀌므로 화면 진입 시 한 번만 부르면 됩니다. "
+                    + "낸 게 없으면 전부 0 입니다.")
+    public ResponseEntity<ApiResponse<MySettlementSummaryResponse>> findMySummary(
+            @CurrentAccountId Long accountId
+    ) {
+        MySettlementSummaryResponse data =
+                MySettlementSummaryResponse.from(settlementQueryUseCase.getMySummary(accountId));
+
+        return ResponseEntity.ok(ApiResponse.success("SETTLEMENT_SUMMARY_FOUND", "조회에 성공했습니다.", data));
     }
 
     @GetMapping("/{settlementId}")
@@ -124,17 +146,25 @@ public class SettlementController {
     }
 
     /**
-     * 프로젝트명·결제수단 표기를 붙여 응답을 조립한다.
+     * 프로젝트명·발주 기업명·결제수단 표기를 붙여 응답을 조립한다.
      *
      * <p>정산 서비스가 project 를 직접 읽으면 project -> settlement 방향과 맞물려 순환이 되므로
      * 프레젠테이션에서 인바운드 포트를 조합한다. payerName 은 아직 채우지 않는다.
      */
-    private SettlementResponse toResponse(SettlementResult result, Map<Long, String> titleCache,
+    private SettlementResponse toResponse(SettlementResult result, Map<Long, ProjectInfo> projectCache,
                                           Map<Long, String> methodLabels) {
+        ProjectInfo project = resolveProject(result.projectId(), projectCache);
         return SettlementResponse.from(result,
-                resolveProjectTitle(result.projectId(), titleCache),
+                project.title(),
                 null,
+                project.clientName(),
                 methodLabels.get(result.paymentMethodId()));
+    }
+
+    /** 프로젝트 1건에서 뽑아 쓰는 값. 제목과 기업명을 따로 조회하지 않으려고 묶어 둔다. */
+    private record ProjectInfo(String title, String clientName) {
+
+        private static final ProjectInfo EMPTY = new ProjectInfo(null, null);
     }
 
     /**
@@ -152,25 +182,33 @@ public class SettlementController {
     }
 
     /**
-     * 프로젝트명. 못 찾으면 null 로 흘린다.
+     * 프로젝트명과 발주 기업명. 못 찾으면 두 칸 다 null 로 흘린다.
      *
      * <p>프로젝트가 삭제돼도 정산 이력은 남아야 한다. 여기서 예외를 그대로 올리면
      * 그 한 건 때문에 목록 전체가 실패한다. 실패도 캐시해 같은 프로젝트를 되묻지 않는다.
+     *
+     * <p>제목과 기업명을 한 번에 뽑는다. 따로 조회하면 목록 한 페이지에 프로젝트 조회가 두 배로
+     * 나가는데, 기업명은 이미 읽어 온 {@code project.getClientId()} 로 한 단계만 더 가면 된다.
      */
-    private String resolveProjectTitle(Long projectId, Map<Long, String> titleCache) {
-        if (titleCache.containsKey(projectId)) {
-            return titleCache.get(projectId);
+    private ProjectInfo resolveProject(Long projectId, Map<Long, ProjectInfo> projectCache) {
+        if (projectCache.containsKey(projectId)) {
+            return projectCache.get(projectId);
         }
 
-        String title = null;
+        ProjectInfo info = ProjectInfo.EMPTY;
         try {
-            title = projectQueryUseCase.getById(projectId).getTitle();
+            Project project = projectQueryUseCase.getById(projectId);
+            // clientId 는 client_profile.id 다. account.id 가 아니라 프로필로 바로 찾는다.
+            String clientName = accountQueryUseCase.findClientProfileById(project.getClientId())
+                    .map(ClientProfile::getCompanyName)
+                    .orElse(null);
+            info = new ProjectInfo(project.getTitle(), clientName);
         } catch (BusinessException e) {
-            // getById 는 대상이 없을 때만 던진다. 이름을 비우고 넘어간다.
+            // getById 는 대상이 없을 때만 던진다. 두 칸을 비우고 넘어간다.
         }
 
-        titleCache.put(projectId, title);
-        return title;
+        projectCache.put(projectId, info);
+        return info;
     }
 
     @GetMapping("/penalties/mine")
@@ -228,7 +266,7 @@ public class SettlementController {
 
     private SettlementResponse sampleSettlement() {
         return new SettlementResponse(700L, "ST-2026-000045", 1L, "페어링 웹 리뉴얼", 600L,
-                PartyRole.CLIENT, "주식회사 페어링", SettlementPhase.DEPOSIT, 22_000_000L,
+                PartyRole.CLIENT, "주식회사 페어링", "주식회사 오이랩", SettlementPhase.DEPOSIT, 22_000_000L,
                 new BigDecimal("3.00"), new BigDecimal("0.00"), 660_000L,
                 SettlementStatus.PENDING,
                 "신한카드 **** 1234", "AP-20260804-3821", null, null,

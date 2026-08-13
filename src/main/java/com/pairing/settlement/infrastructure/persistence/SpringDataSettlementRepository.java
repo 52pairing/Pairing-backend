@@ -36,6 +36,27 @@ public interface SpringDataSettlementRepository extends JpaRepository<Settlement
                                           Pageable pageable);
 
     /**
+     * 마이페이지 결제 내역 요약. <b>결제 완료({@code PAID})만</b> 센다.
+     *
+     * <p>화면 문구가 "총 납부 수수료"라 실제로 낸 것만 세야 한다. 결제 대기·미납·취소된 정산까지
+     * 세면 아직 내지 않은 돈이 납부액에 들어간다.
+     *
+     * <p>목록으로는 만들 수 없다. 페이징이라 한 페이지 몫만 더하게 되어 2페이지부터 숫자가 틀린다.
+     *
+     * <p>단계별로 묶어 한 번에 받는다. 탭이 3개라고 3번 부르지 않는다 —
+     * 화면의 요약 줄은 탭과 무관하게 고정이라 어차피 전부 필요하다.
+     */
+    @Query("""
+            SELECT new com.pairing.settlement.infrastructure.persistence.PaidSettlementSumRow(
+                       s.phase, SUM(s.feeAmount), COUNT(DISTINCT s.projectId))
+              FROM SettlementJpaEntity s
+             WHERE s.payerAccountId = :payerAccountId
+               AND s.status = com.pairing.settlement.domain.model.SettlementStatus.PAID
+             GROUP BY s.phase
+            """)
+    List<PaidSettlementSumRow> sumPaidByPayerGroupedByPhase(@Param("payerAccountId") Long payerAccountId);
+
+    /**
      * 프로젝트에서 한 당사자가 낼 결제 대기 정산. 오래된 것부터 준다.
      *
      * <p>{@code payerRole} 로 좁히는 이유는, 계약이 체결되면 같은 프로젝트에 프리랜서 착수금이
