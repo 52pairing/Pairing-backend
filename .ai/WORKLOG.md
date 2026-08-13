@@ -1497,3 +1497,58 @@ UPDATE resume_career c SET sort_order = r.new_order
 ```
 
 **더미 데이터를 SQL 로 직접 넣을 때는 `sort_order`를 0부터 시작해야 한다.** 이번 사고의 출발점이다.
+
+---
+
+## 2026-08-13 (4) — 요청 상세가 프리랜서에게 404(AC_002) 나던 버그
+
+프론트 리포트로 접수. `GET /api/v1/matchings/requests/{requestId}` 를 **프리랜서**가 부르면
+`404 AC_002 "프로필 정보를 찾을 수 없습니다"` 가 났다. 목록(`/requests/received`)은 정상이었다.
+
+### 원인 — 당사자 판별에 "던지는 조회"를 썼다
+
+```
+findRequest(requestId, 프리랜서_accountId)
+ └ projectDirectoryPort.isOwnedByAccount(projectId, accountId)
+    └ ProjectQueryService.isOwnedBy -> resolveClientProfileId(accountId)
+       └ clientProfileReaderPort.getByAccountId(accountId)
+          └ accountQueryUseCase.getClientProfile(accountId)
+             └ orElseThrow(AC_002)          <- 프리랜서에겐 client_profile 행이 없다
+```
+
+`ClientProfileReaderPort` 의 javadoc 도 "프로필이 없으면 account 도메인의 AC_002 가 그대로
+올라온다"고 적고 있다. **클라이언트 계정으로만 부를 수 있는 조회를 프리랜서 accountId 로 불렀다.**
+
+프론트의 추정("상대방 프로필을 추가 조회하다 실패")은 틀렸다. 상대방 프로필이 아니라
+**호출자 본인의 권한을 확인하려고** 부른 조회다.
+
+### 같은 자리에서 두 번째다
+
+- **2026-08-09**: `resolveFreelancerId` 를 먼저 불러서 **클라이언트가** 늘 MT_015(404)
+- **2026-08-13**: 그걸 고치며 `isOwnedByAccount` 를 앞으로 옮겼더니 **프리랜서가** 늘 AC_002(404)
+
+한쪽만 보고 순서를 바꿔서 반대쪽을 깬 것이다. 근본 원인은 순서가 아니라 **신분 확인을 예외로
+했다는 것**이다. 두 조회 모두 "상대 신분이면 던진다"라서 뭘 먼저 부르든 한쪽은 404가 된다.
+
+### 무엇을 바꿨나
+
+- `FreelancerDirectoryPort.findFreelancerId(accountId)` 신규 - `resolveFreelancerId` 의 **안 던지는**
+  버전이다(`AccountQueryUseCase.findFreelancerProfileByAccountId` 가 이미 Optional 을 준다).
+- `findRequest` 가 이걸로 먼저 신분을 가르고, **각 분기에서만 자기 쪽 조회**를 쓴다. 프리랜서
+  경로는 `isOwnedByAccount` 를 아예 부르지 않고, 클라이언트 경로는 `resolveFreelancerId` 를
+  부르지 않는다. 판별을 값으로 하니 어느 쪽도 남의 도메인 예외를 만나지 않는다.
+
+### 검증
+
+- `MatchingIntegrationTest.requestDetailIsReadableByBothParties` 신규 - **한 테스트에서 클라이언트와
+  프리랜서 양쪽을 다 조회**한다. 기존 상세 테스트가 전부 클라이언트 토큰만 써서 이 회귀를 못 잡았다.
+  한 방향만 검증하면 순서를 뒤집는 수정이 또 통과한다.
+- **변이 테스트로 확인**: 수정 전 로직으로 되돌리면 이 테스트가 **AC_002 로 실패**한다.
+  프론트가 보고한 그 에러코드 그대로다.
+- `./gradlew clean build` 통과 - **520 tests, 0 failures**
+
+### 남는 것
+
+클라이언트 계정에 `client_profile` 이 없으면 여전히 AC_002 가 난다. 그건 클라이언트로선 진짜 데이터
+이상이고 account 도메인의 계약이므로 그대로 둔다. 프리랜서에게 `client_profile` 이 없는 것은
+**정상**이고, 그 경우가 이번 버그였다.

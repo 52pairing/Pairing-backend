@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 /** {@link FreelancerDirectoryPort}의 실제 구현. account/freelancer 도메인의 인바운드 포트를 조합한다. */
 @Component
@@ -60,6 +61,12 @@ public class FreelancerDirectoryAdapter implements FreelancerDirectoryPort {
         return freelancerConditionUseCase.findMyCondition(accountId)
                 .map(FreelancerConditionResponse::from)
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.FREELANCER_NOT_FOUND));
+    }
+
+    @Override
+    public Optional<Long> findFreelancerId(Long accountId) {
+        return accountQueryUseCase.findFreelancerProfileByAccountId(accountId)
+                .map(FreelancerProfile::getId);
     }
 
     @Override
