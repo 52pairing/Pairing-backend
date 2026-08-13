@@ -180,6 +180,48 @@ public class Account {
     // 조회용 판정
     // ==========================================
 
+    /**
+     * 탈퇴 처리. (요구사항 R17, R31)
+     *
+     * <p><b>계정 행을 지우지 않는다.</b> 리뷰·계약·정산이 이 계정을 참조하고 있어서, 지우면
+     * 남의 화면에서 상대가 사라진다. 대신 상태를 WITHDRAWN 으로 바꾸고 로그인 경로를 막는다.
+     *
+     * <p>이메일·휴대폰은 <b>더미값으로 갈아엎고 원본은 해시로만 남긴다.</b> 원본을 그대로 두면
+     * 탈퇴했는데 개인정보가 계속 살아 있는 것이고, 아예 지우면 30일 재가입 제한을 판정할 수 없다.
+     * 해시는 되돌릴 수 없으므로 "같은 사람인지"만 알 수 있다.
+     *
+     * <p>더미값에 계정 id 를 넣는 이유는 {@code (email, role)}·{@code (phone, role)} 에 유니크
+     * 제약이 걸려 있어서다. 고정값을 쓰면 두 번째 탈퇴자가 제약에 걸린다.
+     *
+     * @param dummyEmail 치환할 더미 이메일. 계정 id 가 들어가 중복되지 않아야 한다
+     * @param dummyPhone 치환할 더미 휴대폰
+     * @param emailHash  원본 이메일 해시. 재가입 제한 판정에만 쓴다
+     * @param phoneHash  원본 휴대폰 해시
+     * @param rejoinAvailableAt 이 시각 이후에 같은 이메일·휴대폰으로 재가입할 수 있다
+     * @param purgeAt    해시까지 파기할 예정일
+     */
+    public void withdraw(String reason, String dummyEmail, String dummyPhone, String emailHash, String phoneHash,
+                         LocalDateTime rejoinAvailableAt, LocalDateTime purgeAt) {
+        if (isWithdrawn()) {
+            throw new BusinessException(AccountErrorCode.ALREADY_WITHDRAWN);
+        }
+        LocalDateTime now = LocalDateTime.now();
+
+        this.emailHash = emailHash;
+        this.phoneHash = phoneHash;
+        this.email = dummyEmail;
+        this.phone = dummyPhone;
+
+        // 비밀번호를 지워 두면 남은 해시로 로그인이 시도될 여지가 없다.
+        this.passwordHash = null;
+        this.status = AccountStatus.WITHDRAWN;
+        this.withdrawnAt = now;
+        this.withdrawReason = reason;
+        this.rejoinAvailableAt = rejoinAvailableAt;
+        this.purgeAt = purgeAt;
+        this.deletedAt = now;
+    }
+
     public boolean isLocked() {
         return this.status == AccountStatus.LOCKED;
     }

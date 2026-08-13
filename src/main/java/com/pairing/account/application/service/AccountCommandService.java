@@ -5,7 +5,10 @@ import com.pairing.account.application.command.CardCommand;
 import com.pairing.account.application.command.CreateClientAccountCommand;
 import com.pairing.account.application.command.CreateFreelancerAccountCommand;
 import com.pairing.account.application.command.CreateSocialFreelancerAccountCommand;
+import com.pairing.account.application.command.WithdrawAccountCommand;
+import com.pairing.account.application.result.WithdrawalEligibilityResult;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
+import com.pairing.account.application.usecase.WithdrawalEligibilityUseCase;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.account.domain.model.BankCode;
@@ -23,12 +26,15 @@ import com.pairing.account.domain.repository.SocialAccountRepository;
 import com.pairing.account.exception.AccountErrorCode;
 import com.pairing.auth.application.policy.ContactPolicy;
 import com.pairing.global.exception.BusinessException;
+import com.pairing.auth.application.port.SessionRegistryPort;
+import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.global.port.out.DataEncryptionPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -46,12 +52,33 @@ public class AccountCommandService implements AccountCommandUseCase {
 
     private static final int CARD_LAST4_LENGTH = 4;
 
+    /** 탈퇴 후 같은 이메일·휴대폰으로 재가입할 수 없는 기간. (R31) */
+    private static final int REJOIN_RESTRICT_DAYS = 30;
+
+    /**
+     * 개인정보(이메일·휴대폰 해시)를 파기하는 시점. 정책상 <b>1년</b>이다.
+     *
+     * <p>사용자가 남긴 기록(완료된 프로젝트·리뷰·협상 채팅)은 이 기간과 무관하게 그대로 남는다.
+     * 지워지는 건 "그 계정이 누구였는지" 를 가리키는 값뿐이다. 기록까지 지우면 상대방 화면에서
+     * 거래 이력이 사라진다.
+     */
+    private static final int PURGE_RETENTION_YEARS = 1;
+
+    private static final String WITHDRAWN_PREFIX = "withdrawn-";
+    private static final String WITHDRAWN_EMAIL_DOMAIN = "@withdrawn.pairing.invalid";
+
+    /** 탈퇴 확인 문구. 화면 안내와 같은 값이어야 한다. */
+    private static final String WITHDRAW_CONFIRM_TEXT = "탈퇴하겠습니다";
+
     private final AccountRepository accountRepository;
     private final SocialAccountRepository socialAccountRepository;
     private final ClientProfileRepository clientProfileRepository;
     private final FreelancerProfileRepository freelancerProfileRepository;
     private final PaymentMethodRepository paymentMethodRepository;
     private final DataEncryptionPort dataEncryptionPort;
+    private final WithdrawalEligibilityUseCase withdrawalEligibilityUseCase;
+    private final SessionRegistryPort sessionRegistryPort;
+    private final TokenStorePort tokenStorePort;
 
     @Override
     public Long createClientAccount(CreateClientAccountCommand command) {
@@ -260,6 +287,89 @@ public class AccountCommandService implements AccountCommandUseCase {
                         lastFourOf(accountNo),
                         bankAccount.accountHolder())
         ));
+    }
+
+    /**
+     * 회원 탈퇴. (R17, R31)
+     *
+     * <p>순서가 중요하다. <b>거절 조건을 먼저 다 확인한 뒤에 계정을 건드린다.</b> 중간에 예외가
+     * 나면 트랜잭션이 롤백되긴 하지만, 세션 파기처럼 되돌릴 수 없는 작업이 섞이면 어긋난다.
+     *
+     * <p>진행 중 판정은 두 방향으로 본다. 클라이언트는 자기가 등록한 프로젝트, 프리랜서는 자기가
+     * 맺은 계약이다. 역할로 갈라서 하나만 보면 반대쪽이 뚫린다.
+     */
+    @Override
+    @Transactional
+    public void withdraw(WithdrawAccountCommand command) {
+        Account account = accountRepository.findById(command.accountId())
+                .orElseThrow(() -> new BusinessException(AccountErrorCode.ACCOUNT_NOT_FOUND));
+
+        if (account.isWithdrawn()) {
+            throw new BusinessException(AccountErrorCode.ALREADY_WITHDRAWN);
+        }
+
+        requireConfirmText(command.confirmText());
+        requireWithdrawable(account.getId());
+
+        LocalDateTime now = LocalDateTime.now();
+        account.withdraw(
+                command.reason(),
+                withdrawnPlaceholder(account.getId(), WITHDRAWN_EMAIL_DOMAIN),
+                withdrawnPlaceholder(account.getId(), ""),
+                ContactPolicy.sha256(account.getEmail()),
+                ContactPolicy.sha256(account.getPhone()),
+                now.plusDays(REJOIN_RESTRICT_DAYS),
+                now.plusYears(PURGE_RETENTION_YEARS));
+
+        accountRepository.save(account);
+
+        // 저장이 끝난 뒤에 세션을 끊는다. 먼저 끊으면 저장이 실패했을 때 로그아웃만 된 상태가 된다.
+        sessionRegistryPort.clear(account.getId());
+        tokenStorePort.delete(account.getId());
+    }
+
+    /**
+     * 확인 문구 검사.
+     *
+     * <p>화면에서 이미 검사하지만 서버가 다시 본다. 프론트만 믿으면 API 를 직접 부르는 경로로
+     * 실수든 스크립트든 계정이 지워질 수 있다. 되돌릴 수 없는 작업이라 한 번 더 막는다.
+     *
+     * <p>앞뒤 공백만 정리하고 그 외에는 정확히 일치해야 한다. 띄어쓰기를 허용하면
+     * "일부러 타이핑하게 만든다"는 장치 자체가 의미를 잃는다.
+     */
+    private void requireConfirmText(String confirmText) {
+        if (confirmText == null || !WITHDRAW_CONFIRM_TEXT.equals(confirmText.trim())) {
+            throw new BusinessException(AccountErrorCode.WITHDRAW_CONFIRM_MISMATCH);
+        }
+    }
+
+    /**
+     * 아직 끝나지 않은 거래·미납이 있으면 막는다. 탈퇴하면 상대방이 진행할 방법이 없어진다.
+     *
+     * <p>판정은 화면이 쓰는 것과 <b>같은 것을 쓴다</b>({@code getWithdrawalEligibility}).
+     * 여기서 따로 세면 "화면은 되는데 눌러보면 막히는" 상태가 생긴다.
+     */
+    private void requireWithdrawable(Long accountId) {
+        WithdrawalEligibilityResult eligibility = withdrawalEligibilityUseCase.getWithdrawalEligibility(accountId);
+        if (eligibility.withdrawable()) {
+            return;
+        }
+
+        // 정산만 결제로 풀리고 나머지는 거래가 끝나야 풀린다. 사용자가 할 일이 달라서 코드를 나눈다.
+        boolean settlementOnly = eligibility.blockers().stream()
+                .allMatch(blocked -> blocked.blocker().isSettlement());
+
+        throw new BusinessException(settlementOnly
+                ? AccountErrorCode.WITHDRAW_BLOCKED_BY_SETTLEMENT
+                : AccountErrorCode.WITHDRAW_BLOCKED_BY_PROJECT);
+    }
+
+    /**
+     * 더미 이메일·휴대폰. {@code (email, role)} 과 {@code (phone, role)} 에 유니크 제약이 있어
+     * 계정 id 를 섞어 서로 겹치지 않게 만든다.
+     */
+    private String withdrawnPlaceholder(Long accountId, String suffix) {
+        return WITHDRAWN_PREFIX + accountId + suffix;
     }
 
     /**

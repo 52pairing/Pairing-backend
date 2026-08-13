@@ -5,6 +5,8 @@ import com.pairing.global.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDateTime;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -128,5 +130,48 @@ class AccountTest {
 
         assertThatThrownBy(() -> account.changePassword("  ", false))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("탈퇴하면 이메일·휴대폰이 더미로 바뀌고 원본은 해시로만 남는다")
+    void withdrawReplacesContactWithPlaceholder() {
+        Account account = emailAccount();
+        LocalDateTime rejoinAt = LocalDateTime.now().plusDays(30);
+        LocalDateTime purgeAt = LocalDateTime.now().plusYears(5);
+
+        account.withdraw("서비스를 더 이용하지 않습니다.",
+                "withdrawn-1@withdrawn.pairing.invalid", "withdrawn-1",
+                "email-hash", "phone-hash", rejoinAt, purgeAt);
+
+        // 원본 연락처가 남아 있으면 탈퇴했는데 개인정보가 살아 있는 것이다
+        assertThat(account.getEmail()).isEqualTo("withdrawn-1@withdrawn.pairing.invalid");
+        assertThat(account.getPhone()).isEqualTo("withdrawn-1");
+        assertThat(account.getEmailHash()).isEqualTo("email-hash");
+        assertThat(account.getPhoneHash()).isEqualTo("phone-hash");
+
+        // 남은 비밀번호 해시로 로그인이 시도될 여지를 없앤다
+        assertThat(account.getPasswordHash()).isNull();
+
+        assertThat(account.getStatus()).isEqualTo(AccountStatus.WITHDRAWN);
+        assertThat(account.isWithdrawn()).isTrue();
+        assertThat(account.isActive()).isFalse();
+        assertThat(account.getWithdrawnAt()).isNotNull();
+        assertThat(account.getDeletedAt()).isNotNull();
+        assertThat(account.getRejoinAvailableAt()).isEqualTo(rejoinAt);
+        assertThat(account.getPurgeAt()).isEqualTo(purgeAt);
+    }
+
+    @Test
+    @DisplayName("이미 탈퇴한 계정은 다시 탈퇴할 수 없다")
+    void rejectsDoubleWithdraw() {
+        Account account = emailAccount();
+        account.withdraw(null, "withdrawn-1@withdrawn.pairing.invalid", "withdrawn-1",
+                "email-hash", "phone-hash", LocalDateTime.now(), LocalDateTime.now());
+
+        assertThatThrownBy(() -> account.withdraw(null, "withdrawn-1@withdrawn.pairing.invalid", "withdrawn-1",
+                "email-hash", "phone-hash", LocalDateTime.now(), LocalDateTime.now()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(AccountErrorCode.ALREADY_WITHDRAWN);
     }
 }

@@ -122,4 +122,5 @@ public class AccountQueryService implements AccountQueryUseCase {
     public List<PaymentMethod> findMyPaymentMethods(Long accountId) {
         return paymentMethodRepository.findAllByAccountId(accountId);
     }
+
 }
