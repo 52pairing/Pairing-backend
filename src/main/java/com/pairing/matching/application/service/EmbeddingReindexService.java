@@ -32,6 +32,9 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
     private final MatchingRoundRepository matchingRoundRepository;
     private final FreelancerEmbeddingRefresher freelancerEmbeddingRefresher;
 
+    /** 진행률 로그 주기(건). 1600건 규모에서 16줄이면 위치 파악에 충분하고 로그를 덮지 않는다. */
+    private static final int PROGRESS_LOG_INTERVAL = 100;
+
     /**
      * 컨트롤러가 부르는 진입점. 프록시를 거쳐야 {@code @Async}가 실제로 적용되므로 자기 자신을
      * 호출하지 않고 컨트롤러 → 이 메서드 순서로만 들어온다.
@@ -56,24 +59,48 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
 
     private int[] reindexFreelancers() {
         List<Long> freelancerIds = freelancerDirectoryPort.findAllFreelancerIdsWithResume();
+        // 대상 수를 **시작할 때** 남긴다. 끝에만 찍으면 도중에 죽었을 때(재배포로 컨테이너가 교체되면
+        // 이 비동기 루프는 아무 흔적 없이 사라진다) 몇 명을 처리하려던 것인지조차 알 수 없다.
+        log.info("MATCHING_DEBUG java.reindex.start target=freelancer targets={}", freelancerIds.size());
+
+        int processed = 0;
         int success = 0;
         int fail = 0;
+        int skippedBlank = 0;
         for (Long freelancerId : freelancerIds) {
             try {
                 // 이력서·조건 저장 경로와 같은 조립을 써야 한다. 여기서만 따로 만들면 재색인 전후로
                 // 같은 사람의 벡터가 달라진다.
-                freelancerEmbeddingRefresher.refreshByFreelancerId(freelancerId);
-                success++;
+                if (freelancerEmbeddingRefresher.refreshByFreelancerId(freelancerId)) {
+                    success++;
+                } else {
+                    skippedBlank++;
+                }
             } catch (Exception e) {
                 fail++;
                 log.warn("[임베딩 재색인 실패 - 프리랜서] freelancerId={}", freelancerId, e);
             }
+            processed++;
+            // 진행률을 주기적으로 남긴다. 루프가 중간에 죽으면 요약 로그가 아예 안 찍히므로,
+            // "어디까지 갔나"는 이 줄로만 알 수 있다.
+            if (processed % PROGRESS_LOG_INTERVAL == 0) {
+                log.info("MATCHING_DEBUG java.reindex.progress target=freelancer processed={}/{} "
+                                + "succeeded={} failed={} skipped_blank={} last_freelancer_id={}",
+                        processed, freelancerIds.size(), success, fail, skippedBlank, freelancerId);
+            }
         }
+
+        log.info("MATCHING_DEBUG java.reindex.summary target=freelancer targets={} processed={} "
+                        + "succeeded={} failed={} skipped_blank={}",
+                freelancerIds.size(), processed, success, fail, skippedBlank);
         return new int[] {success, fail};
     }
 
     private int[] reindexPositions() {
         List<MatchingRound> rounds = matchingRoundRepository.findLatestRoundsByDistinctPosition();
+        log.info("MATCHING_DEBUG java.reindex.start target=position targets={}", rounds.size());
+
+        int processed = 0;
         int success = 0;
         int fail = 0;
         for (MatchingRound round : rounds) {
@@ -86,7 +113,17 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
                 fail++;
                 log.warn("[임베딩 재색인 실패 - 포지션] positionId={}", positionId, e);
             }
+            processed++;
+            if (processed % PROGRESS_LOG_INTERVAL == 0) {
+                log.info("MATCHING_DEBUG java.reindex.progress target=position processed={}/{} "
+                                + "succeeded={} failed={} last_position_id={}",
+                        processed, rounds.size(), success, fail, positionId);
+            }
         }
+
+        log.info("MATCHING_DEBUG java.reindex.summary target=position targets={} processed={} "
+                        + "succeeded={} failed={}",
+                rounds.size(), processed, success, fail);
         return new int[] {success, fail};
     }
 }

@@ -1252,3 +1252,87 @@ C1 의 "요청 → 상세 조회" 구간을 지나갈 수 없으므로 **C1 전�
 - Backend: `./gradlew test --tests "com.pairing.matching.*"` 통과
 - Python: `ruff check app/domains/embedding/repository.py tests/test_embedding_repository.py` 통과
 - Python: `pytest tests/test_embedding_repository.py` 5 passed, 1 skipped
+
+---
+
+## 2026-08-13 — 디버그 로그 정리(단계별 요약 + 개인정보·대량 로그 제거)
+
+팀원 요청("계산과 임베딩 단계별로 뭐했는지, 최종으로 몇 개 했는지 로그로 보이게")을 반영하면서,
+어제 넣은 디버그 로그에서 실제로 디버깅을 방해한 두 가지를 같이 걷어냈다.
+
+### 왜 손댔나 — 오늘 겪은 일
+
+사전검수 40명인데 AI 매칭 후보가 0~1명 나오는 문제를 추적하는 데 시간이 크게 들었다.
+원인 후보를 데이터로 여섯 번 지웠고(쿼터 / 저장 실패 / 대상 목록 누락 / `deleted_at` / 이력서 필드 /
+프로필 파일), 결론은 데이터가 아니라 **재색인 루프가 재배포와 Python 다운으로 중간에 죽은 것**이었다.
+
+두 가지가 이 추적을 어렵게 만들었다.
+
+- **임베딩 로그가 768차원 벡터를 통째로 찍었다.** 한 줄이 약 9KB, 프리랜서 1명당 두 줄이라
+  재색인 1600건이면 로그만 약 30MB다. 정작 필요한 예외 스택이 묻혀서 끝까지 못 찾았다.
+- **재색인이 대상 수를 안 남겼다.** `성공=1000 실패=0`만 찍혀서 "실패가 없으니 완료"로 읽혔는데,
+  실제 대상은 1601명이었고 601명은 손도 대지 않은 상태였다.
+
+### Python — `app/domains/embedding/service.py`
+
+- `_vector_log()` 삭제, `vector=%s` **5곳** 제거(`generated` / `upserted`x2 / `search` / `scored_search`).
+  `vector_preview`(앞 12개)와 `dimension`은 유지 — 값이 정상 범위인지, 생성됐는지는 이 둘로 판단된다.
+- `python.embedding.generated`의 `text_preview=%s` 제거. 자기소개 앞 500자가 stdout으로 나가고 있었다.
+  **`ai_agent_log.request_json`에 저장하는 쪽은 그대로 둔다** — 관리자 원본 로그 화면의 용도이고,
+  거기는 접근권한·보존기간·삭제요청 대응이 로그와 다르다. `text_chars`(길이)만 남겼다.
+- 두 결정의 근거를 코드 주석에 남겼다(다음에 누가 "다 보이게" 하려고 다시 넣는 것을 막기 위해).
+
+### Python — `app/domains/matching/service.py`
+
+- **`python.recommend.summary` 신규.** 파이프라인 한 줄 요약이다.
+  `hard_filter / relaxed / pool_cut / recruit / pool_multiplier / llm_returned / llm_dropped /
+  final / top_score / cut_score / elapsed_ms / final_candidates`.
+  단계별 상세 로그는 그대로 두되, 후보가 많으면 그 사이에 줄이 수십 개 끼어서 "어느 단계에서 몇 명이
+  줄었나"가 한눈에 안 읽히기 때문에 요약 한 줄을 따로 둔다.
+  **점수 스케일 검증보다 먼저 찍는다** — 검증이 실패해 예외로 빠져도 파이프라인 결과는 남아야 한다.
+- `final_candidates`에 **최종 통과 후보의 `freelancer_id`와 이름**을 넣는다(사용자 요청).
+- 하드필터 후보별 덤프 제거(`python.search.strict_row` / `relaxed_row`, `_row_debug()` 함께 삭제).
+  통과 인원수만 남긴다 — 통과자가 수백~수천 명이면 추천 한 번에 그만큼 줄이 늘어난다.
+  개별 후보 값은 `python.score.detail`에 항목별 점수와 함께 그대로 남는다.
+- `python.llm.request`의 `prompt_preview=%s` 제거. 프롬프트에는 후보 여러 명의 자기소개·경력사항
+  원문이 들어 있어서 `text_preview`와 같은 문제였다. 원문 조회는 `ai_agent_log`가 담당한다.
+  `prompt_chars`(길이)는 유지.
+
+### Python — `app/domains/matching/repository.py`
+
+- `FreelancerProfile.name` 추가. `find_freelancer_profiles`가 `account`를 조인해서 채운다
+  (SELECT/GROUP BY 함께 수정). 스프링 소유 테이블 읽기 전용 규칙은 그대로 지킨다.
+- **이 필드는 프롬프트에 넣지 않는다.** LLM이 이름으로 사람을 편향 판단할 수 있고, 프롬프트는
+  `ai_agent_log`에 저장되므로 불필요한 개인정보를 늘리는 것이기도 하다. `_describe_candidate`는
+  이 필드를 쓰지 않으며, 회귀 테스트 `test_name_is_not_leaked_into_the_prompt`로 고정했다.
+
+### Java — `EmbeddingReindexService` / `FreelancerEmbeddingRefresher`
+
+- `java.reindex.start` 신규 — **시작 시점에 대상 수를 남긴다.** 끝에만 찍으면 도중에 죽었을 때
+  몇 명을 처리하려던 것인지조차 알 수 없다(오늘 정확히 이 상황이었다).
+- `java.reindex.progress` 신규 — 100건마다 `processed/targets`, 성공·실패·생략 누계,
+  마지막으로 처리한 id. **루프가 중간에 죽으면 요약 로그가 아예 안 찍히므로, "어디까지 갔나"는
+  이 줄로만 알 수 있다.**
+- `java.reindex.summary` 신규 — `targets / processed / succeeded / failed / skipped_blank`.
+  프리랜서·포지션 각각 남긴다.
+- `FreelancerEmbeddingRefresher.refreshByFreelancerId`의 반환형을 `void` → `boolean`으로 바꿨다
+  (`true`=업서트, `false`=텍스트가 비어 생략). **생략을 성공으로 세면 "성공 1000/실패 0"인데 실제로는
+  벡터가 하나도 안 생긴 상태가 정상으로 읽힌다.** `refreshByAccountId`도 같이 위임 반환한다.
+  기존 호출부(`ResumeUpdatedEventListener`)는 반환값을 무시하므로 동작 변화 없다.
+
+### 검증
+
+- Python: `ruff check --no-cache app/ tests/` 통과
+- Python: `pytest -q` **85 passed, 1 skipped**
+  (`FreelancerProfile.name` 추가로 `_profile()` 헬퍼가 깨져 21건이 한 번 실패했고, 헬퍼 기본값에
+  `name`을 넣어 해결. 회귀 테스트 1건 신규 추가.)
+- Backend: `./gradlew test --tests "com.pairing.matching.*"` **70 tests, 0 failures**
+
+### 남은 것
+
+- `python.llm.response`의 `raw=%s`(LLM 응답 전문)는 **그대로 뒀다.** 점수·사유라 이력서 원문보다
+  민감도가 낮고, 응답 이상(스케일 오류·지어낸 ID)을 잡는 데 실제로 쓰인다. 빼려면 별도 판단이 필요하다.
+- `python.score.detail`은 하드필터 통과자 **전원**에 대해 한 줄씩 찍는다. 지금 규모(수십~수백)에서는
+  문제없지만, 통과자가 수천 명이 되면 상위 (모집인원x3) + 컷 경계 근처로 제한해야 한다.
+- 재색인 자체가 **인메모리 `@Async` 루프**라 재배포에 여전히 죽는다. 위 진행률 로그로 "어디서 죽었는지"는
+  보이지만, 이어하기는 안 된다. 배치 단위 처리·재시작 이어하기는 D1 모니터링 작업과 함께 볼 항목이다.
