@@ -1336,3 +1336,82 @@ C1 의 "요청 → 상세 조회" 구간을 지나갈 수 없으므로 **C1 전�
   문제없지만, 통과자가 수천 명이 되면 상위 (모집인원x3) + 컷 경계 근처로 제한해야 한다.
 - 재색인 자체가 **인메모리 `@Async` 루프**라 재배포에 여전히 죽는다. 위 진행률 로그로 "어디서 죽었는지"는
   보이지만, 이어하기는 안 된다. 배치 단위 처리·재시작 이어하기는 D1 모니터링 작업과 함께 볼 항목이다.
+
+---
+
+## 2026-08-13 (2) — 알림 발송을 커밋 후로 옮김 (알림 실패가 매칭을 롤백시키던 구조)
+
+알림 도메인 담당자가 협상 알림을 붙이던 중 발견해 공유해준 건이다. **실제 장애는 없었고
+실패 경로만 문제였다** — 아직 알림 저장이 실패한 적이 없어 드러나지 않은 상태였다.
+
+### 무엇이 문제였나
+
+`MatchingNotifier.send()`가 예외를 삼키고 로그만 남겼는데, try-catch로는 롤백을 막을 수 없다.
+`NotificationCreateUseCase.create()`가 `@Transactional`(REQUIRED)이라 호출한 쪽 트랜잭션에
+얹히고, 그 안에서 난 예외는 **잡히기 전에** 공유 트랜잭션을 rollback-only로 표시한다.
+그래서 삼켜도 커밋 시점에 `UnexpectedRollbackException`이 나면서 매칭 요청·수락이 통째로 사라진다.
+
+`accept()`가 가장 심각했다 — 스냅샷 동결, budgetCap 계산, 협상 생성, 프로젝트 NEGOTIATING
+전이가 전부 같은 트랜잭션이라 알림 한 건 때문에 다 되돌아간다.
+
+### 리포트 중 코드와 달랐던 것 두 가지 (회신함)
+
+- **`notifyRequested` / `resolveAccountId` null 예시는 이 경로에선 안전했다.**
+  `FreelancerDirectoryAdapter.resolveAccountId`는 null을 반환하지 않고
+  `orElseThrow(FREELANCER_NOT_FOUND)`로 던진다. 그 throw는 `command.get()`에서 나고
+  `command.get()`은 `send()`의 try 안이라, `create()`를 호출하기 전에 잡힌다 — 알림 트랜잭션
+  경계를 안 넘으므로 rollback-only가 안 찍힌다. `freelancerName()`의 `findCardSummary`도 같다.
+- **스케줄러 배치 전체 롤백은 아니었다.** `expireOverdueRequests()`는 `@Transactional`이 없고
+  건별로 `MatchingRequestExpirer.expireNow()`(`REQUIRES_NEW`)를 부르며 건별 try/catch로 error
+  로그를 남긴다. 한 건 실패해도 나머지는 커밋된다. 다만 그 1건은 만료가 롤백되고 10분 주기마다
+  같은 실패를 반복하므로, P41(무료 재추천 판정) 영향은 그 요청 하나에 한해 유효했다.
+
+**진짜 진입점은 `ProjectDirectoryAdapter.findClientAccountId`의 `.orElse(null)`이었다.**
+null이 그대로 `create()`에 들어가 `Notification.validate()`가 NT_003을 던지는데, 이건
+`create()` 안이라 경계를 넘는다. 이 포트를 쓰는 `notifyAccepted`/`notifyRejected`/`notifyExpired`
+셋이 실제 위험 경로였다.
+
+### 무엇을 바꿨나
+
+- `MatchingNotificationRequested`(신규 이벤트, `Kind` = REQUESTED/ACCEPTED/REJECTED/EXPIRED).
+  상황별로 레코드를 쪼개지 않았다 — 쪼개면 리스너·발행부가 4배가 되는데 정작 분기는 문구를
+  고르는 한 곳뿐이다. `requestId`만 싣고 리스너가 커밋 후 다시 조회한다(발행 시점 객체를 실으면
+  즉시 타결처럼 뒤이어 상태가 바뀌는 경우 낡은 값으로 문구가 나간다).
+- `MatchingNotificationListener`(신규) — `@TransactionalEventListener(AFTER_COMMIT)`.
+  **여기엔 `@Transactional`을 붙이지 않았다.** 트랜잭션 경계 안에서 잡으면 위 문제가 그대로
+  재현되기 때문이다. 잡는 것은 경계 밖(리스너), 트랜잭션은 안쪽(`MatchingNotifier`)이다.
+  `@Async`도 안 붙였다 — INSERT 한 건이라 응답 지연이 무시할 수준이고, 비동기면 예외가 이
+  스레드로 안 와서 로그를 남길 수 없다.
+- `MatchingNotifier` — 각 `notify*`에 `@Transactional(REQUIRES_NEW)`. 실패를 자기 트랜잭션에
+  가두고, `AFTER_COMMIT`에서 새 트랜잭션을 열지 않으면 INSERT가 조용히 버려지는 것도 막는다
+  (협상 도메인이 이걸 빠뜨려 알림이 하나도 저장되지 않았던 사례를 담당자가 알려줬다).
+  `send()`의 예외 삼키기는 제거했다 — 삼키면 리스너가 실패를 알 수 없고, 이미 rollback-only가
+  찍힌 뒤라 삼키는 것 자체가 소용이 없다.
+- `send()`에 **받을 계정 null 가드** 추가. 남의 도메인 에러코드(NT_003)로 터지는 대신 무엇이
+  없었는지 분명한 로그를 남긴다.
+- `MatchingRequestService`(3곳) / `MatchingRequestExpirer`(1곳)가 직접 호출 대신 이벤트를 발행한다.
+  `matchingNotifier` 필드를 `ApplicationEventPublisher`로 교체했다.
+
+### 일부러 안 바꾼 것
+
+`findClientAccountId`의 `.orElse(null)`을 `orElseThrow`로 바꾸는 게 한 줄 조치로 보였지만
+**하지 않았다.** `ClientGradeResolver`가 같은 포트를 쓰면서 프로필이 없으면 조용히
+SILVER(가중치 0%)로 떨어뜨리는데, 던지게 바꾸면 추천 라운드 생성 자체가 실패한다.
+알림 때문에 그 동작을 바꿀 수는 없어서 알림 쪽에서 막았다.
+
+`NotificationCreateUseCase.create()`를 `REQUIRES_NEW`로 바꾸지 않기로 한 알림 담당자의 판단에
+동의했다. 그러면 호출한 도메인이 롤백돼도 알림은 남아서, 실제로 일어나지 않은 일에 대한 알림이
+사용자에게 간다 — 알림이 안 가는 것보다 나쁘다.
+
+### 검증
+
+- `./gradlew build` 통과 (전체 테스트 포함)
+- `./gradlew test --tests "com.pairing.matching.*"` — **75 tests, 0 failures** (신규 5건 포함)
+- 신규 `MatchingNotificationListenerTest` 3건: 발송 실패가 리스너 밖으로 안 나감 / 대상 요청이
+  없으면 발송 안 함 / 종류별 디스패치. **리스너에 `@Transactional`을 붙이거나 try-catch를 지우면
+  첫 번째가 깨진다.**
+- 신규 `MatchingNotifierTest` 2건: 받을 계정이 null이면 알림을 만들지 않음 / 찾으면 그 계정으로 만듦
+- `MatchingIntegrationTest`의 기존 알림 검증 3건(`MATCHING_REQUESTED`/`ACCEPTED`/`REJECTED`)이
+  그대로 통과한다 — 이 테스트는 클래스에 `@Transactional`이 없어 MockMvc 요청이 실제로 커밋되므로
+  `AFTER_COMMIT` 리스너가 실제로 돈다(트랜잭션 테스트였다면 리스너가 아예 안 불려서 통과가
+  의미 없었을 것이다).

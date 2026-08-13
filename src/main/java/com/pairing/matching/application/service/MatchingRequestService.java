@@ -7,6 +7,7 @@ import com.pairing.global.common.api.response.PageResponse;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.matching.application.command.CreateNegotiationCommand;
+import com.pairing.matching.application.event.MatchingNotificationRequested;
 import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
 import com.pairing.matching.application.port.out.NegotiationPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
@@ -31,6 +32,7 @@ import com.pairing.project.application.usecase.ProjectCommandUseCase;
 import com.pairing.project.domain.model.ProjectStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -66,7 +68,9 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
     private final MatchingRequestResponseAssembler matchingRequestResponseAssembler;
     private final ObjectMapper objectMapper;
     private final MatchingRequestExpirer matchingRequestExpirer;
-    private final MatchingNotifier matchingNotifier;
+    // 알림은 커밋 후에 별도 트랜잭션으로 나간다. MatchingNotifier를 여기서 직접 부르면 알림 실패가
+    // 이 서비스의 트랜잭션을 롤백시킨다 - MatchingNotificationRequested 주석 참고.
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -112,7 +116,8 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         request = matchingRequestRepository.save(request);
 
         MatchingRequestResponse response = matchingRequestResponseAssembler.build(request, accountId);
-        matchingNotifier.notifyRequested(request, response.projectTitle());
+        eventPublisher.publishEvent(
+                MatchingNotificationRequested.requested(request.getId(), response.projectTitle()));
         return response;
     }
 
@@ -153,7 +158,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         // 반영되지 않는다. 그대로 쓰면 DB는 CONTRACT_PENDING인데 응답만 NEGOTIATING으로 나간다.
         MatchingRequest latest = matchingRequestRepository.findById(request.getId())
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
-        matchingNotifier.notifyAccepted(latest);
+        eventPublisher.publishEvent(MatchingNotificationRequested.accepted(latest.getId()));
         return matchingRequestResponseAssembler.build(latest, accountId);
     }
 
@@ -211,7 +216,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         request.reject();
         matchingRequestRepository.save(request);
         syncProjectStage(request.getProjectId());
-        matchingNotifier.notifyRejected(request);
+        eventPublisher.publishEvent(MatchingNotificationRequested.rejected(request.getId()));
         return matchingRequestResponseAssembler.build(request, accountId);
     }
 
