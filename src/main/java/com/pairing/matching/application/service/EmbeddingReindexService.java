@@ -57,6 +57,23 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
                 positionCounts[0], positionCounts[1]);
     }
 
+    /**
+     * 예외의 종류와 발생 지점을 <b>한 줄에</b> 담는다.
+     *
+     * <p>스택트레이스는 로그 수집기에서 줄마다 별개 항목으로 쪼개진다. 그래서 예외 이름으로 검색하면
+     * 헤더만 나오고 정작 필요한 {@code at ...} 줄은 따로 찾아야 한다. NPE 처럼 메시지가 없는 예외면
+     * 헤더에서 얻을 정보가 아무것도 없다 - 2026-08-13 재색인 장애에서 원인 위치를 찾는 데 반나절이
+     * 걸린 이유가 이것이다. 검색 한 번에 원인이 보이도록 첫 프레임까지 문자열로 붙인다.
+     *
+     * <p>전체 스택은 그대로 같이 남긴다(마지막 인자). 요약은 검색용이고 스택은 확인용이다.
+     */
+    private static String briefCause(Throwable e) {
+        String message = e.getMessage() == null ? "" : ": " + e.getMessage();
+        StackTraceElement[] frames = e.getStackTrace();
+        String origin = frames.length == 0 ? "" : " at " + frames[0];
+        return e.getClass().getSimpleName() + message + origin;
+    }
+
     private int[] reindexFreelancers() {
         List<Long> freelancerIds = freelancerDirectoryPort.findAllFreelancerIdsWithResume();
         // 대상 수를 **시작할 때** 남긴다. 끝에만 찍으면 도중에 죽었을 때(재배포로 컨테이너가 교체되면
@@ -78,7 +95,8 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
                 }
             } catch (Exception e) {
                 fail++;
-                log.warn("[임베딩 재색인 실패 - 프리랜서] freelancerId={}", freelancerId, e);
+                log.warn("MATCHING_DEBUG java.reindex.failed target=freelancer freelancerId={} cause={}",
+                        freelancerId, briefCause(e), e);
             }
             processed++;
             // 진행률을 주기적으로 남긴다. 루프가 중간에 죽으면 요약 로그가 아예 안 찍히므로,
@@ -111,7 +129,8 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
                 success++;
             } catch (Exception e) {
                 fail++;
-                log.warn("[임베딩 재색인 실패 - 포지션] positionId={}", positionId, e);
+                log.warn("MATCHING_DEBUG java.reindex.failed target=position positionId={} cause={}",
+                        positionId, briefCause(e), e);
             }
             processed++;
             if (processed % PROGRESS_LOG_INTERVAL == 0) {
