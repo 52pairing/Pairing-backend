@@ -83,6 +83,19 @@ class ContractPdfRendererTest {
     }
 
     @Test
+    @DisplayName("굵기 두 벌이 함께 임베드된다")
+    void embedsBothWeights() {
+        // 한 벌만 등록하면 제목이 본문과 같은 굵기로 나온다. 가변 폰트(VF)를 쓰던 때는 PDFBox 가
+        // wght 축을 못 읽어 전체가 가늘게 나왔고, 그래서 글자색을 검정으로 해도 회색으로 보였다.
+        byte[] pdf = renderer.render(view(List.of(
+                new ContractPdfView.Signature("갑 (클라이언트)", "주식회사 페어링", null, "2026년 9월 1일"))));
+
+        String raw = new String(pdf, java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertThat(raw).contains("NotoSansKR-Regular");
+        assertThat(raw).contains("NotoSansKR-Bold");
+    }
+
+    @Test
     @DisplayName("서명 그림이 없어도 렌더링이 깨지지 않는다")
     void rendersWithoutSignatureImage() {
         // 동의 클릭만으로 서명한 경우다. 그림 자리는 이름과 시각으로만 채운다.

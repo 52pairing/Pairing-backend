@@ -1,6 +1,5 @@
 package com.pairing.contract.application.service;
 
-import com.pairing.chat.application.usecase.ChatActivationUseCase;
 import com.pairing.contract.application.command.SignContractCommand;
 import com.pairing.contract.application.event.ContractSignedEvent;
 import com.pairing.contract.application.port.ContractFileReaderPort;
@@ -46,12 +45,25 @@ public class ContractCommandService implements ContractCommandUseCase {
     private static final String WAITING_TITLE = "상대방이 계약서에 서명했습니다";
     private static final String WAITING_CONTENT = "계약서를 확인하고 서명해 주세요. 양측이 서명하면 계약이 체결됩니다.";
     private static final String CONCLUDED_TITLE = "계약이 체결되었습니다";
-    private static final String CONCLUDED_CONTENT = "양측 서명이 완료되어 계약이 체결되었습니다. 채팅으로 프로젝트를 시작할 수 있습니다.";
+
+    /**
+     * 체결 알림은 받는 사람에 따라 다음 할 일이 다르다.
+     *
+     * <p>프리랜서는 이 시점에 착수금 수수료가 청구되는데(P27), 서명 직후 화면을 떠나면 청구된 것을
+     * 모르고 지나친다. 수수료 알림을 따로 보내면 체결 알림과 시점이 겹쳐 두 개가 연달아 가므로
+     * 여기에 합친다.
+     *
+     * <p>링크는 양쪽 다 계약서로 둔다. 결제 화면으로 바로 보내면 계약서를 확인하지 않은 채
+     * 결제하게 된다.
+     */
+    private static final String CONCLUDED_CONTENT_CLIENT =
+            "양측 서명이 완료되어 계약이 체결되었습니다. 채팅으로 프로젝트를 시작할 수 있습니다.";
+    private static final String CONCLUDED_CONTENT_FREELANCER =
+            "양측 서명이 완료되어 계약이 체결되었습니다. 착수금 수수료를 결제해 주세요.";
 
     private final ContractRepository contractRepository;
     private final ContractFileReaderPort contractFileReaderPort;
     private final ProjectCommandUseCase projectCommandUseCase;
-    private final ChatActivationUseCase chatActivationUseCase;
     private final DepositSettlementUseCase depositSettlementUseCase;
     private final FreelancerGradeReaderPort freelancerGradeReaderPort;
     private final NotificationCreateUseCase notificationCreateUseCase;
@@ -101,11 +113,8 @@ public class ContractCommandService implements ContractCommandUseCase {
                 contract.getTotalAmount(),
                 freelancerGradeReaderPort.findGrade(contract.getFreelancerId())));
 
-        // 프로젝트 진행 대화는 계약이 성립한 뒤에 시작한다. 협상 타결만으로는 방이 열리지 않는다.
-        // 멱등이라 재시도해도 방이 두 개 생기지 않는다.
-        chatActivationUseCase.openForSignedContract(contract.getNegotiationId());
-
-        // 인원별 상태를 계약 완료로 옮기는 쪽(매칭)이 듣는다.
+        // 인원별 상태를 계약 완료로 옮기는 쪽(매칭)과, 1:1 채팅방을 여는 쪽이 듣는다.
+        // 채팅은 커밋 뒤에 연다. 이유는 ContractChatListener 주석 참고.
         eventPublisher.publishEvent(new ContractSignedEvent(contract.getId(), contract.getProjectId(),
                 contract.getPositionId(), contract.getFreelancerId()));
     }
@@ -123,7 +132,8 @@ public class ContractCommandService implements ContractCommandUseCase {
         try {
             if (concluded) {
                 contract.getSignatures().forEach(signature ->
-                        notify(contract, signature.getAccountId(), CONCLUDED_TITLE, CONCLUDED_CONTENT));
+                        notify(contract, signature.getAccountId(), CONCLUDED_TITLE,
+                                concludedContent(signature.getPartyRole())));
                 return;
             }
 
@@ -135,6 +145,13 @@ public class ContractCommandService implements ContractCommandUseCase {
         } catch (Exception e) {
             log.warn("계약 서명 알림 실패. 서명 자체는 처리됐다. contractId={}", contract.getId(), e);
         }
+    }
+
+    /** 착수금 수수료를 내는 쪽은 프리랜서뿐이다(P27). 클라이언트 착수금은 프로젝트 등록 때 끝난다. */
+    private String concludedContent(PartyRole partyRole) {
+        return partyRole == PartyRole.FREELANCER
+                ? CONCLUDED_CONTENT_FREELANCER
+                : CONCLUDED_CONTENT_CLIENT;
     }
 
     private void notify(Contract contract, Long accountId, String title, String content) {
