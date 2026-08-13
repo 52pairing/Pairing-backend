@@ -166,10 +166,10 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         payload.put("availableFrom", condition.availableFrom());
         payload.put("minAcceptAmount", condition.minAcceptAmount());
         payload.put("startNegotiable", condition.startNegotiable());
-        // periodValue가 선택 입력이라 null일 수 있다는 전제였으나, freelancer 쪽 DTO가 아직 primitive int라
-        // null 구분이 불가능하다(스텁 상태). 실제로 nullable Integer로 바뀌면 아래 두 줄만 조건부 제외로 바꾼다.
-        payload.put("periodValue", condition.periodValue());
-        payload.put("periodUnit", condition.periodUnit());
+        if (condition.periodValue() != null) {
+            payload.put("periodValue", condition.periodValue());
+            payload.put("periodUnit", condition.periodUnit());
+        }
 
         return MatchingSnapshot.create(request.getProjectId(), request.getPositionId(), request.getFreelancerId(),
                 SnapshotType.FREELANCER, writeJson(payload));

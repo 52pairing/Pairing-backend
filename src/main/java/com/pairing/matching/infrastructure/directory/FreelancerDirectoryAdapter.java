@@ -70,7 +70,7 @@ public class FreelancerDirectoryAdapter implements FreelancerDirectoryPort {
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.FREELANCER_NOT_FOUND));
 
         // 학과·담당업무만 뽑는다. 학교명·회사명·부서/직급은 임베딩 대상이 아니다
-        // (`.ai/STATE.md` "[2][3] 임베딩 30 + 조건점수 70" 표).
+        // (`.ai/STATE.md` "[2][3] 임베딩 25 + 조건점수 75 / 텍스트 임베딩 재설계" 참고).
         List<String> majors = resume.educations().stream()
                 .map(Education::getMajor)
                 .toList();

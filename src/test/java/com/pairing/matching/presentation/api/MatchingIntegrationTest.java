@@ -455,8 +455,12 @@ class MatchingIntegrationTest {
 
     /** 화면에 안 나오는 후보(가드 탈락 또는 대기 순번). 클라이언트는 이 candidateId를 알 수 없어야 정상이다. */
     private MatchingCandidate seedHiddenCandidate(Long roundId, boolean guardPassed) {
+        return seedHiddenCandidate(roundId, freelancerAccountId, guardPassed);
+    }
+
+    private MatchingCandidate seedHiddenCandidate(Long roundId, Long freelancerId, boolean guardPassed) {
         MatchingCandidate candidate = MatchingCandidate.createFromEmbedding(roundId, POSITION_ID,
-                freelancerAccountId, 0.8);
+                freelancerId, 0.8);
         candidate.applyLlmResult(88.0, "요구 스킬 3개 중 3개 일치|경력 조건 충족");
         candidate.applyGradeWeight(0.0);
         candidate.applyGuard(guardPassed, guardPassed ? null : "직무 불일치: FRONTEND");
@@ -475,7 +479,7 @@ class MatchingIntegrationTest {
     @DisplayName("가드에 떨어진 후보에게는 candidateId를 직접 넣어도 요청이 나가지 않는다")
     void sendRequestRejectsGuardFailedCandidate() throws Exception {
         MatchingRound round = seedRound(2);
-        // 이 검증이 없으면 Stage F 가드(직무·스킬 재검증)가 API 한 번으로 통째로 무력화된다.
+        // 이 검증이 없으면 화면에 노출되지 않은 후보(가드 탈락자 포함)에게 candidateId 직접 입력으로 요청이 나간다.
         MatchingCandidate candidate = seedHiddenCandidate(round.getId(), false);
 
         sendRequest(candidate.getId())
@@ -845,6 +849,7 @@ class MatchingIntegrationTest {
     void rerecommendPassesPreviouslySurfacedFreelancerIdsAsExcluded() throws Exception {
         MatchingRound firstRound = seedRound(2);
         seedExposedCandidate(firstRound.getId(), 1);
+        seedHiddenCandidate(firstRound.getId(), 999_998L, true);
 
         given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of(freelancerAccountId)), anyLong()))
                 .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of()));

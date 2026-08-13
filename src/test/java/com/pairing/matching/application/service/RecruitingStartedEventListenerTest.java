@@ -209,8 +209,8 @@ class RecruitingStartedEventListenerTest {
                         + "VALUES (?, ?, ?, true, ?)",
                 freelancerId, freelancerId, LocalDate.of(1995, 1, 1), grade);
 
-        // Stage F 가드(직무·스킬 재검증)가 findCondition을 실제로 부른다. seedProjectWithPosition의
-        // 포지션 요구조건(BACKEND, SPRING_BOOT)과 일치시켜야 가드를 통과해 기존 노출 검증이 유지된다.
+        // 추천 후보 카드/협상 초기 조건 조립에서 실제 프리랜서 조건을 조회하므로,
+        // 포지션 요구조건(BACKEND, SPRING_BOOT)과 일치하는 조건을 심어둔다.
         freelancerConditionUseCase.upsert(new UpsertConditionCommand(
                 freelancerId, JobCategory.DEVELOPMENT, JobRole.BACKEND, null,
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 6_000_000L, 5_000_000L,
