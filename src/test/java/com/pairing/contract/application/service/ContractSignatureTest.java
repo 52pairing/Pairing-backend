@@ -3,6 +3,7 @@ package com.pairing.contract.application.service;
 import com.pairing.contract.application.event.ContractSignedEvent;
 import com.pairing.contract.application.command.SignContractCommand;
 import com.pairing.contract.application.port.ContractFileReaderPort;
+import com.pairing.contract.application.port.ContractPartyReaderPort;
 import com.pairing.contract.application.port.FreelancerGradeReaderPort;
 import com.pairing.contract.domain.model.Contract;
 import com.pairing.contract.domain.model.ContractSignature;
@@ -32,6 +33,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.LocalDate;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +61,8 @@ class ContractSignatureTest {
     @Mock
     private ProjectCommandUseCase projectCommandUseCase;
     @Mock
+    private ContractPartyReaderPort partyReaderPort;
+    @Mock
     private DepositSettlementUseCase depositSettlementUseCase;
     @Mock
     private FreelancerGradeReaderPort freelancerGradeReaderPort;
@@ -73,7 +77,7 @@ class ContractSignatureTest {
     @BeforeEach
     void setUp() {
         service = new ContractCommandService(contractRepository, contractFileReaderPort,
-                projectCommandUseCase, depositSettlementUseCase,
+                projectCommandUseCase, partyReaderPort, depositSettlementUseCase,
                 freelancerGradeReaderPort, notificationCreateUseCase, eventPublisher);
 
         contract = Contract.create(300L, 1L, 10L, 100L, 200L,
@@ -152,6 +156,34 @@ class ContractSignatureTest {
 
         // 1건(상대 호출) + 2건(체결 통보) = 3건
         verify(notificationCreateUseCase, times(3)).create(any());
+    }
+
+    @Test
+    @DisplayName("체결되면 그 시점 정산 계좌가 계약에 굳는다")
+    void freezesSettlementAccountOnConclusion() {
+        // 굳혀두지 않으면 프리랜서가 나중에 계좌를 바꿨을 때 이미 체결된 계약서까지 따라 바뀐다.
+        byte[] snapshot = "카카오뱅크 3333012345678 (예금주: 김민준)".getBytes(StandardCharsets.UTF_8);
+        given(partyReaderPort.settlementAccountSnapshot(contract.getFreelancerId()))
+                .willReturn(Optional.of(snapshot));
+
+        service.sign(command(CLIENT_ACCOUNT_ID, null));
+        assertThat(contract.getSettlementAccountEnc()).isNull();   // 한쪽 서명만으로는 안 굳는다
+
+        service.sign(command(FREELANCER_ACCOUNT_ID, null));
+        assertThat(contract.getSettlementAccountEnc()).isEqualTo(snapshot);
+    }
+
+    @Test
+    @DisplayName("계좌가 없는 프리랜서여도 체결이 막히지 않는다")
+    void concludesWithoutSettlementAccount() {
+        // 가입 시 계좌가 필수지만 탈퇴·삭제로 비어 있을 수 있다. 계좌 때문에 체결이 무산되면 안 된다.
+        given(partyReaderPort.settlementAccountSnapshot(any())).willReturn(Optional.empty());
+
+        service.sign(command(CLIENT_ACCOUNT_ID, null));
+        assertThat(service.sign(command(FREELANCER_ACCOUNT_ID, null))).isTrue();
+
+        assertThat(contract.getStatus()).isEqualTo(ContractStatus.SIGNED);
+        assertThat(contract.getSettlementAccountEnc()).isNull();
     }
 
     @Test

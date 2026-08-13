@@ -2,6 +2,7 @@ package com.pairing.contract.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pairing.contract.application.port.ContractArchivePort;
 import com.pairing.contract.application.port.ContractFileReaderPort;
 import com.pairing.contract.application.port.ContractPartyReaderPort;
 import com.pairing.contract.application.port.ContractPdfPort;
@@ -53,6 +54,7 @@ public class ContractQueryService implements ContractQueryUseCase {
     private final ContractPartyReaderPort partyReaderPort;
     private final ContractFileReaderPort fileReaderPort;
     private final ContractPdfPort contractPdfPort;
+    private final ContractArchivePort archivePort;
     private final ContractSettlementReaderPort settlementReaderPort;
     private final S3Settings s3Settings;
     private final ObjectMapper objectMapper;
@@ -109,8 +111,11 @@ public class ContractQueryService implements ContractQueryUseCase {
         ContractProjectReaderPort.ProjectView project =
                 projectReaderPort.findByPositionId(contract.getPositionId());
         ContractPartyReaderPort.ClientParty client = partyReaderPort.findClient(contract.getClientId());
+        // 체결 시점에 굳혀둔 계좌가 있으면 그걸 쓴다. 없으면(체결 전이거나 옛 계약) 현재 계좌를 읽는다.
         ContractPartyReaderPort.FreelancerParty freelancer =
-                partyReaderPort.findFreelancer(contract.getFreelancerId());
+                partyReaderPort.findFreelancer(contract.getFreelancerId())
+                        .withFrozenAccount(
+                                partyReaderPort.restoreSettlementAccount(contract.getSettlementAccountEnc()));
 
         return new ContractDetail(
                 contract,
@@ -124,9 +129,23 @@ public class ContractQueryService implements ContractQueryUseCase {
                 signatureImageUrls(contract));
     }
 
+    /**
+     * 계약서 PDF. 체결 시 굳혀둔 파일이 있으면 <b>그것을 그대로</b> 돌려준다.
+     *
+     * <p>다시 그리면 조항 문구나 표기 규칙을 고쳤을 때 이미 체결된 계약서까지 바뀐다. 계약은
+     * 5년 보관 대상이라 그때 그 문서가 남아야 한다.
+     *
+     * <p>파일을 못 읽으면 그 자리에서 그린다. 스토리지가 잠깐 흔들린 것만으로 계약서를 아예 못
+     * 보게 되면 안 된다. 체결 전 계약과 이 기능이 생기기 전 계약도 이 경로로 온다.
+     *
+     * <p>권한 확인은 {@link #getDetail} 이 한다. 굳혀둔 파일을 읽을 때도 먼저 통과해야 한다.
+     */
     @Override
     public byte[] renderPdf(Long contractId, Long accountId) {
-        return contractPdfPort.render(toPdfView(getDetail(contractId, accountId)));
+        ContractDetail detail = getDetail(contractId, accountId);
+
+        return archivePort.read(detail.contract().getPdfFileId())
+                .orElseGet(() -> contractPdfPort.render(toPdfView(detail)));
     }
 
     @Override

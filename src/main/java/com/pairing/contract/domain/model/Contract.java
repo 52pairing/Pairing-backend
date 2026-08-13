@@ -85,6 +85,17 @@ public class Contract {
     private String contentJson;
     private Long pdfFileId;
 
+    /**
+     * 체결 시점 정산 계좌. 계약서 제5조에 찍힌 <b>그 한 줄</b>을 암호문으로 굳혀 둔다.
+     *
+     * <p>이게 없으면 프리랜서가 마이페이지에서 계좌를 바꿨을 때 <b>이미 체결된 계약서의 표시까지
+     * 따라 바뀐다.</b> 계약은 5년 보관 대상이라 그때 그 문서가 그대로 남아야 한다.
+     *
+     * <p>체결 전에는 비어 있고, 그때는 현재 계좌를 그대로 보여준다. 서명 전이라 문제되지 않는다.
+     * 이 필드가 생기기 전에 체결된 계약도 비어 있어 예전처럼 동작한다.
+     */
+    private byte[] settlementAccountEnc;
+
     private String esignProvider;
     private String esignDocId;
 
@@ -104,6 +115,7 @@ public class Contract {
                      WorkStyle workStyle, WorkForm workForm, String workLocation,
                      int inspectionDays, int paymentDays, int confidentialYears, BigDecimal penaltyRate,
                      String specialTerms, String contentJson, Long pdfFileId,
+                     byte[] settlementAccountEnc,
                      String esignProvider, String esignDocId, ContractStatus status,
                      LocalDateTime signedAt, LocalDateTime completedAt, LocalDateTime terminatedAt,
                      PartyRole terminatedBy, LocalDate retentionUntil, LocalDateTime createdAt,
@@ -131,6 +143,7 @@ public class Contract {
         this.specialTerms = specialTerms;
         this.contentJson = contentJson;
         this.pdfFileId = pdfFileId;
+        this.settlementAccountEnc = settlementAccountEnc;
         this.esignProvider = esignProvider;
         this.esignDocId = esignDocId;
         this.status = status;
@@ -180,7 +193,7 @@ public class Contract {
                 startDate, endDate, workStyle, workForm,
                 workStyle == WorkStyle.ONSITE ? workLocation : null,
                 DEFAULT_INSPECTION_DAYS, DEFAULT_PAYMENT_DAYS, DEFAULT_CONFIDENTIAL_YEARS,
-                DEFAULT_PENALTY_RATE, specialTerms, null, null, null, null,
+                DEFAULT_PENALTY_RATE, specialTerms, null, null, null, null, null,
                 ContractStatus.DRAFT, null, null, null, null, null,
                 LocalDateTime.now(), signatures);
     }
@@ -192,7 +205,8 @@ public class Contract {
                                         WorkStyle workStyle, WorkForm workForm, String workLocation,
                                         int inspectionDays, int paymentDays, int confidentialYears,
                                         BigDecimal penaltyRate, String specialTerms, String contentJson,
-                                        Long pdfFileId, String esignProvider, String esignDocId,
+                                        Long pdfFileId, byte[] settlementAccountEnc,
+                                        String esignProvider, String esignDocId,
                                         ContractStatus status, LocalDateTime signedAt,
                                         LocalDateTime completedAt, LocalDateTime terminatedAt,
                                         PartyRole terminatedBy, LocalDate retentionUntil,
@@ -200,7 +214,8 @@ public class Contract {
         return new Contract(id, contractNo, negotiationId, projectId, positionId, clientId, freelancerId,
                 salaryAmount, totalAmount, downAmount, finalAmount, startDate, endDate,
                 workStyle, workForm, workLocation, inspectionDays, paymentDays, confidentialYears,
-                penaltyRate, specialTerms, contentJson, pdfFileId, esignProvider, esignDocId,
+                penaltyRate, specialTerms, contentJson, pdfFileId, settlementAccountEnc,
+                esignProvider, esignDocId,
                 status, signedAt, completedAt, terminatedAt, terminatedBy, retentionUntil, createdAt,
                 new ArrayList<>(signatures));
     }
@@ -317,6 +332,21 @@ public class Contract {
     /** 생성된 계약서 PDF 를 연결한다. 재생성하면 덮어쓴다. */
     public void attachPdf(Long pdfFileId) {
         this.pdfFileId = pdfFileId;
+    }
+
+    /**
+     * 체결 시점 정산 계좌를 굳힌다. 체결 처리에서 한 번만 부른다.
+     *
+     * <p><b>이미 굳혀둔 값은 덮어쓰지 않는다.</b> 체결 이후에 바뀐 계좌가 계약서에 들어가면
+     * 동결하는 의미가 없다. 체결이 재시도돼도 처음 값이 남는다.
+     *
+     * <p>계좌가 없는 프리랜서도 있다. 그때는 비워 두고 계약서에 "-" 로 나간다.
+     * 계좌 때문에 체결이 막히면 안 된다.
+     */
+    public void freezeSettlementAccount(byte[] snapshot) {
+        if (this.settlementAccountEnc == null) {
+            this.settlementAccountEnc = snapshot;
+        }
     }
 
     /**
