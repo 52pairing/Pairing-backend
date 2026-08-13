@@ -7,6 +7,8 @@ import com.pairing.contract.domain.model.ContractTab;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Map;
+
 /**
  * 계약 조회 인바운드 포트.
  *
@@ -48,6 +50,19 @@ public interface ContractQueryUseCase {
      */
     Page<ContractSummary> findMine(Long accountId, Long projectId, ContractStatus status,
                                    ContractTab tab, Pageable pageable);
+
+    /**
+     * 탭별 건수. 탭 옆 배지에 쓴다.
+     *
+     * <p>{@code projectId} 가 null 이면 내 계약 전체다. 값을 주면 그 프로젝트 것만 센다.
+     *
+     * <p>건수가 0인 탭도 키로 포함한다. 화면이 탭을 전부 그려야 한다.
+     *
+     * <p><b>탭 7개를 모두 돌려준다.</b> 클라이언트 계약관리와 프리랜서 내 계약이 그중 다른
+     * 5개씩을 나눠 쓴다. 한 계정이 클라이언트이면서 프리랜서일 수 있어 역할로 가릴 수 없으므로,
+     * 전부 내려주고 어느 것을 그릴지는 화면이 정한다.
+     */
+    Map<ContractTab, Long> countMyTabs(Long accountId, Long projectId);
 
     /** 상세 조회. 없으면 CT_001, 당사자가 아니면 CT_002. */
     ContractDetail getDetail(Long contractId, Long accountId);

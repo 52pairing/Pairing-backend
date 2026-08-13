@@ -36,6 +36,10 @@ public class ChatMessageRepositoryAdapter implements ChatMessageRepository {
 
     @Override
     public int countUnread(Long chatRoomId, LocalDateTime lastReadAt, Long accountId) {
-        return (int) springDataRepository.countUnread(chatRoomId, lastReadAt, accountId);
+        // 한 번도 읽지 않은 방은 시간 조건 없는 쿼리로 센다. 하나로 합치면 Postgres 가
+        // "? is null" 의 타입을 못 잡아 터진다(SpringDataChatMessageRepository 주석 참고).
+        return (int) (lastReadAt == null
+                ? springDataRepository.countUnreadAll(chatRoomId, accountId)
+                : springDataRepository.countUnreadSince(chatRoomId, lastReadAt, accountId));
     }
 }

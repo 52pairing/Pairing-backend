@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -50,6 +51,20 @@ public interface ContractRepository {
      */
     Page<Contract> findByParty(Long accountId, Long projectId, ContractStatus status,
                                ContractTab tab, Pageable pageable);
+
+    /**
+     * 탭별 건수. 탭 옆 배지에 쓴다.
+     *
+     * <p>{@code projectId} 가 null 이면 내 계약 전체다. 값을 주면 그 프로젝트의 내 계약만 센다
+     * ({@link #findByParty} 와 같은 규칙).
+     *
+     * <p><b>건수가 0인 탭도 키로 포함한다.</b> 화면이 탭을 전부 그려야 하기 때문이다.
+     *
+     * <p>{@link ContractTab} 7개를 모두 담는다. 클라이언트 화면과 프리랜서 화면이 그중 다른
+     * 5개씩을 나눠 쓰므로, 어느 쪽을 부르는지 서버가 묻지 않고 전부 내려준 뒤 화면이 고른다.
+     * 클라·프리 양쪽인 계정이 있어 역할로는 가릴 수 없다.
+     */
+    Map<ContractTab, Long> countMyTabs(Long accountId, Long projectId);
 
     /** 프로젝트에 걸린 계약 전체. 진행중 전환 판정과 프로젝트 상세에 쓴다. */
     List<Contract> findByProjectId(Long projectId);
