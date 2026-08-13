@@ -5,6 +5,7 @@ import com.pairing.matching.application.result.FreelancerCardSummary;
 import com.pairing.matching.application.result.FreelancerResumeSummary;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * freelancer 도메인 조회 포트. 매칭은 이 인터페이스로만 프리랜서 정보를 읽는다.
@@ -15,6 +16,18 @@ public interface FreelancerDirectoryPort {
 
     /** 로그인 계정(accountId) -&gt; freelancer_profile.id. 매칭 요청·스냅샷은 전부 이 값을 쓴다(account.id 아님). */
     Long resolveFreelancerId(Long accountId);
+
+    /**
+     * {@link #resolveFreelancerId}의 <b>안 던지는</b> 버전. 프리랜서 프로필이 없으면 빈 값이다.
+     *
+     * <p><b>호출자가 프리랜서인지 클라이언트인지 판별할 때 쓴다.</b> 판별에 던지는 조회를 쓰면
+     * "반대편 당사자"가 늘 404를 받는다 - 실제로 두 번 겪었다.
+     * {@code resolveFreelancerId}를 먼저 부르면 클라이언트가 MT_015 를 받고,
+     * {@code ProjectDirectoryPort.isOwnedByAccount}를 먼저 부르면 프리랜서가 AC_002 를 받는다
+     * (그쪽은 accountId 로 client_profile 을 찾는데 프리랜서에겐 그 행이 없다).
+     * 판별은 예외가 아니라 값으로 해야 한다.
+     */
+    Optional<Long> findFreelancerId(Long accountId);
 
     /**
      * freelancer_profile.id -&gt; 로그인 계정(accountId). {@link #resolveFreelancerId}의 반대 방향이다.

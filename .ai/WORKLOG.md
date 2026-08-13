@@ -1415,3 +1415,140 @@ SILVER(가중치 0%)로 떨어뜨리는데, 던지게 바꾸면 추천 라운드
   그대로 통과한다 — 이 테스트는 클래스에 `@Transactional`이 없어 MockMvc 요청이 실제로 커밋되므로
   `AFTER_COMMIT` 리스너가 실제로 돈다(트랜잭션 테스트였다면 리스너가 아예 안 불려서 통과가
   의미 없었을 것이다).
+
+---
+
+## 2026-08-13 (3) — 재색인 NPE 원인 확정: @OrderColumn 이 만들어낸 null 원소
+
+임베딩 일괄 재색인이 대상 1601명 중 **1011번까지만** 벡터를 만들고 나머지가 조용히 빠지던 문제.
+원인을 찾는 데 반나절이 걸렸다. 아래는 그 과정과 결론이다.
+
+### 원인
+
+`FreelancerDirectoryAdapter.findResumeSummary`가 이력서 하위 목록에 섞인 **null 원소** 때문에
+NPE 로 죽고 있었다. null 은 DB 에 있는 값이 아니라 **하이버네이트가 만들어낸 것**이다.
+
+`ResumeJpaEntity`의 학력·경력은 이렇게 매핑돼 있다.
+
+```java
+@ElementCollection(fetch = FetchType.LAZY)
+@CollectionTable(name = "resume_career", joinColumns = @JoinColumn(name = "resume_id"))
+@OrderColumn(name = "sort_order")
+private List<ResumeCareerEmbeddable> careers = new ArrayList<>();
+```
+
+`@OrderColumn`은 그 컬럼을 **리스트 인덱스**로 쓴다. 값이 0부터 연속이 아니면 하이버네이트가 빈
+자리를 **null 원소로 채워서** 컬렉션을 돌려준다. 앱으로 저장한 이력서는 항상 0부터 연속이라
+문제가 없었고, **SQL 로 직접 넣은 더미 데이터**만 번호가 어긋나 있었다.
+
+### 왜 찾기 어려웠나
+
+- **DB 를 조회하면 데이터가 정상으로 보인다.** 컬럼이 다 채워져 있다. null 은 자바 쪽 리스트에만
+  있다. 그래서 데이터 가설을 여섯 개나 세우고 전부 지웠다(쿼터/저장실패/대상목록누락/deleted_at/
+  이력서필드/프로필파일). 전부 헛수고였다.
+- **예외에 메시지가 없다.** `Stream.toList()`는 null <b>값</b>은 허용하지만, null <b>원소</b>에
+  메서드 참조를 적용하면 메시지 없는 NPE 가 난다. 실제로 확인했다.
+- **스택이 실제 원인 지점을 안 가리킨다.** `map`이 지연 평가라 예외는 터미널 연산에서 난다.
+  그래서 `.map(Career::getJobDescription)` 줄이 아니라 `.toList()` 줄이 찍힌다.
+- **로그 수집기가 스택을 줄마다 쪼갠다.** `NullPointerException`으로 검색하면 헤더만 나오고
+  `at ...` 줄은 별개 항목이라 안 걸린다. 메시지도 없으니 헤더에서 얻을 정보가 0이었다.
+  결국 `at com.pairing` 으로 검색해서야 위치가 나왔다.
+
+### 무엇을 바꿨나
+
+- `FreelancerDirectoryAdapter.findResumeSummary`가 null 원소와 빈 문자열을 걸러낸다.
+  `FreelancerResumeSummary`의 javadoc 은 원래부터 "학과 미입력 건은 빠진다"고 적고 있었다 -
+  그 약속을 코드가 지키지 않았던 것이라, 데이터를 고치는 게 아니라 여기를 고치는 게 맞다.
+  **임베딩 텍스트는 달라지지 않는다** - `FreelancerEmbeddingTextBuilder`가 이미 blank 를 건너뛴다.
+- 재색인 실패 로그를 `java.reindex.failed ... cause=NullPointerException at <첫 프레임>` 형태로
+  바꿨다. **검색 한 번에 원인이 보이게** 하는 것이 목적이다(전체 스택은 그대로 함께 남긴다).
+  오늘 반나절을 쓴 이유가 정확히 이게 없었기 때문이다.
+
+### 검증
+
+- 신규 `FreelancerDirectoryAdapterTest` 2건: null 원소가 섞여도 요약을 만든다 / 빈 값은 목록에서 뺀다
+- **변이 테스트로 확인**: null 필터를 지우고 돌리면 테스트가 실패하며, 그때 나오는 스택이
+  프로덕션과 완전히 같다(메시지 없는 NPE, JDK 프레임 위, `com.pairing` 프레임은
+  `findResumeSummary`의 `.toList()` 줄 하나). 원인을 재현한 것이다.
+- `./gradlew build` 통과
+- `./gradlew test --tests "com.pairing.matching.*"` — **77 tests, 0 failures**
+
+### 데이터 쪽 남은 일 (코드 배포와 별개)
+
+코드는 이제 null 을 견디지만, **`sort_order`가 어긋난 이력서는 여전히 남아 있다.** 그 이력서를
+조회하는 다른 경로(마이페이지 이력서 조회 등)에도 null 원소가 그대로 넘어간다. 매칭만의 문제가
+아니므로 정렬 번호를 0부터 연속으로 정규화해 두는 것이 맞다. 확인·정리 SQL 은 아래.
+
+```sql
+-- 어긋난 이력서 찾기 (careers 예시. educations/certificates/links 도 같은 방식)
+SELECT count(*) AS 어긋난_이력서
+  FROM (SELECT resume_id, count(*) cnt, min(sort_order) mn, max(sort_order) mx
+          FROM resume_career GROUP BY resume_id) t
+ WHERE mn <> 0 OR mx <> cnt - 1;
+
+-- 0부터 연속으로 다시 번호 매기기 (ctid 로 행을 특정한다 - 이 테이블엔 PK 가 없다)
+WITH renumbered AS (
+  SELECT ctid, ROW_NUMBER() OVER (PARTITION BY resume_id ORDER BY sort_order) - 1 AS new_order
+    FROM resume_career
+)
+UPDATE resume_career c SET sort_order = r.new_order
+  FROM renumbered r
+ WHERE c.ctid = r.ctid AND c.sort_order <> r.new_order;
+```
+
+**더미 데이터를 SQL 로 직접 넣을 때는 `sort_order`를 0부터 시작해야 한다.** 이번 사고의 출발점이다.
+
+---
+
+## 2026-08-13 (4) — 요청 상세가 프리랜서에게 404(AC_002) 나던 버그
+
+프론트 리포트로 접수. `GET /api/v1/matchings/requests/{requestId}` 를 **프리랜서**가 부르면
+`404 AC_002 "프로필 정보를 찾을 수 없습니다"` 가 났다. 목록(`/requests/received`)은 정상이었다.
+
+### 원인 — 당사자 판별에 "던지는 조회"를 썼다
+
+```
+findRequest(requestId, 프리랜서_accountId)
+ └ projectDirectoryPort.isOwnedByAccount(projectId, accountId)
+    └ ProjectQueryService.isOwnedBy -> resolveClientProfileId(accountId)
+       └ clientProfileReaderPort.getByAccountId(accountId)
+          └ accountQueryUseCase.getClientProfile(accountId)
+             └ orElseThrow(AC_002)          <- 프리랜서에겐 client_profile 행이 없다
+```
+
+`ClientProfileReaderPort` 의 javadoc 도 "프로필이 없으면 account 도메인의 AC_002 가 그대로
+올라온다"고 적고 있다. **클라이언트 계정으로만 부를 수 있는 조회를 프리랜서 accountId 로 불렀다.**
+
+프론트의 추정("상대방 프로필을 추가 조회하다 실패")은 틀렸다. 상대방 프로필이 아니라
+**호출자 본인의 권한을 확인하려고** 부른 조회다.
+
+### 같은 자리에서 두 번째다
+
+- **2026-08-09**: `resolveFreelancerId` 를 먼저 불러서 **클라이언트가** 늘 MT_015(404)
+- **2026-08-13**: 그걸 고치며 `isOwnedByAccount` 를 앞으로 옮겼더니 **프리랜서가** 늘 AC_002(404)
+
+한쪽만 보고 순서를 바꿔서 반대쪽을 깬 것이다. 근본 원인은 순서가 아니라 **신분 확인을 예외로
+했다는 것**이다. 두 조회 모두 "상대 신분이면 던진다"라서 뭘 먼저 부르든 한쪽은 404가 된다.
+
+### 무엇을 바꿨나
+
+- `FreelancerDirectoryPort.findFreelancerId(accountId)` 신규 - `resolveFreelancerId` 의 **안 던지는**
+  버전이다(`AccountQueryUseCase.findFreelancerProfileByAccountId` 가 이미 Optional 을 준다).
+- `findRequest` 가 이걸로 먼저 신분을 가르고, **각 분기에서만 자기 쪽 조회**를 쓴다. 프리랜서
+  경로는 `isOwnedByAccount` 를 아예 부르지 않고, 클라이언트 경로는 `resolveFreelancerId` 를
+  부르지 않는다. 판별을 값으로 하니 어느 쪽도 남의 도메인 예외를 만나지 않는다.
+
+### 검증
+
+- `MatchingIntegrationTest.requestDetailIsReadableByBothParties` 신규 - **한 테스트에서 클라이언트와
+  프리랜서 양쪽을 다 조회**한다. 기존 상세 테스트가 전부 클라이언트 토큰만 써서 이 회귀를 못 잡았다.
+  한 방향만 검증하면 순서를 뒤집는 수정이 또 통과한다.
+- **변이 테스트로 확인**: 수정 전 로직으로 되돌리면 이 테스트가 **AC_002 로 실패**한다.
+  프론트가 보고한 그 에러코드 그대로다.
+- `./gradlew clean build` 통과 - **520 tests, 0 failures**
+
+### 남는 것
+
+클라이언트 계정에 `client_profile` 이 없으면 여전히 AC_002 가 난다. 그건 클라이언트로선 진짜 데이터
+이상이고 account 도메인의 계약이므로 그대로 둔다. 프리랜서에게 `client_profile` 이 없는 것은
+**정상**이고, 그 경우가 이번 버그였다.

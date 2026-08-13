@@ -544,6 +544,25 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("요청 상세는 클라이언트와 프리랜서 양쪽 다 조회할 수 있다")
+    void requestDetailIsReadableByBothParties() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 이 자리에서 두 번 사고가 났다. 당사자 판별에 "던지는 조회"를 쓰면 반대편이 늘 404를 받는데,
+        // 한쪽만 검증하면 그 사고를 못 잡는다. 그래서 두 방향을 한 테스트에 묶어둔다.
+        //   2026-08-09 클라이언트가 MT_015 / 2026-08-13 프리랜서가 AC_002
+        mockMvc.perform(get("/api/v1/matchings/requests/" + requestId).cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.requestId").value(requestId));
+
+        mockMvc.perform(get("/api/v1/matchings/requests/" + requestId).cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.requestId").value(requestId));
+    }
+
+    @Test
     @DisplayName("주요 담당 업무는 요청 상세에서만 보이고 목록/받은요청에서는 안 보인다")
     void mainTaskIsExposedOnlyInRequestDetailNotInLists() throws Exception {
         MatchingRound round = seedRound(2);
