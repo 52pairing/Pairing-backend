@@ -5,6 +5,7 @@ import com.pairing.account.domain.model.Role;
 import com.pairing.account.domain.repository.AccountRepository;
 import com.pairing.account.infrastructure.mapper.AccountMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -67,5 +68,13 @@ public class AccountRepositoryAdapter implements AccountRepository {
     @Override
     public boolean existsRejoinRestrictedByPhoneHash(String phoneHash, Role role, LocalDateTime now) {
         return springDataRepository.existsByPhoneHashAndRoleAndRejoinAvailableAtAfter(phoneHash, role, now);
+    }
+
+    @Override
+    public List<Account> findPurgeTargets(LocalDateTime now, int limit) {
+        return springDataRepository
+                .findByPurgeAtBeforeOrderByPurgeAtAsc(now, PageRequest.of(0, limit)).stream()
+                .map(accountMapper::toDomain)
+                .toList();
     }
 }

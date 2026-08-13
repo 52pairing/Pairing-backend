@@ -30,6 +30,7 @@ import com.pairing.auth.application.port.SessionRegistryPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.global.port.out.DataEncryptionPort;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,7 @@ import java.util.List;
  *
  * <p>카드번호·계좌번호 평문은 이 클래스 밖으로 나가지 않는다. 저장 직전에 암호화한다.
  */
+@Slf4j
 @Service
 @Transactional
 @RequiredArgsConstructor
@@ -63,6 +65,9 @@ public class AccountCommandService implements AccountCommandUseCase {
      * 거래 이력이 사라진다.
      */
     private static final int PURGE_RETENTION_YEARS = 1;
+
+    /** 파기 배치가 한 번에 처리하는 건수. 남은 건 다음 실행에서 이어서 한다. */
+    private static final int PURGE_BATCH_SIZE = 500;
 
     private static final String WITHDRAWN_PREFIX = "withdrawn-";
     private static final String WITHDRAWN_EMAIL_DOMAIN = "@withdrawn.pairing.invalid";
@@ -326,6 +331,40 @@ public class AccountCommandService implements AccountCommandUseCase {
         // 저장이 끝난 뒤에 세션을 끊는다. 먼저 끊으면 저장이 실패했을 때 로그아웃만 된 상태가 된다.
         sessionRegistryPort.clear(account.getId());
         tokenStorePort.delete(account.getId());
+    }
+
+    /**
+     * 보관 기한이 지난 개인정보 파기. (개인정보 보관 1년)
+     *
+     * <p>탈퇴 시 {@code purgeAt} 에 파기 예정일을 적어 두고, 이 배치가 그날이 지난 계정을 집어
+     * 이메일·휴대폰 해시를 지운다. 파기하면 {@code purgeAt} 이 비워져 다음 배치에 다시 잡히지 않는다.
+     *
+     * <p>한 번에 {@link #PURGE_BATCH_SIZE} 건씩만 처리한다. 남은 건 다음 실행에서 이어서 한다 —
+     * 파기가 하루 늦어지는 것보다 배치 한 번이 DB 를 오래 붙잡는 쪽이 위험하다.
+     *
+     * <p>한 건이 실패해도 나머지는 계속한다. 계정 하나 때문에 전체 파기가 멈추면, 그 사실을
+     * 아무도 모르는 채로 보관 기한만 계속 넘어간다.
+     */
+    @Override
+    @Transactional
+    public int purgeExpiredPersonalData() {
+        List<Account> targets = accountRepository.findPurgeTargets(LocalDateTime.now(), PURGE_BATCH_SIZE);
+        int purged = 0;
+
+        for (Account account : targets) {
+            try {
+                account.purgePersonalData();
+                accountRepository.save(account);
+                purged++;
+            } catch (Exception e) {
+                log.error("[개인정보 파기 실패] accountId={}", account.getId(), e);
+            }
+        }
+
+        if (purged > 0) {
+            log.info("[개인정보 파기 완료] {}건 (대상 {}건)", purged, targets.size());
+        }
+        return purged;
     }
 
     /**

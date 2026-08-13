@@ -222,6 +222,23 @@ public class Account {
         this.deletedAt = now;
     }
 
+    /**
+     * 보관 기한이 지난 개인정보를 파기한다. (개인정보 보관 1년)
+     *
+     * <p>탈퇴 시점에 이메일·휴대폰은 이미 더미로 갈아엎었고, 재가입 제한(30일) 판정용으로 해시만
+     * 남겨 뒀다. 제한 기간은 진작 끝났으므로 해시를 들고 있을 이유가 없다.
+     *
+     * <p><b>계정 행과 거래 이력은 그대로 둔다.</b> 리뷰·계약·정산이 이 계정을 참조하고 있어서
+     * 지우면 상대방 화면에서 거래 이력이 사라진다.
+     *
+     * <p>{@code purgeAt} 을 비우는 것이 처리 완료 표시다. 다음 배치가 같은 행을 다시 집지 않는다.
+     */
+    public void purgePersonalData() {
+        this.emailHash = null;
+        this.phoneHash = null;
+        this.purgeAt = null;
+    }
+
     public boolean isLocked() {
         return this.status == AccountStatus.LOCKED;
     }
