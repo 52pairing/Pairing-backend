@@ -7,7 +7,6 @@ import com.pairing.global.exception.GlobalErrorCode;
 import com.pairing.global.security.CurrentAccountId;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.review.application.usecase.ReviewUseCase;
-import com.pairing.review.domain.model.SiteReviewVisibility;
 import com.pairing.review.exception.ReviewErrorCode;
 import com.pairing.review.presentation.api.request.ReviewCreateRequest;
 import com.pairing.review.presentation.api.response.PendingReviewResponse;
@@ -53,7 +52,8 @@ public class ReviewController {
 
     @PostMapping
     @Operation(summary = "리뷰 작성",
-            description = "상대 평가(필수)와 사이트 후기(선택)를 함께 등록합니다. 작성 후 수정·삭제할 수 없습니다.")
+            description = "상대 평가와 사이트 후기를 함께 등록합니다. 별점은 둘 다 필수, 텍스트는 둘 다 선택입니다. "
+                    + "작성 후 수정·삭제할 수 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST"})
     @ApiErrorCodeExample(domain = ReviewErrorCode.class, value = {"ALREADY_REVIEWED"})
     public ResponseEntity<ApiResponse<ReviewResponse>> create(

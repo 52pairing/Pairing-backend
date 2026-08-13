@@ -250,13 +250,29 @@ class ChatbotIntegrationTest {
     }
 
     @Test
-    @DisplayName("지난 대화를 다시 불러오면 버튼 없이 텍스트만 나온다")
-    void historyHasNoActions() throws Exception {
-        ask(writerAccessToken, null, "착수금 수수료는 언제 결제하나요?");
+    @DisplayName("지난 대화를 다시 불러와도 버튼이 그대로 남는다")
+    void historyRestoresActions() throws Exception {
+        // 버튼을 눌러 다른 화면에 갔다가 돌아오는 것이 정상 흐름이다.
+        // 복원하지 않으면 버튼을 쓸수록 사라지는 화면이 된다.
+        ask(writerAccessToken, null, "이력서는 어떻게 작성하나요?");
 
         mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].answer").value(FAKE_ANSWER))
+                .andExpect(jsonPath("$.data[0].actions.length()").value(1))
+                .andExpect(jsonPath("$.data[0].actions[0].code").value("RESUME_EDIT"))
+                .andExpect(jsonPath("$.data[0].actions[0].url").value("/mypage/resume"));
+    }
+
+    @Test
+    @DisplayName("버튼이 없던 답변은 이력에서도 버튼 없이 나온다")
+    void historyKeepsNoActionAnswerEmpty() throws Exception {
+        given(chatbotAiPort.ask(anyString()))
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, null));
+        ask(writerAccessToken, null, "페어링은 어떤 서비스인가요?");
+
+        mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].actions.length()").value(0));
     }
 

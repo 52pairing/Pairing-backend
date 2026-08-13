@@ -1,8 +1,9 @@
 # 회원 탈퇴 프론트 연동 가이드
 
 > 담당: 리뷰 · 등급 · 마이페이지 · 이력서 · 결제수단 · 1:1문의 · 챗봇 · 알림 · 홈
-> 기준일: 2026-08-12
-> 마이페이지 → `frontend-mypage-integration.md` / 고객지원 → `frontend-support-integration.md` / 알림 → `frontend-notification-integration.md`
+> 기준일: 2026-08-13 (개인정보 파기 배치 구현 반영)
+> 마이페이지 → `frontend-mypage-integration.md` / 고객지원 → `frontend-support-integration.md`
+> 알림 → `frontend-notification-integration.md` / 메인 후기 → `frontend-home-review-integration.md`
 
 ---
 
@@ -172,12 +173,16 @@ Content-Type: application/json
 
 | 대상 | 처리 |
 |---|---|
-| **개인정보**(이메일·휴대폰) | 더미값으로 치환. 원본은 **해시로만 1년 보관** 후 파기 |
+| **이메일·휴대폰** | 탈퇴 즉시 더미값으로 치환 |
+| 그 해시 | **1년 보관 후 자동 파기** (배치가 매일 새벽에 처리) |
 | 비밀번호 | 즉시 삭제 |
 | 계정 행 | **지우지 않음** — 상태만 `WITHDRAWN` |
 | 완료된 프로젝트·계약 | 그대로 남음 |
 | 작성한 리뷰 | 그대로 남음 |
 | 협상 채팅 | 그대로 남음 |
+
+**"1년 보관"은 문서상 약속이 아니라 실제로 도는 배치입니다.** 기한이 지나면 해시가
+자동으로 지워집니다. 프론트에서 신경 쓸 것은 없고, 안내 문구를 쓰실 때 참고하시면 됩니다.
 
 **계정을 지우지 않는 이유**는 리뷰·계약·정산이 그 계정을 참조하고 있어서입니다.
 지우면 **상대방 화면에서 거래 이력이 사라집니다.**

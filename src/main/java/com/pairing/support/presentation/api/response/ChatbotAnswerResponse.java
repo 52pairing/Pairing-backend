@@ -17,7 +17,7 @@ public record ChatbotAnswerResponse(
 
         @Schema(description = "답변 아래에 띄울 이동 버튼. 없으면 빈 배열이다. "
                 + "AI 가 고른 화면 코드를 서버가 경로로 바꿔 내려주므로, 답변 본문을 파싱할 필요가 없다. "
-                + "지난 대화 조회에서는 항상 빈 배열이다.")
+                + "지난 대화 조회에서도 그대로 복원된다.")
         List<Action> actions,
 
         @Schema(description = "오늘 남은 질의 횟수", example = "9") int remainingQuota,

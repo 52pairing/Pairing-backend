@@ -27,7 +27,6 @@ import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
 import com.pairing.review.infrastructure.persistence.SpringDataReviewRepository;
 import com.pairing.review.domain.model.SiteReview;
-import com.pairing.review.domain.model.SiteReviewVisibility;
 import com.pairing.review.domain.repository.SiteReviewRepository;
 import com.pairing.review.infrastructure.persistence.SpringDataSiteReviewRepository;
 import com.pairing.terms.domain.model.TermsCode;
@@ -314,16 +313,19 @@ class HomeIntegrationTest {
     }
 
     /**
-     * 공개+홍보로 만든다.
+     * 홍보 활용으로 켠다.
      *
      * <p>원래는 관리자 API 를 불렀는데, 그 API 가 관리자 서버(pairing-admin)로 옮겨가서
-     * 이 서버에는 없다. 검증 대상은 "그렇게 설정된 리뷰가 메인에 나오는가" 이므로
+     * 이 서버에는 없다. 검증 대상은 "홍보로 켠 리뷰가 메인에 나오는가" 이므로
      * 설정 자체는 리포지토리로 바로 만든다.
+     *
+     * <p>도메인에 세터를 두지 않는다 — 이 서버는 홍보 여부를 바꾸지 않는다.
      */
     private void promote(Long siteReviewId) {
-        SiteReview siteReview = siteReviewDomainRepository.findById(siteReviewId).orElseThrow();
-        siteReview.updateVisibility(SiteReviewVisibility.PUBLIC, true);
-        siteReviewDomainRepository.save(siteReview);
+        SiteReview origin = siteReviewDomainRepository.findById(siteReviewId).orElseThrow();
+        siteReviewDomainRepository.save(SiteReview.reconstitute(
+                origin.getId(), origin.getContractId(), origin.getProjectId(), origin.getWriterAccountId(),
+                origin.getWriterRole(), origin.getScore(), origin.getContent(), true, origin.getCreatedAt()));
     }
 
     private Long clientAccountId() {
@@ -332,8 +334,8 @@ class HomeIntegrationTest {
     }
 
     @Test
-    @DisplayName("로그인 없이도 공개+홍보활용+4점 이상인 리뷰만 마스킹된 이름으로 조회된다")
-    void findSiteReviewsIsPublicAndFiltersByVisibilityPromotedAndScore() throws Exception {
+    @DisplayName("로그인 없이도 홍보활용+4점 이상인 리뷰만 마스킹된 이름으로 조회된다")
+    void findSiteReviewsIsPublicAndFiltersByPromotedAndScore() throws Exception {
         Long goodReviewId = createSiteReview(freelancerAccessToken, 901L, clientAccountId(), 5);
         Long lowScoreReviewId = createSiteReview(lowScoreFreelancerAccessToken, 902L, clientAccountId(), 3);
 

@@ -1,8 +1,9 @@
 # 고객지원 프론트 연동 가이드 (1:1 문의 · 챗봇)
 
 > 담당: 리뷰·등급·마이페이지·이력서·결제수단·**1:1문의·챗봇**
-> 기준일: 2026-08-11 / 브랜치 `feature/fixFreelancer`
-> 마이페이지는 `frontend-mypage-integration.md` 를 봐주세요.
+> 기준일: 2026-08-13 (관리자 기능 별도 서버 이관 반영)
+> 마이페이지 → `frontend-mypage-integration.md` / 알림 → `frontend-notification-integration.md`
+> 회원 탈퇴 → `frontend-withdrawal-integration.md` / 메인 후기 → `frontend-home-review-integration.md`
 
 ---
 
@@ -17,9 +18,8 @@
 | 문의 — 등록 | `POST` | `/api/v1/support/inquiries` | 로그인 |
 | 문의 — 내 목록 | `GET` | `/api/v1/support/inquiries/mine` | 로그인 |
 | 문의 — 상세 | `GET` | `/api/v1/support/inquiries/{inquiryId}` | 로그인 |
-| 관리자 — 요약 카드 | `GET` | `/api/v1/support/admin/inquiries/summary` | 관리자 |
-| 관리자 — 문의 목록 | `GET` | `/api/v1/support/admin/inquiries` | 관리자 |
-| 관리자 — 답변 등록 | `POST` | `/api/v1/support/admin/inquiries/{inquiryId}/answer` | 관리자 |
+
+> **관리자 기능은 이 서버에 없습니다.** 별도 서버로 옮겼습니다 → 3번 참고
 
 ### 공통 규칙
 
@@ -366,56 +366,34 @@ GET /api/v1/support/inquiries/{inquiryId}
 
 ---
 
-# 3. 1:1 문의 (관리자)
+# 3. 1:1 문의 (관리자) — ⚠️ 서버가 바뀌었습니다
 
-관리자 권한 필요. 일반 회원이 호출하면 `403 GLOBAL_005`.
-
-## 3-1. 요약 카드
-
-```
-GET /api/v1/support/admin/inquiries/summary
-```
-
-```json
-{ "totalCount": 128, "pendingCount": 7, "answeredCount": 121, "todayCount": 4 }
-```
-
-목록 상단 카드 4개(전체 / 답변 대기 / 답변 완료 / 오늘 접수)에 그대로 대응합니다.
-
-## 3-2. 문의 목록 (검색·필터)
+**관리자 기능은 별도 서버(`Pairing-admin`, 8081)로 옮겼습니다.**
+이 서버의 `/api/v1/support/admin/**` 엔드포인트는 **전부 삭제됐습니다.**
 
 ```
-GET /api/v1/support/admin/inquiries?keyword=김개발&writerRole=FREELANCER&status=PENDING&page=0&size=10
+❌ 없어짐   GET  /api/v1/support/admin/inquiries
+✅ 새 경로   GET  {관리자서버}/api/v1/admin/inquiries
 ```
 
-| 파라미터 | 설명 |
+| 항목 | 내용 |
 |---|---|
-| `keyword` | **회원명 · 제목 · 문의번호를 한 번에** 검색합니다. 필드 선택 불필요 |
-| `writerRole` | `CLIENT` / `FREELANCER` / `ADMIN` |
-| `status` | `PENDING` / `ANSWERED` |
-| `page`, `size` | 기본 0 / 10 |
+| 문서 | 관리자 저장소의 `docs/SUPPORT-REVIEW-FRONTEND.md` |
+| 인증 | JWT 쿠키가 아니라 **관리자 세션 쿠키(`ADMIN_SESSION`)** |
+| CSRF | 상태 변경 요청에 **CSRF 토큰 필요** |
 
-전부 **선택**입니다. 아무것도 안 주면 전체 최신순입니다.
-응답은 사용자 목록과 같은 `PageResponse<InquiryResponse>` 입니다.
+**관리자 페이지는 사용자 페이지와 별도 프론트입니다.** 이 문서로 관리자 화면을 만들지 마세요.
 
-> 검색창 하나로 세 가지가 다 걸립니다. **검색 대상 선택 드롭다운을 만들 필요가 없습니다.**
+> 옮긴 이유는 관리자 화면이 사용자 서비스와 배포·인증 주기가 달라서입니다.
+> 두 서버는 **같은 DB** 를 보므로, 관리자가 답변을 등록하면 사용자 문의 상세에 즉시 반영됩니다.
 
-## 3-3. 답변 등록
+### 사용자 쪽에서 알아야 할 것
 
-```
-POST /api/v1/support/admin/inquiries/{inquiryId}/answer
-```
+관리자가 답변을 등록하면 작성자에게 **`INQUIRY_ANSWERED` 알림이 저장**됩니다.
+다만 **실시간 토스트는 뜨지 않습니다** — 알림을 만드는 쪽이 관리자 서버라 WebSocket 을 탈 수 없습니다.
 
-```json
-{ "answer": "성공보수는 프로젝트 완료 후 정산됩니다." }
-```
-
-- `answer` 필수, **2,000자 이하**
-- 등록하면 `status` 가 `ANSWERED` 로 바뀌고 **작성자에게 알림이 발송됩니다** (`INQUIRY_ANSWERED`)
-- 응답으로 갱신된 `InquiryResponse` 가 오니 **목록을 다시 조회할 필요 없습니다**
-- 에러: `IQ_001`(없는 문의), `400`(답변 비었거나 2,000자 초과)
-
-> **답변 수정·삭제 API는 없습니다.** 같은 문의에 다시 `POST` 하면 답변이 덮어써집니다.
+**알림 목록·배지·읽음 처리는 똑같이 동작합니다.** 사용자가 알림함을 열면 보입니다.
+자세한 내용은 `frontend-notification-integration.md` 를 봐주세요.
 
 ---
 
@@ -474,7 +452,7 @@ POST /api/v1/support/admin/inquiries/{inquiryId}/answer
 - [ ] `remainingQuota` 0이면 입력창 비활성
 - [ ] `CB_003`(한도) / `CB_004`(AI 장애) 문구 분리
 - [ ] `CB_004` 에 1:1 문의 유도 버튼
-- [ ] 이력 조회는 버튼 없음 (`actions: []`)
+- [ ] **이력 조회에도 `actions` 를 그려주세요** — 예전엔 항상 `[]` 였지만 이제 값이 옵니다
 
 ## 1:1 문의
 
@@ -485,10 +463,9 @@ POST /api/v1/support/admin/inquiries/{inquiryId}/answer
 
 ## 관리자
 
-- [ ] 요약 카드 4개
-- [ ] 검색창 하나로 회원명·제목·문의번호 (드롭다운 불필요)
-- [ ] `writerRole` · `status` 필터
-- [ ] 답변 등록 후 응답으로 화면 갱신 (목록 재조회 불필요)
+**이 문서 범위가 아닙니다.** 관리자 저장소의 `docs/SUPPORT-REVIEW-FRONTEND.md` 를 봐주세요.
+
+- [ ] 기존에 `/api/v1/support/admin/**` 을 붙여두셨다면 **전부 걷어내야 합니다** (404)
 
 ---
 
@@ -497,9 +474,17 @@ POST /api/v1/support/admin/inquiries/{inquiryId}/answer
 | 항목 | 상태 |
 |---|---|
 | 추천 질문 | 고정 목록 6개. 조회수 기반 추천은 미구현 |
-| 대화 이력의 버튼 | 저장하지 않아 항상 `[]` |
+| ~~대화 이력의 버튼~~ | **✅ 해결.** 이력에서도 버튼이 복원됩니다 |
 | 답변 수정·삭제 | API 없음. 재등록으로 덮어씀 |
 | 문의 삭제 | API 없음 |
+
+> **버튼 복원 (2026-08-13)**
+> 예전에는 버튼을 눌러 다른 화면에 갔다가 돌아오면 버튼이 사라졌습니다. 이력에 버튼 정보를
+> 저장하지 않았기 때문입니다. 이제 저장하므로 **`GET /chatbot/messages` 에서도 `actions` 가 채워집니다.**
+>
+> **응답 형태는 그대로라 프론트 수정은 없습니다.** 빈 배열이던 자리에 값이 들어올 뿐입니다.
+> 다만 이 변경 이전에 나눈 대화는 정보가 없어 계속 `[]` 입니다 — 오늘치만 보여주는 화면이라
+> 하루 지나면 정리됩니다.
 
 ---
 
