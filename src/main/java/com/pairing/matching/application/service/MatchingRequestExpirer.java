@@ -1,10 +1,12 @@
 package com.pairing.matching.application.service;
 
+import com.pairing.matching.application.event.MatchingNotificationRequested;
 import com.pairing.matching.domain.model.MatchingRequest;
 import com.pairing.matching.domain.model.MatchingStatus;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
 import com.pairing.project.application.usecase.ProjectCommandUseCase;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +41,7 @@ class MatchingRequestExpirer {
 
     private final MatchingRequestRepository matchingRequestRepository;
     private final ProjectCommandUseCase projectCommandUseCase;
-    private final MatchingNotifier matchingNotifier;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     void expireNow(MatchingRequest request) {
@@ -54,6 +56,10 @@ class MatchingRequestExpirer {
         projectCommandUseCase.syncStage(projectId, hasContractPending, hasNegotiating);
 
         // 스케줄러가 처리하든 수락/거절 시도 중에 발견되든 여기를 거치므로, 알림도 여기서 한 번만 보낸다.
-        matchingNotifier.notifyExpired(request);
+        //
+        // 발송은 이 트랜잭션이 커밋된 뒤에 별도로 한다. 여기서 직접 보내면 알림 실패가 방금 한 만료
+        // 처리를 되돌린다 - 그러면 그 요청이 PENDING으로 남아 10분 주기마다 같은 실패를 반복하고,
+        // 무료 재추천 판정(P41)이 "아직 진행 중"으로 잡혀 클라이언트가 재추천을 못 쓰게 된다.
+        eventPublisher.publishEvent(MatchingNotificationRequested.expired(request.getId()));
     }
 }
