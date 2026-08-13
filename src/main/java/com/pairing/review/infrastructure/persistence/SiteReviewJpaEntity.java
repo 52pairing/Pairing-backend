@@ -10,14 +10,24 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
+/**
+ * 사이트 후기. 계약 1건에 작성자당 한 번만 쓸 수 있다.
+ *
+ * <p>중복은 {@code ReviewService} 가 상호 평가 중복 검사에서 먼저 막지만, DB 제약을 함께 둔다.
+ * 같은 요청이 동시에 두 번 들어오면 두 스레드 모두 "아직 없다"를 보고 통과할 수 있다.
+ */
 @Entity
-@Table(name = "site_review")
+@Table(name = "site_review", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_site_review_contract_writer",
+                columnNames = {"contract_id", "writer_account_id"})
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class SiteReviewJpaEntity {

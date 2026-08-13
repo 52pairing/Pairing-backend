@@ -35,9 +35,13 @@ public class FreelancerCommandService implements FreelancerCommandUseCase {
         accountCommandUseCase.updateFreelancerProfile(command.accountId(), command.phone(), command.address(),
                 command.profileFileId(), command.aiMatchingAgreed());
 
+        FreelancerMyPageResult result = freelancerQueryUseCase.findMyPage(command.accountId());
+
         // 인증 마커는 1회용이다. 남겨 두면 같은 인증으로 여러 번 수정할 수 있다.
+        // 소비는 맨 마지막에 한다. 조회에서 예외가 나면 저장은 롤백되는데 마커(Redis)는 롤백되지 않아,
+        // 먼저 지우면 "저장은 안 됐는데 인증만 날아간" 상태가 된다.
         emailVerificationUseCase.clearVerification(account.getEmail(), VerificationPurpose.PROFILE_UPDATE);
 
-        return freelancerQueryUseCase.findMyPage(command.accountId());
+        return result;
     }
 }

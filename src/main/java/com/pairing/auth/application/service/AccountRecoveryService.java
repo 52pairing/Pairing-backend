@@ -169,12 +169,14 @@ public class AccountRecoveryService implements AccountRecoveryUseCase {
         accountCommandUseCase.changePassword(
                 account.getId(), passwordEncoder.encode(command.newPassword()), false);
 
-        // 인증 마커는 1회용이다. 남겨 두면 같은 인증으로 여러 번 바꿀 수 있다.
-        verifiedMarkerPort.clear(account.getEmail(), VerificationPurpose.PASSWORD_CHANGE);
-
         // 비밀번호가 바뀌면 기존 토큰은 무효로 본다. 프론트는 재로그인 화면으로 보낸다.
         tokenStorePort.delete(account.getId());
         sessionRegistryPort.clear(account.getId());
+
+        // 인증 마커는 1회용이다. 남겨 두면 같은 인증으로 여러 번 바꿀 수 있다.
+        // 소비는 맨 마지막에 한다. 앞에서 예외가 나면 비밀번호는 롤백되는데 마커(Redis)는 롤백되지 않아,
+        // 먼저 지우면 "비밀번호는 그대로인데 인증만 날아간" 상태가 된다.
+        verifiedMarkerPort.clear(account.getEmail(), VerificationPurpose.PASSWORD_CHANGE);
     }
 
     @Override
