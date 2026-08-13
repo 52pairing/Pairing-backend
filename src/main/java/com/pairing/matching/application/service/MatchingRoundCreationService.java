@@ -17,10 +17,12 @@ import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -50,6 +52,7 @@ import java.util.stream.Collectors;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 class MatchingRoundCreationService {
 
     static final int POOL_MULTIPLIER = 3;
@@ -84,6 +87,8 @@ class MatchingRoundCreationService {
     /** 회차 생성 + 후보 채우기를 한 번에. 이미 비동기 문맥에서 도는 최초 추천(모집 시작)이 쓴다. */
     MatchingRound createRound(Long projectId, Long positionId, RecommendationType roundType, int recruitCount,
                               long costAmount) {
+        log.info("MATCHING_DEBUG java.round.create.start projectId={} positionId={} roundType={} recruitCount={} costAmount={}",
+                projectId, positionId, roundType, recruitCount, costAmount);
         MatchingRound round = openRound(projectId, positionId, roundType, recruitCount, costAmount);
         return fillCandidates(round);
     }
@@ -103,7 +108,10 @@ class MatchingRoundCreationService {
 
         MatchingRound round = MatchingRound.create(projectId, positionId, roundNo, roundType, requestedCount,
                 costAmount, recruitCount, poolSize);
-        return matchingRoundRepository.save(round);
+        MatchingRound saved = matchingRoundRepository.save(round);
+        log.info("MATCHING_DEBUG java.round.opened roundId={} projectId={} positionId={} roundNo={} roundType={} exposeCount={} poolSize={} requestedCount={}",
+                saved.getId(), projectId, positionId, roundNo, roundType, recruitCount, poolSize, requestedCount);
+        return saved;
     }
 
     /**
@@ -121,25 +129,46 @@ class MatchingRoundCreationService {
                 position.totalHeadcount(), position.periodValue(), position.periodUnit());
 
         List<Long> excludedFreelancerIds = matchingCandidateRepository.findFreelancerIdsByProjectId(projectId);
+        log.info("MATCHING_DEBUG java.recommend.request roundId={} projectId={} positionId={} recruitCount={} poolMultiplier={} budgetCap={} excludedCount={} excludedIds={}",
+                round.getId(), projectId, positionId, recruitCount, POOL_MULTIPLIER, budgetCap,
+                excludedFreelancerIds.size(), excludedFreelancerIds);
         MatchingRecommendation recommendation =
                 matchingPort.recommend(positionId, recruitCount, POOL_MULTIPLIER, excludedFreelancerIds, budgetCap);
+        log.info("MATCHING_DEBUG java.recommend.response roundId={} projectId={} positionId={} model={} candidateCount={} candidates={}",
+                round.getId(), projectId, positionId, recommendation.model(), recommendation.candidates().size(),
+                recommendation.candidates().stream()
+                        .map(this::rankedFreelancerDebug)
+                        .toList());
 
         if (recommendation.candidates().isEmpty()) {
             round.exhaust();
+            log.info("MATCHING_DEBUG java.round.exhausted reason=python_empty roundId={} projectId={} positionId={}",
+                    round.getId(), projectId, positionId);
             return matchingRoundRepository.save(round);
         }
 
         // G4: LLM 응답 이상을 먼저 걸러낸다. 순위 계산·저장 전에 해야 중복 ID가 등급 조회에서
         // 예외를 내거나(Collectors.toMap 키 충돌) 그대로 저장되는 일이 없다.
         List<RankedFreelancer> sane = LlmResponseGuard.sanitize(recommendation.candidates(), recruitCount);
+        log.info("MATCHING_DEBUG java.guard.g4 roundId={} positionId={} beforeCount={} afterCount={} droppedCount={}",
+                round.getId(), positionId, recommendation.candidates().size(), sane.size(),
+                recommendation.candidates().size() - sane.size());
         if (sane.isEmpty()) {
             round.exhaust();
+            log.info("MATCHING_DEBUG java.round.exhausted reason=g4_empty roundId={} projectId={} positionId={}",
+                    round.getId(), projectId, positionId);
             return matchingRoundRepository.save(round);
         }
 
         List<RankedFreelancer> ranked = breakScoreTiesByGrade(sane);
+        log.info("MATCHING_DEBUG java.rank.after_grade_tiebreak roundId={} positionId={} ranked={}",
+                round.getId(), positionId, ranked.stream()
+                        .map(this::rankedFreelancerDebug)
+                        .toList());
 
         double gradeWeightPercent = clientGradeResolver.resolveMatchingWeightPercent(projectId);
+        log.info("MATCHING_DEBUG java.client_grade_weight roundId={} projectId={} positionId={} gradeWeightPercent={}",
+                round.getId(), projectId, positionId, gradeWeightPercent);
         boolean lowScoreWarned =
                 persistCandidates(round, positionId, recruitCount, ranked, gradeWeightPercent, position, budgetCap);
 
@@ -147,7 +176,10 @@ class MatchingRoundCreationService {
             round.warnLowScore();
         }
         round.complete();
-        return matchingRoundRepository.save(round);
+        MatchingRound saved = matchingRoundRepository.save(round);
+        log.info("MATCHING_DEBUG java.round.completed roundId={} projectId={} positionId={} status={} lowScoreWarned={}",
+                saved.getId(), projectId, positionId, saved.getStatus(), saved.isLowScoreWarned());
+        return saved;
     }
 
     /**
@@ -196,15 +228,27 @@ class MatchingRoundCreationService {
                 lowScoreWarned = true;
             }
             candidates.add(candidate);
+            log.info("MATCHING_DEBUG java.candidate.persist_prepare roundId={} positionId={} freelancerId={} similarity={} baseScore={} gradeWeightPercent={} fitScore={} exposed={} rankNo={} lowScoreThreshold={} belowThreshold={} reason={}",
+                    round.getId(), positionId, candidate.getFreelancerId(), candidate.getSimilarity(),
+                    candidate.getBaseScore(), candidate.getGradeWeight(), candidate.getFitScore(),
+                    candidate.isExposed(), candidate.getRankNo(), LOW_SCORE_THRESHOLD,
+                    candidate.isBelowQualityThreshold(LOW_SCORE_THRESHOLD), candidate.getFitReason());
         }
 
         // G3: 노출이 확정된 뒤에야 조합 합계를 낼 수 있다. 탈락시키지 않고 사유만 남긴다.
         String budgetWarning = evaluateBudgetCombination(positionId, position, budgetCap, exposedFreelancerIds);
+        log.info("MATCHING_DEBUG java.guard.g3_budget roundId={} positionId={} budgetCap={} exposedFreelancerIds={} warning={}",
+                round.getId(), positionId, budgetCap, exposedFreelancerIds, budgetWarning);
         for (MatchingCandidate candidate : candidates) {
             candidate.applyGuard(true, candidate.isExposed() ? budgetWarning : null);
+            log.info("MATCHING_DEBUG java.candidate.guard_applied roundId={} positionId={} freelancerId={} guardPassed={} guardReason={} stage={} exposed={} rankNo={}",
+                    round.getId(), positionId, candidate.getFreelancerId(), candidate.getGuardPassed(),
+                    candidate.getGuardReason(), candidate.getStage(), candidate.isExposed(), candidate.getRankNo());
         }
 
         matchingCandidateRepository.saveAll(candidates);
+        log.info("MATCHING_DEBUG java.candidates.saved roundId={} positionId={} totalSaved={} exposedSaved={} lowScoreWarned={}",
+                round.getId(), positionId, candidates.size(), exposedCount, lowScoreWarned);
         return lowScoreWarned;
     }
 
@@ -241,6 +285,8 @@ class MatchingRoundCreationService {
         long spent = occupied.stream().mapToLong(this::resolveMonthlyPay).sum();
 
         int vacancy = position.headcount() - occupied.size();
+        log.info("MATCHING_DEBUG java.guard.g3_budget.input positionId={} headcount={} occupiedCount={} spent={} vacancy={} budgetCap={} exposedFreelancerIds={}",
+                positionId, position.headcount(), occupied.size(), spent, vacancy, budgetCap, exposedFreelancerIds);
         if (vacancy <= 0) {
             // 자리가 없으면 재추천 자체가 MT_018로 막히므로 정상 흐름에선 오지 않는다.
             return "예산 판정 불가: 남은 자리 없음";
@@ -252,6 +298,9 @@ class MatchingRoundCreationService {
         long exposedSum = exposedFreelancerIds.stream()
                 .mapToLong(id -> MonthlyPayConverter.toMonthlyPay(freelancerDirectoryPort.findCondition(id)))
                 .sum();
+        log.info("MATCHING_DEBUG java.guard.g3_budget.calc positionId={} capPerHead={} limit={} exposedSum={} tolerance={}/{}",
+                positionId, capPerHead, limit, exposedSum, BUDGET_TOLERANCE_NUMERATOR,
+                BUDGET_TOLERANCE_DENOMINATOR);
 
         if (exposedSum <= limit) {
             return null;
@@ -278,5 +327,14 @@ class MatchingRoundCreationService {
             }
         }
         return MonthlyPayConverter.toMonthlyPay(freelancerDirectoryPort.findCondition(request.getFreelancerId()));
+    }
+
+    private Map<String, Object> rankedFreelancerDebug(RankedFreelancer candidate) {
+        Map<String, Object> debug = new LinkedHashMap<>();
+        debug.put("freelancerId", candidate.freelancerId());
+        debug.put("score", candidate.score());
+        debug.put("similarity", candidate.similarity());
+        debug.put("reason", candidate.reason());
+        return debug;
     }
 }
