@@ -100,6 +100,22 @@ public class ContractController {
                 ContractResponse.from(contractQueryUseCase.getDetail(contractId, accountId))));
     }
 
+    @GetMapping("/by-negotiation/{negotiationId}")
+    @Operation(summary = "협상으로 계약 조회",
+            description = "협상 ID 로 그 협상의 계약서를 조회합니다. **1:1 채팅 화면의 '최종 합의안' 카드용**입니다 — "
+                    + "채팅방은 협상 단위라 계약 ID 를 모릅니다. "
+                    + "협상 1건당 계약 1건이며, 계약이 아직 없으면(타결 직후 또는 결렬) `CT_001` 입니다. "
+                    + "응답은 계약 상세와 동일합니다.")
+    @ApiErrorCodeExample(domain = ContractErrorCode.class,
+            value = {"CONTRACT_NOT_FOUND", "NOT_CONTRACT_PARTY"})
+    public ResponseEntity<ApiResponse<ContractResponse>> findByNegotiation(
+            @PathVariable Long negotiationId,
+            @CurrentAccountId Long accountId
+    ) {
+        return ResponseEntity.ok(ApiResponse.success("CONTRACT_FOUND", "조회에 성공했습니다.",
+                ContractResponse.from(contractQueryUseCase.getDetailByNegotiationId(negotiationId, accountId))));
+    }
+
     @GetMapping(value = "/{contractId}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     @Operation(summary = "계약서 PDF 다운로드",
             description = "계약서를 PDF 로 내려받습니다. 서명 전에도 받을 수 있고, 서명이 끝나면 "

@@ -13,6 +13,8 @@ public record ChatRoomResponse(
         @Schema(description = "협상 ID", example = "300") Long negotiationId,
         @Schema(description = "프로젝트명", example = "페어링 웹 리뉴얼") String projectTitle,
         @Schema(description = "상대 이름", example = "홍길동") String counterpartName,
+        @Schema(description = "상대 프로필 사진. **등록이 선택이라 null 이 흔하다** — 없으면 이름 첫 글자 등으로 대체할 것",
+                example = "profile/2026/08/abc.png") String counterpartImageUrl,
         @Schema(description = "상태") ChatRoomStatus status,
         @Schema(description = "입력창 활성화 여부. 협상 완료 후 true 가 된다.", example = "true") boolean inputEnabled,
         @Schema(description = "나가기 가능 여부. 대금 지급 완료 또는 협상 결렬 시 true", example = "false") boolean leaveEnabled,

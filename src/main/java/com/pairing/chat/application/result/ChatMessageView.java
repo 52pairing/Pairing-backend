@@ -7,11 +7,13 @@ import com.pairing.chat.domain.model.ChatMessage;
  *
  * @param message    메시지
  * @param senderName 보낸 사람 표시명(시스템 메시지는 null)
+ * @param senderImageKey 보낸 사람 프로필 사진 오브젝트 키(시스템 메시지·미등록은 null)
  * @param mine       뷰어 본인이 보낸 메시지인지
  */
 public record ChatMessageView(
         ChatMessage message,
         String senderName,
+        String senderImageKey,
         boolean mine
 ) {
 }
