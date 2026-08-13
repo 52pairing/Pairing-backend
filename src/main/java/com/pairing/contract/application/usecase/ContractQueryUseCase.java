@@ -51,4 +51,14 @@ public interface ContractQueryUseCase {
 
     /** 상세 조회. 없으면 CT_001, 당사자가 아니면 CT_002. */
     ContractDetail getDetail(Long contractId, Long accountId);
+
+    /**
+     * 협상으로 계약을 찾는다. 채팅 화면이 쓴다 — 방은 협상 단위라 계약 ID 를 모른다.
+     *
+     * <p>협상 1건당 계약 1건이다({@code negotiation_id} UNIQUE).
+     *
+     * @throws com.pairing.global.exception.BusinessException 계약이 아직 없으면 CT_001,
+     *                                                        당사자가 아니면 CT_002
+     */
+    ContractDetail getDetailByNegotiationId(Long negotiationId, Long accountId);
 }

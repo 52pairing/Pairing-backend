@@ -2,6 +2,7 @@ package com.pairing.contract.application.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pairing.contract.application.port.ContractArchivePort;
 import com.pairing.contract.application.port.ContractFileReaderPort;
 import com.pairing.contract.application.port.ContractPartyReaderPort;
 import com.pairing.contract.application.port.ContractPdfPort;
@@ -53,6 +54,7 @@ public class ContractQueryService implements ContractQueryUseCase {
     private final ContractPartyReaderPort partyReaderPort;
     private final ContractFileReaderPort fileReaderPort;
     private final ContractPdfPort contractPdfPort;
+    private final ContractArchivePort archivePort;
     private final ContractSettlementReaderPort settlementReaderPort;
     private final S3Settings s3Settings;
     private final ObjectMapper objectMapper;
@@ -81,7 +83,27 @@ public class ContractQueryService implements ContractQueryUseCase {
     public ContractDetail getDetail(Long contractId, Long accountId) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new BusinessException(ContractErrorCode.CONTRACT_NOT_FOUND));
+        return toDetail(contract, accountId);
+    }
 
+    /**
+     * 협상으로 계약을 찾는다. 채팅 화면이 쓴다 — 방은 협상 단위라 계약 ID 를 모른다.
+     *
+     * <p>계약 ID 를 거치지 않는 이유는, 채팅방이 아는 것이 {@code negotiationId} 뿐이기 때문이다.
+     * 계약 목록에서 골라내게 하면 화면이 프로젝트로 추려 맞히는 식이 되어 정확하지 않다.
+     *
+     * <p>협상 1건당 계약 1건이다({@code negotiation_id} UNIQUE). 아직 계약이 안 만들어졌으면
+     * {@code CT_001} 이다 — 타결 직후 짧은 순간이나, 결렬된 협상이 그렇다.
+     */
+    @Override
+    public ContractDetail getDetailByNegotiationId(Long negotiationId, Long accountId) {
+        Contract contract = contractRepository.findByNegotiationId(negotiationId)
+                .orElseThrow(() -> new BusinessException(ContractErrorCode.CONTRACT_NOT_FOUND));
+        return toDetail(contract, accountId);
+    }
+
+    /** 상세 조립. 당사자 확인은 여기서 한 번만 한다(조회 경로가 늘어도 빠뜨리지 않게). */
+    private ContractDetail toDetail(Contract contract, Long accountId) {
         if (!contract.isPartyOf(accountId)) {
             throw new BusinessException(ContractErrorCode.NOT_CONTRACT_PARTY);
         }
@@ -89,8 +111,11 @@ public class ContractQueryService implements ContractQueryUseCase {
         ContractProjectReaderPort.ProjectView project =
                 projectReaderPort.findByPositionId(contract.getPositionId());
         ContractPartyReaderPort.ClientParty client = partyReaderPort.findClient(contract.getClientId());
+        // 체결 시점에 굳혀둔 계좌가 있으면 그걸 쓴다. 없으면(체결 전이거나 옛 계약) 현재 계좌를 읽는다.
         ContractPartyReaderPort.FreelancerParty freelancer =
-                partyReaderPort.findFreelancer(contract.getFreelancerId());
+                partyReaderPort.findFreelancer(contract.getFreelancerId())
+                        .withFrozenAccount(
+                                partyReaderPort.restoreSettlementAccount(contract.getSettlementAccountEnc()));
 
         return new ContractDetail(
                 contract,
@@ -104,9 +129,23 @@ public class ContractQueryService implements ContractQueryUseCase {
                 signatureImageUrls(contract));
     }
 
+    /**
+     * 계약서 PDF. 체결 시 굳혀둔 파일이 있으면 <b>그것을 그대로</b> 돌려준다.
+     *
+     * <p>다시 그리면 조항 문구나 표기 규칙을 고쳤을 때 이미 체결된 계약서까지 바뀐다. 계약은
+     * 5년 보관 대상이라 그때 그 문서가 남아야 한다.
+     *
+     * <p>파일을 못 읽으면 그 자리에서 그린다. 스토리지가 잠깐 흔들린 것만으로 계약서를 아예 못
+     * 보게 되면 안 된다. 체결 전 계약과 이 기능이 생기기 전 계약도 이 경로로 온다.
+     *
+     * <p>권한 확인은 {@link #getDetail} 이 한다. 굳혀둔 파일을 읽을 때도 먼저 통과해야 한다.
+     */
     @Override
     public byte[] renderPdf(Long contractId, Long accountId) {
-        return contractPdfPort.render(toPdfView(getDetail(contractId, accountId)));
+        ContractDetail detail = getDetail(contractId, accountId);
+
+        return archivePort.read(detail.contract().getPdfFileId())
+                .orElseGet(() -> contractPdfPort.render(toPdfView(detail)));
     }
 
     @Override

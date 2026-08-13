@@ -1,6 +1,7 @@
 package com.pairing.contract.application.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pairing.contract.application.port.ContractArchivePort;
 import com.pairing.contract.application.port.ContractFileReaderPort;
 import com.pairing.contract.application.port.ContractPartyReaderPort;
 import com.pairing.contract.application.port.ContractPdfPort;
@@ -34,11 +35,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.List;
+import java.util.Optional;
 
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -50,6 +53,7 @@ import static org.mockito.Mockito.verify;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ContractSummaryMappingTest {
 
+    private static final Long CONTRACT_ID = 600L;
     private static final Long CLIENT_ACCOUNT_ID = 1000L;
     private static final Long FREELANCER_ACCOUNT_ID = 2000L;
 
@@ -64,6 +68,8 @@ class ContractSummaryMappingTest {
     @Mock
     private ContractPdfPort contractPdfPort;
     @Mock
+    private ContractArchivePort archivePort;
+    @Mock
     private ContractSettlementReaderPort settlementReaderPort;
     @Mock
     private S3Settings s3Settings;
@@ -74,7 +80,8 @@ class ContractSummaryMappingTest {
     @BeforeEach
     void setUp() {
         service = new ContractQueryService(contractRepository, projectReaderPort, partyReaderPort,
-                fileReaderPort, contractPdfPort, settlementReaderPort, s3Settings, new ObjectMapper());
+                fileReaderPort, contractPdfPort, archivePort, settlementReaderPort,
+                s3Settings, new ObjectMapper());
 
         contract = Contract.create(300L, 1L, 10L, 100L, 200L,
                 CLIENT_ACCOUNT_ID, FREELANCER_ACCOUNT_ID, 6_200_000L, 4,
@@ -211,5 +218,41 @@ class ContractSummaryMappingTest {
                 service.findMine(CLIENT_ACCOUNT_ID, null, null, null, PageRequest.of(0, 10));
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("굳혀둔 계약서가 있으면 다시 그리지 않는다")
+    void servesArchivedPdf() {
+        // 다시 그리면 조항 문구를 고쳤을 때 이미 체결된 계약서까지 새 양식으로 바뀐다.
+        byte[] archived = "%PDF-보관본".getBytes();
+        contract.attachPdf(77L);
+        givenDetailLoadable();
+        given(archivePort.read(77L)).willReturn(Optional.of(archived));
+
+        assertThat(service.renderPdf(CONTRACT_ID, CLIENT_ACCOUNT_ID)).isEqualTo(archived);
+        verify(contractPdfPort, never()).render(any());
+    }
+
+    @Test
+    @DisplayName("굳혀둔 파일을 못 읽으면 그 자리에서 그린다")
+    void fallsBackToRendering() {
+        // 스토리지가 잠깐 흔들린 것만으로 계약서를 아예 못 보게 되면 안 된다.
+        // 체결 전 계약과 이 기능이 생기기 전 계약도 이 경로로 온다.
+        byte[] rendered = "%PDF-즉석".getBytes();
+        givenDetailLoadable();
+        given(archivePort.read(any())).willReturn(Optional.empty());
+        given(contractPdfPort.render(any())).willReturn(rendered);
+
+        assertThat(service.renderPdf(CONTRACT_ID, CLIENT_ACCOUNT_ID)).isEqualTo(rendered);
+    }
+
+    /** 상세 조회가 통과하도록 최소한만 심는다. */
+    private void givenDetailLoadable() {
+        given(contractRepository.findById(CONTRACT_ID)).willReturn(Optional.of(contract));
+        given(projectReaderPort.findByPositionId(any())).willReturn(
+                new ContractProjectReaderPort.ProjectView("페어링 웹 리뉴얼", JobRole.BACKEND, List.of()));
+        given(partyReaderPort.findClient(any())).willReturn(ContractPartyReaderPort.ClientParty.EMPTY);
+        given(partyReaderPort.findFreelancer(any()))
+                .willReturn(ContractPartyReaderPort.FreelancerParty.EMPTY);
     }
 }

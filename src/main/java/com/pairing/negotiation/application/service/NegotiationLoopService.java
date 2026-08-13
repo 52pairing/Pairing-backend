@@ -6,6 +6,7 @@ import com.pairing.matching.application.usecase.MatchingNegotiationOutcomeUseCas
 import com.pairing.negotiation.application.event.NegotiationAgentRequested;
 import com.pairing.negotiation.application.event.NegotiationEvent;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
+import com.pairing.negotiation.application.event.NegotiationNotificationRequested;
 import com.pairing.negotiation.application.port.out.NegotiationEventPort;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
@@ -15,6 +16,7 @@ import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
 import com.pairing.negotiation.domain.model.NegotiationMessage;
+import com.pairing.negotiation.domain.model.NegotiationMessageType;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
 import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.SenderType;
@@ -97,6 +99,9 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         // 양측 마지노선이 모두 모였다 → 대리인을 예약하고 바로 응답한다.
         // 초기 제안(라운드 1) 생성은 커밋 후 리스너 스레드에서 돈다(A2A 왕복 17초).
         scheduleAgent(negotiation, NegotiationEventType.STARTED, new ArrayList<>());
+        // 협상 시작 알림(양측). 위 조기 반환 경로(한쪽만 제출)에는 두지 않는다 — 그때는 아직
+        // 상대를 기다리는 대기 상태라 "협상이 시작됐다"가 거짓이 된다.
+        eventPublisher.publishEvent(NegotiationNotificationRequested.started(negotiation));
     }
 
     @Override
@@ -233,6 +238,29 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
             case FAILED -> NegotiationEventType.FAILED;
             default -> fallbackType;
         });
+        notifyAgentRound(negotiation, messages);
+    }
+
+    /**
+     * 대리인 라운드 결과를 알림으로 알린다. 이 메서드가 STOMP {@code publish} 와 나란히 있는 이유는
+     * <b>"지금이 그 시점"이라는 판정이 이미 여기서 끝나 있기 때문</b>이다 — 같은 판단을 두 벌 두지 않는다.
+     *
+     * <ul>
+     *   <li>결렬: 라운드 상한 소진 자동 결렬({@code advanceOrFail})이 여기로 모인다.</li>
+     *   <li>새 제안: 대화가 실제로 돌아온 라운드만. 진행 중이 아니면 확인할 제안이 없다.</li>
+     *   <li>타결: 알림 3종에 없다. 계약 도메인이 계약서 생성 알림으로 알린다.</li>
+     * </ul>
+     */
+    private void notifyAgentRound(Negotiation negotiation, List<NegotiationMessage> messages) {
+        if (negotiation.getStatus() == NegotiationStatus.FAILED) {
+            eventPublisher.publishEvent(NegotiationNotificationRequested.failed(negotiation));
+            return;
+        }
+        boolean proposed = messages.stream()
+                .anyMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL);
+        if (negotiation.getStatus() == NegotiationStatus.IN_PROGRESS && proposed) {
+            eventPublisher.publishEvent(NegotiationNotificationRequested.proposed(negotiation));
+        }
     }
 
     /** 전파 속성은 {@link #runAgent} 와 같은 이유로 기본값이다. 호출 시점엔 실패한 트랜잭션이 이미 끝나 있다. */
@@ -289,6 +317,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
                 "협상이 종료되었습니다: " + endReason)));
         publish(negotiation, NegotiationEventType.FAILED);
+        // 결렬 알림은 포기한 본인에게도 간다. 누가 눌렀는지로 갈리지 않는 종료라 양측이 같은 사실을 받는다.
+        eventPublisher.publishEvent(NegotiationNotificationRequested.failed(negotiation));
     }
 
     @Override

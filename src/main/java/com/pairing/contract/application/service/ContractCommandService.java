@@ -3,6 +3,7 @@ package com.pairing.contract.application.service;
 import com.pairing.contract.application.command.SignContractCommand;
 import com.pairing.contract.application.event.ContractSignedEvent;
 import com.pairing.contract.application.port.ContractFileReaderPort;
+import com.pairing.contract.application.port.ContractPartyReaderPort;
 import com.pairing.contract.application.port.FreelancerGradeReaderPort;
 import com.pairing.contract.application.usecase.ContractCommandUseCase;
 import com.pairing.contract.domain.model.Contract;
@@ -64,6 +65,7 @@ public class ContractCommandService implements ContractCommandUseCase {
     private final ContractRepository contractRepository;
     private final ContractFileReaderPort contractFileReaderPort;
     private final ProjectCommandUseCase projectCommandUseCase;
+    private final ContractPartyReaderPort partyReaderPort;
     private final DepositSettlementUseCase depositSettlementUseCase;
     private final FreelancerGradeReaderPort freelancerGradeReaderPort;
     private final NotificationCreateUseCase notificationCreateUseCase;
@@ -104,6 +106,12 @@ public class ContractCommandService implements ContractCommandUseCase {
     private void conclude(Contract contract) {
         // 포지션 인원 확정. 다 차면 그 포지션이 닫힌다.
         projectCommandUseCase.confirmPosition(contract.getPositionId());
+
+        // 계약서 제5조에 찍힌 정산 계좌를 이 시점 값으로 굳힌다. 굳히지 않으면 프리랜서가
+        // 나중에 계좌를 바꿨을 때 이미 체결된 계약서의 표시까지 따라 바뀐다.
+        // 계좌가 없으면 비워 둔다 — 계좌 때문에 체결이 막히면 안 된다.
+        partyReaderPort.settlementAccountSnapshot(contract.getFreelancerId())
+                .ifPresent(contract::freezeSettlementAccount);
 
         // 프리랜서 착수금 수수료는 이 시점에 발생한다(P27). 계약 총액이 기준이다.
         depositSettlementUseCase.createFreelancerDeposit(new CreateFreelancerDepositCommand(

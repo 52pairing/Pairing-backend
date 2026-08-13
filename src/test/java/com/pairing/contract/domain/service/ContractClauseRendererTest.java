@@ -82,7 +82,8 @@ class ContractClauseRendererTest {
                 source.getEndDate(), source.getWorkStyle(), source.getWorkForm(),
                 source.getWorkLocation(), source.getInspectionDays(), source.getPaymentDays(),
                 source.getConfidentialYears(), source.getPenaltyRate(), source.getSpecialTerms(),
-                source.getContentJson(), source.getPdfFileId(), source.getEsignProvider(),
+                source.getContentJson(), source.getPdfFileId(), source.getSettlementAccountEnc(),
+                source.getEsignProvider(),
                 source.getEsignDocId(), source.getStatus(), source.getSignedAt(),
                 source.getCompletedAt(), source.getTerminatedAt(), source.getTerminatedBy(),
                 source.getRetentionUntil(), source.getCreatedAt(), source.getSignatures());

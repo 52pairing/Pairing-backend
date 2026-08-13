@@ -6,6 +6,7 @@ import com.pairing.file.domain.model.UploadedFile;
 import com.pairing.file.domain.repository.FileRepository;
 import com.pairing.file.exception.FileErrorCode;
 import com.pairing.global.exception.BusinessException;
+import com.pairing.global.port.out.FileStoragePort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ import java.util.Optional;
 public class FileQueryService implements FileQueryUseCase {
 
     private final FileRepository fileRepository;
+    private final FileStoragePort fileStoragePort;
 
     @Override
     public FileResult getById(Long fileId) {
@@ -32,6 +34,11 @@ public class FileQueryService implements FileQueryUseCase {
             return Optional.empty();
         }
         return fileRepository.findById(fileId).map(UploadedFile::getObjectKey);
+    }
+
+    @Override
+    public Optional<byte[]> readContent(Long fileId) {
+        return findObjectKey(fileId).flatMap(fileStoragePort::readFile);
     }
 
     @Override

@@ -1,6 +1,7 @@
 package com.pairing.chat.application.service;
 
 import com.pairing.chat.application.event.ChatMessageBroadcast;
+import com.pairing.chat.application.port.out.ChatDirectoryPort.DisplayProfile;
 import com.pairing.chat.application.port.out.ChatDirectoryPort;
 import com.pairing.chat.application.port.out.ChatDirectoryPort.NegotiationParties;
 import com.pairing.chat.application.port.out.ChatEventPort;
@@ -63,11 +64,15 @@ public class ChatCommandService implements ChatCommandUseCase, ChatActivationUse
         room.findMember(accountId).ifPresent(member -> member.markRead(saved.getCreatedAt()));
         chatRoomRepository.save(room);
 
-        String senderName = chatDirectoryPort.findDisplayName(accountId).orElse(null);
-        chatEventPort.publish(new ChatMessageBroadcast(chatRoomId, saved.getId(), accountId, senderName,
-                saved.getMessageType(), saved.getContent(), saved.getCreatedAt()));
+        // 보낸 사람 표시정보는 한 번만 읽어 실시간 이벤트와 응답에 같이 쓴다.
+        DisplayProfile sender = chatDirectoryPort.findDisplayProfile(accountId).orElse(null);
+        String senderName = sender == null ? null : sender.name();
+        String senderImageKey = sender == null ? null : sender.imageKey();
 
-        return new ChatMessageView(saved, senderName, true);
+        chatEventPort.publish(new ChatMessageBroadcast(chatRoomId, saved.getId(), accountId, senderName,
+                senderImageKey, saved.getMessageType(), saved.getContent(), saved.getCreatedAt()));
+
+        return new ChatMessageView(saved, senderName, senderImageKey, true);
     }
 
     @Override

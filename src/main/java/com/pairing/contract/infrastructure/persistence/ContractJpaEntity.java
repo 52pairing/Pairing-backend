@@ -118,6 +118,15 @@ public class ContractJpaEntity {
     @Column(name = "pdf_file_id")
     private Long pdfFileId;
 
+    /**
+     * 체결 시점 정산 계좌(암호문). 계약서 제5조에 찍힌 한 줄을 굳혀 둔다.
+     *
+     * <p>{@code payment_method.account_no_enc} 와 같은 기준으로 평문을 두지 않는다.
+     * 체결 전 계약과 이 칸이 생기기 전 계약은 비어 있고, 그때는 현재 계좌를 읽는다.
+     */
+    @Column(name = "settlement_account_enc")
+    private byte[] settlementAccountEnc;
+
     @Column(name = "esign_provider", length = 30)
     private String esignProvider;
 
@@ -158,7 +167,8 @@ public class ContractJpaEntity {
                              WorkStyle workStyle, WorkForm workForm, String workLocation,
                              int inspectionDays, int paymentDays, int confidentialYears,
                              BigDecimal penaltyRate, String specialTerms, String contentJson,
-                             Long pdfFileId, String esignProvider, String esignDocId,
+                             Long pdfFileId, byte[] settlementAccountEnc,
+                             String esignProvider, String esignDocId,
                              ContractStatus status, LocalDateTime signedAt, LocalDateTime completedAt,
                              LocalDateTime terminatedAt, PartyRole terminatedBy,
                              LocalDate retentionUntil, LocalDateTime createdAt) {
@@ -185,6 +195,7 @@ public class ContractJpaEntity {
         this.specialTerms = specialTerms;
         this.contentJson = contentJson;
         this.pdfFileId = pdfFileId;
+        this.settlementAccountEnc = settlementAccountEnc;
         this.esignProvider = esignProvider;
         this.esignDocId = esignDocId;
         this.status = status;
@@ -225,6 +236,7 @@ public class ContractJpaEntity {
         this.specialTerms = source.specialTerms;
         this.contentJson = source.contentJson;
         this.pdfFileId = source.pdfFileId;
+        this.settlementAccountEnc = source.settlementAccountEnc;
         this.esignProvider = source.esignProvider;
         this.esignDocId = source.esignDocId;
         this.status = source.status;
