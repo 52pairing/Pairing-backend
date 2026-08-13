@@ -7,6 +7,7 @@ import com.pairing.negotiation.application.event.NegotiationAgentRequested;
 import com.pairing.negotiation.application.event.NegotiationEvent;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
 import com.pairing.negotiation.application.event.NegotiationNotificationRequested;
+import com.pairing.negotiation.application.port.out.FreelancerConditionReaderPort;
 import com.pairing.negotiation.application.port.out.NegotiationEventPort;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
@@ -65,6 +66,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
     private final ContractCreationUseCase contractCreationUseCase;
     // 대리인 실행 예약용. 커밋 후 NegotiationAgentListener 가 별도 스레드에서 받는다.
     private final ApplicationEventPublisher eventPublisher;
+    // 프리랜서가 등록한 최저 수용가(R09 하한 가드) 조회용.
+    private final FreelancerConditionReaderPort freelancerConditionReaderPort;
 
     /**
      * 마지노선 제출. <b>양측이 모두 낸 뒤에야</b> 대리인 협상(라운드 1)이 시작된다.
@@ -85,7 +88,9 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         // 화면이 "4"(단위 없음)나 "재택"(코드 아닌 라벨)을 보내면 대리인이 비교조차 못 한다.
         for (FloorInput floor : floors) {
             NegotiationCondition condition = findByType(negotiation, floor.conditionType());
-            condition.submitFloor(role, normalizeFloor(condition, floor.value()));
+            String normalized = normalizeFloor(condition, floor.value());
+            ensureRespectsMinAccept(negotiation, role, condition, normalized);
+            condition.submitFloor(role, normalized);
         }
 
         // 상대가 아직 안 냈으면 여기서 멈춘다. 상대 화면에는 '내 응답 필요'로 뜬다.
@@ -289,7 +294,9 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
             if (condition.isAgreed()) {
                 throw new BusinessException(NegotiationErrorCode.CONDITION_ALREADY_LOCKED);
             }
-            condition.submitFloor(role, normalizeFloor(condition, floor.value()));
+            String normalized = normalizeFloor(condition, floor.value());
+            ensureRespectsMinAccept(negotiation, role, condition, normalized);
+            condition.submitFloor(role, normalized);
         }
         negotiationRepository.save(negotiation);
     }
@@ -485,6 +492,33 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
     /** PERIOD 처럼 단위가 빠졌을 때 복원 기준이 되는 기존 값(희망값). */
     private String reference(NegotiationCondition condition) {
         return condition.getClientValue() != null ? condition.getClientValue() : condition.getFreelancerValue();
+    }
+
+    /**
+     * 프리랜서 AMOUNT 마지노선이 <b>등록해둔 최저 수용가</b>보다 낮으면 거부한다(요구사항 R09
+     * 예외조건 "프리 최저 수용가 위반 시 차단").
+     *
+     * <p>예전에는 협상 생성 시 그 값을 프리 floor 로 프리필해 하한을 보장했다. 그러면 클라는 직접
+     * 입력하는데 프리만 자동으로 채워져 화면이 비대칭이 되고(프론트가 그 때문에 막혔다), 프리필을
+     * 수정해 더 낮추면 가드가 오히려 무력화됐다. 그래서 <b>프리필을 없애고 입력 시점에 검증</b>한다.
+     *
+     * <p>등록값이 없으면(구 데이터) 가드할 기준이 없으므로 통과시킨다. 값을 <b>올리는</b> 것은 자유다 —
+     * 이 협상에서만 더 받고 싶은 경우를 막지 않는다.
+     */
+    private void ensureRespectsMinAccept(Negotiation negotiation, PartyRole role,
+                                         NegotiationCondition condition, String normalizedFloor) {
+        if (role != PartyRole.FREELANCER || condition.getConditionType() != ConditionType.AMOUNT) {
+            return;
+        }
+        Long minAccept = freelancerConditionReaderPort
+                .findMinAcceptAmount(negotiation.getFreelancerId()).orElse(null);
+        Long floor = parseOrNull(normalizedFloor);
+        if (minAccept == null || floor == null) {
+            return;
+        }
+        if (floor < minAccept) {
+            throw new BusinessException(NegotiationErrorCode.FLOOR_BELOW_MIN_ACCEPT);
+        }
     }
 
     /**

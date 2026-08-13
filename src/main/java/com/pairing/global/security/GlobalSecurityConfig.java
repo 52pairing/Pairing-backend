@@ -58,6 +58,15 @@ public class GlobalSecurityConfig {
                                 "/v3/api-docs/**",
                                 "/actuator/health",
                                 "/actuator/info",
+                                // 모니터링 서버의 Prometheus가 30초마다 긁는다. 열어두지 않으면
+                                // 401이 돌아가 메트릭이 하나도 수집되지 않는다.
+                                //
+                                // ALB는 /api/* 만 백엔드로 보내므로 이 경로는 인터넷에서 라우팅되지
+                                // 않는다. 실제 접근 경로는 VPC 안에서 태스크 IP:8080 으로 직접 붙는
+                                // 것뿐이고, 그건 앱 태스크 SG 인바운드로 통제한다.
+                                // (management.server.port를 9090으로 분리하면 액추에이터가 별도
+                                //  컨텍스트로 옮겨가 이 줄은 효력이 없어진다. 그때는 지워도 된다)
+                                "/actuator/prometheus",
                                 // STOMP 핸드셰이크. WebSocket 프레임에는 시큐리티 필터가 걸리지 않으므로
                                 // 인증은 JwtHandshakeInterceptor가 핸드셰이크 시점에 한 번 수행한다.
                                 // 경로는 app.websocket.endpoint 와 맞춰야 한다.

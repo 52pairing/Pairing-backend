@@ -50,6 +50,13 @@ dependencies {
     // 헬스체크 / 기본 메트릭 (GlobalExceptionHandler의 MeterRegistry 주입에 필요)
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    // Micrometer -> Prometheus 노출. 모니터링 서버의 Prometheus가 /actuator/prometheus를 긁는다.
+    //
+    // actuator만 있으면 MeterRegistry는 SimpleMeterRegistry(메모리에만 쌓이고 밖으로 안 나감)다.
+    // 이 의존성이 들어오면 PrometheusMeterRegistry로 바뀌어, 이미 계측해둔 커스텀 메트릭
+    // (websocket.online.users, api_errors_total 등)까지 함께 노출된다. 코드 변경은 필요 없다.
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+
     // API 문서 (Swagger UI)
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.16'
 

@@ -1,5 +1,6 @@
 package com.pairing.project.application.usecase;
 
+import com.pairing.project.application.result.ProjectAttachment;
 import com.pairing.project.application.result.ProjectDetail;
 import com.pairing.project.application.result.ProjectPositionSummary;
 import com.pairing.project.application.result.ProjectSummary;
@@ -56,6 +57,20 @@ public interface ProjectQueryUseCase {
 
     /** 상세 화면용. 소유자가 아니면 PJ_003. */
     ProjectDetail getDetailForOwner(Long projectId, Long accountId);
+
+    /**
+     * 첨부 자료 다운로드. 열람 범위는 {@link #getDetailForOwner} 와 같다 — 소유 클라이언트뿐이다.
+     *
+     * <p><b>{@code projectId} 만으로 열어 주면 안 된다.</b> 상세 응답의 CDN 경로는 랜덤 UUID 라
+     * 추측할 수 없지만, 이 경로의 {@code projectId}/{@code fileId} 는 순차 정수라 1번부터 훑으면
+     * 남의 첨부가 그대로 나온다. 인증만으로는 부족하고 소유자 검증이 반드시 있어야 한다.
+     *
+     * <p>그 프로젝트에 실제로 달린 첨부인지도 확인한다. 안 그러면 소유한 프로젝트 하나만 있으면
+     * 그 번호를 고정해 두고 {@code fileId} 만 바꿔가며 남의 파일을 받을 수 있다.
+     *
+     * @throws com.pairing.global.exception.BusinessException PJ_001 · PJ_003 · FI_001
+     */
+    ProjectAttachment downloadAttachment(Long projectId, Long fileId, Long accountId);
 
     /**
      * 내 프로젝트 목록. 탭 하나가 여러 상태를 묶는다.
