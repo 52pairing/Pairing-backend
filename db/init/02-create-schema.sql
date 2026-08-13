@@ -141,6 +141,7 @@ CREATE TABLE "account" (
     "is_temp_password" BOOLEAN DEFAULT FALSE NOT NULL,
     "password_updated_at" TIMESTAMP,
     "last_login_at" TIMESTAMP,
+    "suspended_at" TIMESTAMP,
     "suspend_reason" VARCHAR(500),
     "withdrawn_at" TIMESTAMP,
     "withdraw_reason" VARCHAR(500),
@@ -1044,6 +1045,8 @@ CREATE INDEX "idx_terms_target" ON "terms" ("target_role", "is_required");
 CREATE INDEX "idx_account_role_status" ON "account" ("role", "status");
 CREATE INDEX "idx_account_name_phone" ON "account" ("name", "phone");
 CREATE INDEX "idx_account_created" ON "account" ("created_at");
+-- 관리자 회원 목록의 "정지" 필터·요약 카드용. 정지 회원만 부분 인덱싱한다(대부분의 행은 NULL).
+CREATE INDEX "idx_account_suspended" ON "account" ("suspended_at") WHERE "suspended_at" IS NOT NULL;
 -- 재가입 제한도 역할별로 판정하므로 role 을 인덱스에 포함한다.
 CREATE INDEX "idx_account_rejoin_email" ON "account" ("email_hash", "role", "rejoin_available_at");
 CREATE INDEX "idx_account_rejoin_phone" ON "account" ("phone_hash", "role", "rejoin_available_at");
@@ -1229,6 +1232,7 @@ COMMENT ON COLUMN "account"."locked_at" IS '계정 잠금 시각';
 COMMENT ON COLUMN "account"."is_temp_password" IS '임시 비밀번호 상태(로그인 후 변경 강제)';
 COMMENT ON COLUMN "account"."password_updated_at" IS '비밀번호 최종 변경 시각';
 COMMENT ON COLUMN "account"."last_login_at" IS '최종 로그인 시각';
+COMMENT ON COLUMN "account"."suspended_at" IS '관리자 정지 시각. NULL 이 아니면 정지 상태(관리자 서버 전용 · 로그인 차단 판정은 Redis SUSPEND:{id})';
 COMMENT ON COLUMN "account"."suspend_reason" IS '정지 사유. 정지된 사용자에게 안내';
 COMMENT ON COLUMN "account"."withdrawn_at" IS '탈퇴 시각';
 COMMENT ON COLUMN "account"."withdraw_reason" IS '탈퇴 사유';
