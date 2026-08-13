@@ -284,18 +284,24 @@ CREATE TABLE "condition_skill" (
 
 CREATE TABLE "resume" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
-    "freelancer_id" BIGINT NOT NULL,
+    -- freelancer_profile.id 가 아니라 account.id 다. 이력서는 계정당 한 장이다.
+    "account_id" BIGINT NOT NULL,
+    "profile_file_id" BIGINT NOT NULL,
     "contact_phone" VARCHAR(20),
-    "contact_email" VARCHAR(255),
+    "contact_email" VARCHAR(100),
     -- 주소는 세 칸으로 나눠 받는다(우편번호 검색 결과 + 사용자가 직접 쓰는 상세주소).
     -- 합쳐 저장하면 수정 화면에서 다시 나눌 수 없다. zip_code 는 옛 이력서에 없어 nullable.
     "zip_code" VARCHAR(10),
-    "address" VARCHAR(255),
+    "address" VARCHAR(255) NOT NULL,
     "address_detail" VARCHAR(255),
-    "self_introduction" TEXT,
-    "portfolio_file_id" BIGINT,
-    "status" VARCHAR(20) DEFAULT 'DRAFT' NOT NULL,
-    "completed_at" TIMESTAMP,
+    "self_introduction" VARCHAR(2000) NOT NULL,
+    "portfolio_file_id" BIGINT NOT NULL,
+    "status" VARCHAR(10) DEFAULT 'DRAFT' NOT NULL,
+    -- 이력서 등록 시 받는 필수 약관 4종. 하나라도 false 면 저장하지 않는다.
+    "profile_collection_agreed" BOOLEAN DEFAULT FALSE NOT NULL,
+    "profile_provision_agreed" BOOLEAN DEFAULT FALSE NOT NULL,
+    "ai_analysis_agreed" BOOLEAN DEFAULT FALSE NOT NULL,
+    "career_portfolio_usage_agreed" BOOLEAN DEFAULT FALSE NOT NULL,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
@@ -766,48 +772,50 @@ CREATE TABLE "rerecommend_purchase" (
     PRIMARY KEY ("id")
 );
 
+-- 상호 평가. 작성 후 수정·삭제하지 않으므로 updated_at 이 없다.
 CREATE TABLE "review" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "contract_id" BIGINT NOT NULL,
     "project_id" BIGINT NOT NULL,
-    "reviewer_id" BIGINT NOT NULL,
-    "reviewee_id" BIGINT NOT NULL,
-    "rating" SMALLINT NOT NULL,
+    -- account.id 를 그대로 쓴다. 역할은 작성 시점 값을 함께 남겨 조인 없이 구분한다.
+    "reviewer_account_id" BIGINT NOT NULL,
+    "reviewer_role" VARCHAR(10) NOT NULL,
+    "reviewee_account_id" BIGINT NOT NULL,
+    "reviewee_role" VARCHAR(10) NOT NULL,
+    "score" INTEGER NOT NULL,
     "content" VARCHAR(500),
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
 );
 
+-- 사이트 이용 후기.
+--   visibility 는 작성 시 PUBLIC 이 기본이다(사후 관리). 관리자가 부적절한 후기만 PRIVATE 로 내린다.
+--   promoted 는 별개다. 메인 노출은 PUBLIC + promoted + score >= 4 를 모두 만족해야 한다.
 CREATE TABLE "site_review" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "contract_id" BIGINT NOT NULL,
     "project_id" BIGINT NOT NULL,
-    "account_id" BIGINT NOT NULL,
-    "writer_role" VARCHAR(20) NOT NULL,
-    "rating" SMALLINT NOT NULL,
+    "writer_account_id" BIGINT NOT NULL,
+    "writer_role" VARCHAR(10) NOT NULL,
+    "score" INTEGER NOT NULL,
     "content" VARCHAR(500),
-    "is_public" BOOLEAN DEFAULT FALSE NOT NULL,
-    "is_promoted" BOOLEAN DEFAULT FALSE NOT NULL,
-    "managed_by" BIGINT,
-    "managed_at" TIMESTAMP,
+    "visibility" VARCHAR(10) DEFAULT 'PUBLIC' NOT NULL,
+    "promoted" BOOLEAN DEFAULT FALSE NOT NULL,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
 );
 
+-- 알림. 이동 경로는 link_url 하나로 내려주므로 ref_type/ref_id 를 따로 두지 않는다.
 CREATE TABLE "notification" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
-    "account_id" BIGINT NOT NULL,
-    "type" VARCHAR(50) NOT NULL,
+    "owner_account_id" BIGINT NOT NULL,
+    "type" VARCHAR(30) NOT NULL,
     "title" VARCHAR(200) NOT NULL,
     "content" VARCHAR(500),
-    "link_url" VARCHAR(500),
-    "ref_type" VARCHAR(30),
-    "ref_id" BIGINT,
-    "is_read" BOOLEAN DEFAULT FALSE NOT NULL,
+    "link_url" VARCHAR(300),
+    "read" BOOLEAN DEFAULT FALSE NOT NULL,
     "read_at" TIMESTAMP,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
 );
 
@@ -841,30 +849,33 @@ CREATE TABLE "chatbot_quota" (
     PRIMARY KEY ("id")
 );
 
+-- 1:1 문의.
+--   작성자 정보(writer_*)는 접수 시점 값을 복사해 둔다. 관리자 목록 검색을 account 조인 없이
+--   이 테이블만으로 처리할 수 있고, 작성자가 탈퇴해도 문의 이력이 남는다.
+--   문의 유형(category)은 스키마 v12 에서 제거했다.
 CREATE TABLE "inquiry" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
-    "account_id" BIGINT NOT NULL,
-    "category" VARCHAR(30) NOT NULL,
+    "writer_account_id" BIGINT NOT NULL,
+    "writer_name" VARCHAR(100) NOT NULL,
+    "writer_role" VARCHAR(20) NOT NULL,
+    "writer_email" VARCHAR(100),
     "title" VARCHAR(200) NOT NULL,
-    "content" TEXT NOT NULL,
-    "status" VARCHAR(20) DEFAULT 'PENDING' NOT NULL,
-    "answer" TEXT,
-    "answered_by" BIGINT,
+    "content" VARCHAR(2000) NOT NULL,
+    "status" VARCHAR(10) DEFAULT 'PENDING' NOT NULL,
+    "answer" VARCHAR(2000),
     "answered_at" TIMESTAMP,
     "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY ("id")
 );
 
 -- 1:1 문의 첨부파일. 작성 화면에서 여러 건을 올릴 수 있다.
+-- 1:1 문의 첨부파일. JPA @ElementCollection 매핑이라 자체 PK 가 없다.
+-- (inquiry_id, sort_order) 가 한 행을 가리킨다.
 CREATE TABLE "inquiry_file" (
-    "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "inquiry_id" BIGINT NOT NULL,
-    "file_id" BIGINT NOT NULL,
-    "sort_order" INTEGER DEFAULT 0 NOT NULL,
-    "created_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    "updated_at" TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    PRIMARY KEY ("id")
+    "file_id" BIGINT,
+    "sort_order" INTEGER NOT NULL,
+    PRIMARY KEY ("inquiry_id", "sort_order")
 );
 
 -- 상태 변경 이력. 관리자 상세 화면의 "상태 이력" 표에 쓴다.
@@ -919,7 +930,7 @@ ALTER TABLE "resume_draft" ADD CONSTRAINT "uk_resume_draft_account" UNIQUE ("acc
 ALTER TABLE "terms_agreement" ADD CONSTRAINT "uk_terms_agreement" UNIQUE ("account_id", "terms_id");
 ALTER TABLE "freelancer_condition" ADD CONSTRAINT "uk_condition_freelancer" UNIQUE ("freelancer_id");
 ALTER TABLE "condition_skill" ADD CONSTRAINT "uk_condition_skill" UNIQUE ("condition_id", "skill_code");
-ALTER TABLE "resume" ADD CONSTRAINT "uk_resume_freelancer" UNIQUE ("freelancer_id");
+ALTER TABLE "resume" ADD CONSTRAINT "uk_resume_account" UNIQUE ("account_id");
 ALTER TABLE "project_position" ADD CONSTRAINT "uk_project_position" UNIQUE ("project_id", "position_no");
 ALTER TABLE "position_skill" ADD CONSTRAINT "uk_position_skill" UNIQUE ("position_id", "skill_code");
 ALTER TABLE "project_file" ADD CONSTRAINT "uk_project_file" UNIQUE ("project_id", "file_id");
@@ -938,8 +949,8 @@ ALTER TABLE "virtual_account" ADD CONSTRAINT "uk_virtual_account" UNIQUE ("accou
 ALTER TABLE "ledger_entry" ADD CONSTRAINT "uk_ledger_entry_no" UNIQUE ("entry_no");
 ALTER TABLE "settlement" ADD CONSTRAINT "uk_settlement_no" UNIQUE ("settlement_no");
 ALTER TABLE "rerecommend_purchase" ADD CONSTRAINT "uk_rerecommend_round" UNIQUE ("round_id");
-ALTER TABLE "review" ADD CONSTRAINT "uk_review" UNIQUE ("contract_id", "reviewer_id");
-ALTER TABLE "site_review" ADD CONSTRAINT "uk_site_review" UNIQUE ("contract_id", "account_id");
+ALTER TABLE "review" ADD CONSTRAINT "uk_review_contract_reviewer" UNIQUE ("contract_id", "reviewer_account_id");
+ALTER TABLE "site_review" ADD CONSTRAINT "uk_site_review_contract_writer" UNIQUE ("contract_id", "writer_account_id");
 ALTER TABLE "chatbot_quota" ADD CONSTRAINT "uk_chatbot_quota" UNIQUE ("account_id", "quota_date");
 
 -- =====================================================================
@@ -956,7 +967,7 @@ ALTER TABLE "terms_agreement" ADD CONSTRAINT "fk_agreement_account" FOREIGN KEY 
 ALTER TABLE "terms_agreement" ADD CONSTRAINT "fk_agreement_terms" FOREIGN KEY ("terms_id") REFERENCES "terms" ("id");
 ALTER TABLE "freelancer_condition" ADD CONSTRAINT "fk_condition_freelancer" FOREIGN KEY ("freelancer_id") REFERENCES "freelancer_profile" ("id");
 ALTER TABLE "condition_skill" ADD CONSTRAINT "fk_condition_skill" FOREIGN KEY ("condition_id") REFERENCES "freelancer_condition" ("id");
-ALTER TABLE "resume" ADD CONSTRAINT "fk_resume_freelancer" FOREIGN KEY ("freelancer_id") REFERENCES "freelancer_profile" ("id");
+ALTER TABLE "resume" ADD CONSTRAINT "fk_resume_account" FOREIGN KEY ("account_id") REFERENCES "account" ("id");
 ALTER TABLE "resume" ADD CONSTRAINT "fk_resume_portfolio" FOREIGN KEY ("portfolio_file_id") REFERENCES "file" ("id");
 ALTER TABLE "resume_education" ADD CONSTRAINT "fk_resume_education" FOREIGN KEY ("resume_id") REFERENCES "resume" ("id");
 ALTER TABLE "resume_career" ADD CONSTRAINT "fk_resume_career" FOREIGN KEY ("resume_id") REFERENCES "resume" ("id");
@@ -1023,17 +1034,15 @@ ALTER TABLE "rerecommend_purchase" ADD CONSTRAINT "fk_rerecommend_round" FOREIGN
 ALTER TABLE "rerecommend_purchase" ADD CONSTRAINT "fk_rerecommend_ledger" FOREIGN KEY ("ledger_entry_id") REFERENCES "ledger_entry" ("id");
 ALTER TABLE "review" ADD CONSTRAINT "fk_review_contract" FOREIGN KEY ("contract_id") REFERENCES "contract" ("id");
 ALTER TABLE "review" ADD CONSTRAINT "fk_review_project" FOREIGN KEY ("project_id") REFERENCES "project" ("id");
-ALTER TABLE "review" ADD CONSTRAINT "fk_review_reviewer" FOREIGN KEY ("reviewer_id") REFERENCES "account" ("id");
-ALTER TABLE "review" ADD CONSTRAINT "fk_review_reviewee" FOREIGN KEY ("reviewee_id") REFERENCES "account" ("id");
+ALTER TABLE "review" ADD CONSTRAINT "fk_review_reviewer" FOREIGN KEY ("reviewer_account_id") REFERENCES "account" ("id");
+ALTER TABLE "review" ADD CONSTRAINT "fk_review_reviewee" FOREIGN KEY ("reviewee_account_id") REFERENCES "account" ("id");
 ALTER TABLE "site_review" ADD CONSTRAINT "fk_site_review_contract" FOREIGN KEY ("contract_id") REFERENCES "contract" ("id");
 ALTER TABLE "site_review" ADD CONSTRAINT "fk_site_review_project" FOREIGN KEY ("project_id") REFERENCES "project" ("id");
-ALTER TABLE "site_review" ADD CONSTRAINT "fk_site_review_account" FOREIGN KEY ("account_id") REFERENCES "account" ("id");
-ALTER TABLE "site_review" ADD CONSTRAINT "fk_site_review_manager" FOREIGN KEY ("managed_by") REFERENCES "account" ("id");
+ALTER TABLE "site_review" ADD CONSTRAINT "fk_site_review_writer" FOREIGN KEY ("writer_account_id") REFERENCES "account" ("id");
 ALTER TABLE "chatbot_session" ADD CONSTRAINT "fk_chatbot_session_account" FOREIGN KEY ("account_id") REFERENCES "account" ("id");
 ALTER TABLE "chatbot_message" ADD CONSTRAINT "fk_chatbot_message_session" FOREIGN KEY ("session_id") REFERENCES "chatbot_session" ("id");
 ALTER TABLE "chatbot_quota" ADD CONSTRAINT "fk_chatbot_quota_account" FOREIGN KEY ("account_id") REFERENCES "account" ("id");
-ALTER TABLE "inquiry" ADD CONSTRAINT "fk_inquiry_account" FOREIGN KEY ("account_id") REFERENCES "account" ("id");
-ALTER TABLE "inquiry" ADD CONSTRAINT "fk_inquiry_admin" FOREIGN KEY ("answered_by") REFERENCES "account" ("id");
+ALTER TABLE "inquiry" ADD CONSTRAINT "fk_inquiry_writer" FOREIGN KEY ("writer_account_id") REFERENCES "account" ("id");
 
 -- =====================================================================
 -- 4. 인덱스
@@ -1125,20 +1134,17 @@ CREATE INDEX "idx_penalty_payee" ON "penalty" ("payee_account_id");
 CREATE INDEX "idx_penalty_ledger" ON "penalty" ("ledger_entry_id");
 CREATE INDEX "idx_rerecommend_project" ON "rerecommend_purchase" ("project_id", "status");
 CREATE INDEX "idx_rerecommend_ledger" ON "rerecommend_purchase" ("ledger_entry_id");
-CREATE INDEX "idx_review_reviewee" ON "review" ("reviewee_id", "created_at");
-CREATE INDEX "idx_review_reviewer" ON "review" ("reviewer_id");
+CREATE INDEX "idx_review_reviewee" ON "review" ("reviewee_account_id", "created_at");
+CREATE INDEX "idx_review_reviewer" ON "review" ("reviewer_account_id");
 CREATE INDEX "idx_review_project" ON "review" ("project_id");
-CREATE INDEX "idx_site_review_public" ON "site_review" ("is_public", "rating", "created_at");
-CREATE INDEX "idx_site_review_promoted" ON "site_review" ("is_promoted");
-CREATE INDEX "idx_site_review_account" ON "site_review" ("account_id");
-CREATE INDEX "idx_site_review_manager" ON "site_review" ("managed_by");
-CREATE INDEX "idx_notification_account" ON "notification" ("account_id", "is_read", "created_at");
-CREATE INDEX "idx_notification_ref" ON "notification" ("ref_type", "ref_id");
+-- 비로그인 메인 노출 조회: visibility=PUBLIC AND promoted AND score>=4, 최신순
+CREATE INDEX "idx_site_review_home" ON "site_review" ("visibility", "promoted", "score", "created_at");
+CREATE INDEX "idx_site_review_writer" ON "site_review" ("writer_account_id");
+CREATE INDEX "idx_notification_owner" ON "notification" ("owner_account_id", "read", "created_at");
 CREATE INDEX "idx_chatbot_session_account" ON "chatbot_session" ("account_id", "status");
 CREATE INDEX "idx_chatbot_message_session" ON "chatbot_message" ("session_id", "created_at");
-CREATE INDEX "idx_inquiry_account" ON "inquiry" ("account_id", "status");
+CREATE INDEX "idx_inquiry_writer" ON "inquiry" ("writer_account_id", "status");
 CREATE INDEX "idx_inquiry_status" ON "inquiry" ("status", "created_at");
-CREATE INDEX "idx_inquiry_admin" ON "inquiry" ("answered_by");
 CREATE INDEX "idx_ai_log_type" ON "ai_agent_log" ("agent_type", "created_at");
 CREATE INDEX "idx_ai_log_ref" ON "ai_agent_log" ("ref_type", "ref_id");
 CREATE INDEX "idx_ai_log_status" ON "ai_agent_log" ("status", "created_at");
@@ -1160,6 +1166,8 @@ COMMENT ON TABLE "email_verification" IS '이메일 인증 코드(유효 3분)';
 COMMENT ON TABLE "freelancer_condition" IS '프리랜서 등록 조건(화면1). 매칭 조건의 기준 데이터';
 COMMENT ON TABLE "condition_skill" IS '보유 스킬(숙련도 포함, 1개 이상). 포지션 요구 스킬과 대조하는 매칭 기준';
 COMMENT ON TABLE "resume" IS '이력서(화면2). 성명·생년월일은 account/freelancer_profile 에서 가져오며 수정 불가';
+COMMENT ON COLUMN "resume"."account_id" IS 'account FK(1:1)';
+COMMENT ON COLUMN "resume"."profile_file_id" IS '프로필 사진 file FK(필수)';
 COMMENT ON TABLE "resume_education" IS '학력사항';
 COMMENT ON TABLE "resume_career" IS '경력사항';
 COMMENT ON TABLE "resume_certificate" IS '자격증 및 어학';
@@ -1187,12 +1195,27 @@ COMMENT ON TABLE "settlement" IS '플랫폼 수수료 정산(용역비는 당사
 COMMENT ON TABLE "penalty" IS '중도 파기 위약금(상대방 10% + 플랫폼 10%)';
 COMMENT ON TABLE "rerecommend_purchase" IS '유료 재추천 구매(프로젝트당 최대 5회)';
 COMMENT ON TABLE "review" IS '상호 평가(양방향, 등급 산정 기준). 프로젝트 [종료] 상태 이후에만 작성 가능';
+COMMENT ON COLUMN "review"."reviewer_account_id" IS '작성자 account FK';
+COMMENT ON COLUMN "review"."reviewer_role" IS 'CLIENT / FREELANCER. 작성 시점 역할';
+COMMENT ON COLUMN "review"."reviewee_account_id" IS '대상자 account FK';
+COMMENT ON COLUMN "review"."reviewee_role" IS 'CLIENT / FREELANCER';
+COMMENT ON COLUMN "review"."score" IS '별점 1~5(1점 단위, 필수)';
 COMMENT ON TABLE "site_review" IS '사이트 이용후기(기본 비공개, 관리자 공개 설정)';
+COMMENT ON COLUMN "site_review"."writer_account_id" IS '작성자 account FK';
+COMMENT ON COLUMN "site_review"."score" IS '별점 1~5(필수)';
+COMMENT ON COLUMN "site_review"."visibility" IS 'PUBLIC(공개) / PRIVATE(비공개). 작성 시 기본 PUBLIC, 관리자가 사후 관리';
+COMMENT ON COLUMN "site_review"."promoted" IS '홍보 활용 여부. 관리자가 선별한다';
 COMMENT ON TABLE "notification" IS '알림(사용자 삭제 시 즉시 hard delete)';
+COMMENT ON COLUMN "notification"."owner_account_id" IS '수신자 account FK';
+COMMENT ON COLUMN "notification"."read" IS '읽음 여부';
 COMMENT ON TABLE "chatbot_session" IS '고객 문의 챗봇 세션(협상 채팅과 별개). 1:1 문의와 독립된 창구이며 사용자가 선택한다';
 COMMENT ON TABLE "chatbot_message" IS '챗봇 대화';
 COMMENT ON TABLE "chatbot_quota" IS '챗봇 일일 사용 한도';
 COMMENT ON TABLE "inquiry" IS '1:1 문의. 챗봇 이용 여부와 무관하게 언제든 접수 가능한 독립 창구이며 사용자가 선택한다';
+COMMENT ON COLUMN "inquiry"."writer_account_id" IS '문의자 account FK';
+COMMENT ON COLUMN "inquiry"."writer_name" IS '접수 시점 작성자명 스냅샷';
+COMMENT ON COLUMN "inquiry"."writer_role" IS '접수 시점 회원유형 스냅샷';
+COMMENT ON COLUMN "inquiry"."writer_email" IS '접수 시점 이메일 스냅샷';
 COMMENT ON TABLE "ai_agent_log" IS 'AI 에이전트 동작 로그. 관리자가 추천 근거·제안·이유·응답·오류를 조회. 보존은 데이터 보존 정책을 따름';
 
 -- =====================================================================
@@ -1317,13 +1340,11 @@ COMMENT ON COLUMN "condition_skill"."skill_code" IS '스킬 코드(REACT / SPRIN
 COMMENT ON COLUMN "condition_skill"."skill_level" IS 'BEGINNER(초급) / INTERMEDIATE(중급) / ADVANCED(고급)';
 
 COMMENT ON COLUMN "resume"."id" IS 'PK';
-COMMENT ON COLUMN "resume"."freelancer_id" IS 'freelancer_profile FK(1:1)';
 COMMENT ON COLUMN "resume"."contact_phone" IS '이력서 표시용 연락처. 비우면 account.phone 사용';
 COMMENT ON COLUMN "resume"."contact_email" IS '이력서 표시용 이메일. 로그인 계정과 별개로 수정 가능';
 COMMENT ON COLUMN "resume"."self_introduction" IS '간단 자기소개';
 COMMENT ON COLUMN "resume"."portfolio_file_id" IS '포트폴리오 PDF FK(20MB 권장)';
 COMMENT ON COLUMN "resume"."status" IS 'DRAFT(임시저장) / COMPLETED';
-COMMENT ON COLUMN "resume"."completed_at" IS '등록 완료 시각';
 
 COMMENT ON COLUMN "resume_education"."id" IS 'PK';
 COMMENT ON COLUMN "resume_education"."resume_id" IS '이력서 FK';
@@ -1347,7 +1368,6 @@ COMMENT ON COLUMN "resume_certificate"."id" IS 'PK';
 COMMENT ON COLUMN "resume_certificate"."resume_id" IS '이력서 FK';
 COMMENT ON COLUMN "resume_certificate"."acquired_date" IS '취득일자';
 COMMENT ON COLUMN "resume_certificate"."name" IS '자격/어학 시험명';
-COMMENT ON COLUMN "resume_certificate"."issuer_score" IS '발급기관 또는 점수';
 COMMENT ON COLUMN "resume_certificate"."note" IS '비고';
 
 COMMENT ON COLUMN "resume_link"."id" IS 'PK';
@@ -1611,36 +1631,22 @@ COMMENT ON COLUMN "rerecommend_purchase"."quantity" IS '추천 요청 인원 수
 COMMENT ON COLUMN "rerecommend_purchase"."amount" IS '총 결제 금액';
 COMMENT ON COLUMN "rerecommend_purchase"."status" IS 'PENDING / PAID / FAILED';
 
-COMMENT ON COLUMN "review"."id" IS 'PK';
 COMMENT ON COLUMN "review"."contract_id" IS '계약 FK';
 COMMENT ON COLUMN "review"."project_id" IS '프로젝트 FK(조회 편의)';
-COMMENT ON COLUMN "review"."reviewer_id" IS '작성자 FK';
-COMMENT ON COLUMN "review"."reviewee_id" IS '대상자 FK';
-COMMENT ON COLUMN "review"."rating" IS '별점 1~5(1점 단위, 필수)';
 COMMENT ON COLUMN "review"."content" IS '리뷰(선택, 500자 이하)';
 COMMENT ON COLUMN "review"."created_at" IS '작성 후 수정·삭제 불가. 탈퇴해도 삭제 안 함';
 
 COMMENT ON COLUMN "site_review"."id" IS 'PK';
 COMMENT ON COLUMN "site_review"."contract_id" IS '계약 FK';
 COMMENT ON COLUMN "site_review"."project_id" IS '프로젝트 FK';
-COMMENT ON COLUMN "site_review"."account_id" IS '작성자 FK';
 COMMENT ON COLUMN "site_review"."writer_role" IS 'CLIENT / FREELANCER';
-COMMENT ON COLUMN "site_review"."rating" IS '별점 1~5(필수)';
 COMMENT ON COLUMN "site_review"."content" IS '이용후기(선택, 500자 이하)';
-COMMENT ON COLUMN "site_review"."is_public" IS '공개 여부. 기본 비공개, 관리자가 설정';
-COMMENT ON COLUMN "site_review"."is_promoted" IS '메인·홍보 활용 여부(가입 시 동의)';
-COMMENT ON COLUMN "site_review"."managed_by" IS '공개 설정 관리자 FK';
-COMMENT ON COLUMN "site_review"."managed_at" IS '공개 설정 시각';
 
 COMMENT ON COLUMN "notification"."id" IS 'PK';
-COMMENT ON COLUMN "notification"."account_id" IS '수신자 FK';
 COMMENT ON COLUMN "notification"."type" IS 'RECOMMEND_DONE / REQUEST_RECEIVED / REQUEST_ACCEPTED / REQUEST_REJECTED / NEGOTIATION_START / AI_PROPOSAL / NEGOTIATION_BROKEN / CONTRACT_CREATED / CONTRACT_SIGNED / CONTRACT_REJECTED / PROJECT_STATUS_CHANGED / SETTLEMENT_DUE';
 COMMENT ON COLUMN "notification"."title" IS '알림 제목';
 COMMENT ON COLUMN "notification"."content" IS '알림 내용';
 COMMENT ON COLUMN "notification"."link_url" IS '클릭 시 이동 경로';
-COMMENT ON COLUMN "notification"."ref_type" IS 'PROJECT / POSITION / NEGOTIATION / CONTRACT / SETTLEMENT';
-COMMENT ON COLUMN "notification"."ref_id" IS '연관 리소스 ID';
-COMMENT ON COLUMN "notification"."is_read" IS '읽음 여부';
 COMMENT ON COLUMN "notification"."read_at" IS '읽은 시각';
 
 COMMENT ON COLUMN "chatbot_session"."id" IS 'PK';
@@ -1658,13 +1664,10 @@ COMMENT ON COLUMN "chatbot_quota"."quota_date" IS '기준 일자';
 COMMENT ON COLUMN "chatbot_quota"."used_count" IS 'LLM 호출 사용 횟수(1일 10회 충전)';
 
 COMMENT ON COLUMN "inquiry"."id" IS 'PK';
-COMMENT ON COLUMN "inquiry"."account_id" IS '문의자 FK';
-COMMENT ON COLUMN "inquiry"."category" IS '문의 유형';
 COMMENT ON COLUMN "inquiry"."title" IS '제목';
 COMMENT ON COLUMN "inquiry"."content" IS '내용';
 COMMENT ON COLUMN "inquiry"."status" IS 'PENDING(대기중) / ANSWERED(답변완료). 관리자가 답변을 작성하면 ANSWERED 로 전환하고 사용자에게 알림을 발송한다';
 COMMENT ON COLUMN "inquiry"."answer" IS '답변';
-COMMENT ON COLUMN "inquiry"."answered_by" IS '답변 관리자 FK';
 
 COMMENT ON COLUMN "ai_agent_log"."id" IS 'PK';
 COMMENT ON COLUMN "ai_agent_log"."agent_type" IS 'PARSER / EMBEDDING / MATCHER / GUARD(직무·스킬 재검증) / NEGOTIATOR / CONTRACT / CHATBOT';
@@ -1763,13 +1766,7 @@ CREATE TRIGGER "trg_penalty_updated_at" BEFORE UPDATE ON "penalty"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER "trg_rerecommend_purchase_updated_at" BEFORE UPDATE ON "rerecommend_purchase"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER "trg_site_review_updated_at" BEFORE UPDATE ON "site_review"
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER "trg_notification_updated_at" BEFORE UPDATE ON "notification"
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER "trg_chatbot_session_updated_at" BEFORE UPDATE ON "chatbot_session"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER "trg_chatbot_quota_updated_at" BEFORE UPDATE ON "chatbot_quota"
-    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-CREATE TRIGGER "trg_inquiry_updated_at" BEFORE UPDATE ON "inquiry"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();

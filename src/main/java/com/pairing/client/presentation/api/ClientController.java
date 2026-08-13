@@ -35,7 +35,9 @@ public class ClientController {
 
     @GetMapping("/me")
     @PreAuthorize("hasRole('CLIENT')")
-    @Operation(summary = "마이페이지 조회", description = "기업 정보와 등급·평점 요약을 함께 반환합니다.")
+    @Operation(summary = "마이페이지 조회",
+            description = "계정 정보와 기업 정보를 한 번에 반환합니다. 화면의 기본 정보 영역 전체를 이 응답 하나로 그립니다. "
+                    + "로그인 상태 확인용인 GET /api/v1/auth/me 로는 기업 정보를 받을 수 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED"})
     public ResponseEntity<ApiResponse<ClientMyPageResponse>> findMe(@CurrentAccountId Long accountId) {
         ClientMyPageResponse response = ClientMyPageResponse.from(clientQueryUseCase.findMyPage(accountId));
