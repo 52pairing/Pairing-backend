@@ -1,6 +1,7 @@
 package com.pairing.account.infrastructure.persistence;
 
 import com.pairing.account.domain.model.Role;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDateTime;
@@ -24,4 +25,8 @@ public interface SpringDataAccountRepository extends JpaRepository<AccountJpaEnt
     boolean existsByEmailHashAndRoleAndRejoinAvailableAtAfter(String emailHash, Role role, LocalDateTime now);
 
     boolean existsByPhoneHashAndRoleAndRejoinAvailableAtAfter(String phoneHash, Role role, LocalDateTime now);
+
+    // purgeAt 은 탈퇴할 때만 채워지고 파기하면 다시 null 이 된다. 그래서 이 조건 하나로
+    // "탈퇴했고, 기한이 지났고, 아직 파기 안 된" 계정만 정확히 잡힌다.
+    List<AccountJpaEntity> findByPurgeAtBeforeOrderByPurgeAtAsc(LocalDateTime now, Pageable pageable);
 }

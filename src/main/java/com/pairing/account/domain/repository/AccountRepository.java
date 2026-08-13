@@ -36,4 +36,12 @@ public interface AccountRepository {
     boolean existsRejoinRestrictedByEmailHash(String emailHash, Role role, LocalDateTime now);
 
     boolean existsRejoinRestrictedByPhoneHash(String phoneHash, Role role, LocalDateTime now);
+
+    /**
+     * 개인정보 보관 기한이 지난 탈퇴 계정. 파기 배치가 쓴다.
+     *
+     * <p>한 번에 다 가져오지 않고 나눠서 처리한다. 1년 전 탈퇴자가 한꺼번에 몰려 있으면
+     * 배치 한 번이 그 전부를 메모리에 올린다.
+     */
+    List<Account> findPurgeTargets(LocalDateTime now, int limit);
 }

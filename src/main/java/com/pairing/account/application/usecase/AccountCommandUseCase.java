@@ -70,4 +70,11 @@ public interface AccountCommandUseCase {
      * <p>계정 행은 지우지 않는다. 상태만 WITHDRAWN 으로 바꾸고 이메일·휴대폰을 더미로 치환한다.
      */
     void withdraw(WithdrawAccountCommand command);
+
+    /**
+     * 보관 기한(1년)이 지난 탈퇴 계정의 개인정보를 파기한다. 배치가 호출한다.
+     *
+     * @return 이번에 파기한 계정 수
+     */
+    int purgeExpiredPersonalData();
 }
