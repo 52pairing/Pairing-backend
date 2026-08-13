@@ -1,6 +1,7 @@
 package com.pairing.chat.presentation.api.response;
 
 import com.pairing.chat.domain.model.ChatMessageType;
+import com.pairing.global.infrastructure.s3.CdnMappable;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
@@ -18,5 +19,5 @@ public record ChatMessageResponse(
         @Schema(description = "메시지 종류") ChatMessageType messageType,
         @Schema(description = "본문", example = "안녕하세요, 일정 조율 가능할까요?") String content,
         @Schema(description = "전송 시각") LocalDateTime createdAt
-) {
+) implements CdnMappable {
 }

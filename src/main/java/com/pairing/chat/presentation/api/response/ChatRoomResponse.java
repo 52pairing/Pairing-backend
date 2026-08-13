@@ -1,6 +1,7 @@
 package com.pairing.chat.presentation.api.response;
 
 import com.pairing.chat.domain.model.ChatRoomStatus;
+import com.pairing.global.infrastructure.s3.CdnMappable;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.LocalDateTime;
@@ -21,5 +22,5 @@ public record ChatRoomResponse(
         @Schema(description = "마지막 메시지", example = "안녕하세요") String lastMessage,
         @Schema(description = "마지막 메시지 시각") LocalDateTime lastMessageAt,
         @Schema(description = "읽지 않은 메시지 수", example = "2") int unreadCount
-) {
+) implements CdnMappable {
 }
