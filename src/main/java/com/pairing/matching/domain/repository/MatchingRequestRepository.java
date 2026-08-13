@@ -46,9 +46,9 @@ public interface MatchingRequestRepository {
     boolean existsByProjectId(Long projectId);
 
     /**
-     * 프로젝트의 요청 중 REJECTED/NEGOTIATION_FAILED가 아닌(=진행 중이거나 성사된) 것이 하나라도 있는지.
-     * false이면서 위 existsByProjectId가 true면 "전원 거절" 상태로 간주해 무료 재추천 조건을 만족한다(P41).
-     * NEGOTIATION_FAILED는 협상 결렬로 별도 사유이며 이 조건 판단에서는 제외한다(정책 문서 명시).
+     * 프로젝트의 요청 중 REJECTED가 아닌(=진행 중이거나 성사/결렬된) 것이 하나라도 있는지.
+     * false이면서 위 existsByProjectId가 true면 "전원 거절/만료" 상태로 간주해 무료 재추천 조건을 만족한다(P41/P45).
+     * NEGOTIATION_FAILED는 프리랜서의 거절/미응답이 아니므로 무료 재추천 조건에서는 활성 요청으로 본다.
      */
     boolean existsActiveByProjectId(Long projectId);
 

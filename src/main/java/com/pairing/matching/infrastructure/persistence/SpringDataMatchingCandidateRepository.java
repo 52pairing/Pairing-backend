@@ -14,6 +14,7 @@ public interface SpringDataMatchingCandidateRepository extends JpaRepository<Mat
 
     @Query("select distinct c.freelancerId from MatchingCandidateJpaEntity c "
             + "join MatchingRoundJpaEntity r on r.id = c.roundId "
-            + "where r.projectId = :projectId")
+            + "where r.projectId = :projectId "
+            + "and c.exposed = true")
     List<Long> findDistinctFreelancerIdByProjectId(@Param("projectId") Long projectId);
 }

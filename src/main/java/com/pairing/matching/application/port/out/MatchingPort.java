@@ -16,7 +16,7 @@ public interface MatchingPort {
     CandidatePool searchCandidates(Long positionId, int limit);
 
     /**
-     * 하드필터로 좁힌 뒤 임베딩 유사도 30 + DB 조건점수 70으로 상위 후보를 뽑아 LLM에 넘기고,
+     * 하드필터로 좁힌 뒤 임베딩 유사도 25 + DB 조건점수 75로 상위 후보를 뽑아 LLM에 넘기고,
      * 최종 순위·근거를 받는다(`.ai/STATE.md` "2026-08-11 갱신 — 매칭 파이프라인 재설계" 참고).
      *
      * @param excludedFreelancerIds 같은 프로젝트에서 이미 후보로 노출됐던 프리랜서(R02 예외조건 5).

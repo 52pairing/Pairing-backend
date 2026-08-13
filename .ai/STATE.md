@@ -39,7 +39,7 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
   - `FreelancerDirectoryPort` ← `infrastructure/directory/FreelancerDirectoryAdapter` — **완전 교체**(2026-08-09). `findCardSummary`(`FreelancerCandidateSummaryUseCase`)는 기존대로, `resolveFreelancerId`/`findCondition`도 `AccountQueryUseCase.findFreelancerProfileByAccountId/ById` + `FreelancerConditionUseCase.findMyCondition`으로 실구현 교체 완료 — 2번 확인 결과 account 도메인 승인·포트는 이미 다 있었고 매칭 쪽 어댑터만 안 바꿔놨던 상태였음. 못 찾으면 `MatchingErrorCode.FREELANCER_NOT_FOUND`(MT_015).
 - `budgetCap`(수수료율 구간×클라이언트등급)과 `grade_weight`(0/1/2%) 계산은 `ClientGradeResolver`/`BudgetCapCalculator`가 실제 리포지토리를 조회해서 처리한다.
 - budgetCap 배분은 **2026-08-09 A안(현재 공식 유지)으로 확정** — 3번이 정책·요구사항 전수 확인한 결과 "포지션별 1순위 조합" 같은 배분 알고리즘 규칙은 원래 확정된 적이 없었고(HANDOFF 11번의 전제 자체가 틀렸음), 포지션별 예산 입력란도 없어 재료가 없음. `BudgetCapCalculator`는 코드 변경 없이 그대로 유지.
-- **(2026-08-09 완료) Stage F 가드 실제 구현.** `MatchingRoundCreationService.applyGuard(true, null)` placeholder를 R02.3 요구사항("가드 AI로 마지막 검증 (직무, 스킬 검증)") 그대로 **직무+스킬만** 재검증하도록 교체. 예산 조합 재검증은 이번에도 요구사항에 근거가 없어서(Stage B 조건필터 폐기와 같은 사유) 가드에 넣지 않음 — budgetCap은 협상 단계(`NegotiationConditionCalculator`)에서 이미 따로 재검증됨. `findCondition(freelancerId)` 실조회 + `ProjectDirectoryPort.findPositionSummary`(실시간)로 jobRole/requiredSkills를 비교, 가드 탈락 후보는 기록은 남기되(`guardPassed=false`) 노출 안 하고 다음 순위 후보가 노출 자리를 채움. `feature/matching-stage-f-guard` 브랜치.
+- **(2026-08-12 재설계 완료) Stage F 가드 — G3·G4만.** 직무/스킬은 Python 하드필터에서 보장하므로 가드에서 다시 검증하지 않는다. 현재 가드는 G3 예산 조합 경고(노출 후보 조합이 예산 기준을 넘으면 후보를 탈락시키지 않고 경고 사유만 남김) + G4 LLM 응답 이상(중복 ID/인원 초과/reason 누락 후보 제거)만 처리한다. 요구사항 원문 R02.3의 "직무/스킬 검증"은 최신 설계에서 이 내용으로 대체한다.
 - fitReason은 DB에 `"|"`로 이어붙인 문자열로 저장하고 API 응답에서 다시 나눠 태그 리스트로 돌려준다(`CandidateResponseAssembler`). ~~Pairing-python이 이 구분자로 합친 문자열을 내려주도록 `_build_prompt`/응답 스키마를 맞춰야 한다~~ — 2026-08-09 완료(Pairing-python `feature/matching-prompt-real-implementation`).
 - **로컬 개발 환경에서 발견·수정한 버그 2건** (코드 정상, 인프라/설정 문제였음):
   - `global/ratelimit/RedisRateLimitConfig`가 빈 생성 시 즉시 Redis에 연결해서 Redis 없는 환경(CI)에서 전체 컨텍스트 로딩이 실패 → `@Lazy`(빈 + 생성자 주입 지점 둘 다)로 지연 연결하도록 수정.
@@ -152,7 +152,7 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
 이 필터(HANDOFF #10)는 착수 시점부터 이 방향으로 구현한다:
 - Python `FreelancerProfile`/`PositionRequirement`(`app/domains/matching/repository.py`)에 조건 필드 추가 — 프리랜서 쪽 `freelancer_condition.pay_unit/pay_amount/work_style/work_form/available_from`, 포지션 쪽 `project_position`/`project`의 예산·기간·희망시작일(Java `ProjectPositionSummary`가 이미 `workStyle/workForm/periodValue/periodUnit/startDesiredDate/budgetAmount`로 들고 있는 것과 대응).
 - `_build_prompt`/`_describe_candidate`/`_describe_position`에 이 필드들 채우고, "조건 불일치해도 제외하지 말고 감점+사유로 반영하라"는 프롬프트 지시 추가.
-- Stage F 가드는 원래도 직무/스킬만 검증하는 설계였으니 변경 불필요.
+- Stage F 가드는 최신 설계에서 G3 예산 조합 경고 + G4 LLM 응답 이상만 처리한다. 직무/스킬은 하드필터 기준이라 가드에서 다시 검증하지 않는다.
 
 ## 2026-08-09 갱신 — 매칭 요청 상세에 `mainTask` 노출
 
@@ -516,8 +516,8 @@ budgetCap  = 순예산 ÷ 프로젝트 전체 인원 ÷ 개월수   (월단가, 
 
 `MatchingRequestService.sendOneRequest()`가 `positionId` 일치·소유·모집중·중복만 보고
 `exposed`/`rejected`/`guardPassed`를 전혀 안 봤다. 요청 API는 `candidateId`를 그대로 받으므로
-화면을 안 거치면 **Stage F 가드(직무·스킬 재검증)에 떨어뜨린 후보에게도 요청이 나간다** —
-가드가 통째로 무력화된다. 정책 P07("노출된 최종 후보 중 선택")과 정면으로 어긋남.
+화면을 안 거치면 **노출되지 않았거나 가드에서 탈락한 후보에게도 요청이 나간다** —
+최종 후보 노출 규칙이 통째로 무력화된다. 정책 P07("노출된 최종 후보 중 선택")과 정면으로 어긋남.
 
 - `MatchingCandidate.isSelectable()` 신규(도메인 규칙): `exposed && !rejected && guardPassed`.
   `exposed`만 봐도 지금은 충분하지만 `guardPassed`를 같이 두는 건 의도적이다 — 노출 로직이
