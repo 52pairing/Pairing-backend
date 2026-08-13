@@ -81,7 +81,27 @@ public class ContractQueryService implements ContractQueryUseCase {
     public ContractDetail getDetail(Long contractId, Long accountId) {
         Contract contract = contractRepository.findById(contractId)
                 .orElseThrow(() -> new BusinessException(ContractErrorCode.CONTRACT_NOT_FOUND));
+        return toDetail(contract, accountId);
+    }
 
+    /**
+     * 협상으로 계약을 찾는다. 채팅 화면이 쓴다 — 방은 협상 단위라 계약 ID 를 모른다.
+     *
+     * <p>계약 ID 를 거치지 않는 이유는, 채팅방이 아는 것이 {@code negotiationId} 뿐이기 때문이다.
+     * 계약 목록에서 골라내게 하면 화면이 프로젝트로 추려 맞히는 식이 되어 정확하지 않다.
+     *
+     * <p>협상 1건당 계약 1건이다({@code negotiation_id} UNIQUE). 아직 계약이 안 만들어졌으면
+     * {@code CT_001} 이다 — 타결 직후 짧은 순간이나, 결렬된 협상이 그렇다.
+     */
+    @Override
+    public ContractDetail getDetailByNegotiationId(Long negotiationId, Long accountId) {
+        Contract contract = contractRepository.findByNegotiationId(negotiationId)
+                .orElseThrow(() -> new BusinessException(ContractErrorCode.CONTRACT_NOT_FOUND));
+        return toDetail(contract, accountId);
+    }
+
+    /** 상세 조립. 당사자 확인은 여기서 한 번만 한다(조회 경로가 늘어도 빠뜨리지 않게). */
+    private ContractDetail toDetail(Contract contract, Long accountId) {
         if (!contract.isPartyOf(accountId)) {
             throw new BusinessException(ContractErrorCode.NOT_CONTRACT_PARTY);
         }
