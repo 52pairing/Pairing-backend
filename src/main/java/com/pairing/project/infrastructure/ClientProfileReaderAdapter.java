@@ -17,16 +17,8 @@ public class ClientProfileReaderAdapter implements ClientProfileReaderPort {
     @Override
     public ClientProfileView getByAccountId(Long accountId) {
         ClientProfile profile = accountQueryUseCase.getClientProfile(accountId);
+        // grade 는 account 쪽에서 문자열로 들고 있다. 값이 이상하면 할인 없는 등급으로 본다.
         return new ClientProfileReaderPort.ClientProfileView(
-                profile.getId(), profile.getAddress(), toGrade(profile.getGrade()));
-    }
-
-    /** grade 는 account 쪽에서 문자열로 들고 있다. 값이 이상하면 할인 없는 등급으로 본다. */
-    private ClientGrade toGrade(String grade) {
-        try {
-            return ClientGrade.valueOf(grade);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            return ClientGrade.SILVER;
-        }
+                profile.getId(), profile.getAddress(), ClientGrade.of(profile.getGrade()));
     }
 }

@@ -41,7 +41,7 @@ public class ClientQueryService implements ClientQueryUseCase {
                 account.getName(),
                 account.getPhone(),
                 profile.getAddress(),
-                ClientGrade.valueOf(profile.getGrade()),
+                ClientGrade.of(profile.getGrade()),
                 reviewSummary.averageScore(),
                 reviewSummary.reviewCount(),
                 // 진행 중 프로젝트 확인은 project 도메인에 판정 포트가 생기면 함께 본다.

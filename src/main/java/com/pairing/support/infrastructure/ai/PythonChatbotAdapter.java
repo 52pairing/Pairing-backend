@@ -1,5 +1,6 @@
 package com.pairing.support.infrastructure.ai;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.global.filter.TraceIdFilter;
 import com.pairing.support.application.port.out.ChatbotAiPort;
@@ -62,7 +63,8 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
                 });
 
         AnswerData data = requireData(response);
-        return new Answer(data.answer(), data.intent());
+        // outOfScope 는 Boolean 이라 구버전 AI 서버(필드 없음)에서 null 이 온다. false 로 본다.
+        return new Answer(data.answer(), data.intent(), Boolean.TRUE.equals(data.outOfScope()));
     }
 
     private void withCommonHeaders(HttpHeaders headers) {
@@ -90,7 +92,18 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
     private record PythonApiResponse<T>(String code, String message, T data) {
     }
 
-    /** {@code intent} 는 구버전 AI 서버가 안 내려줄 수 있다. 그 경우 null 이고 NONE 으로 떨어진다. */
-    private record AnswerData(String answer, String intent, String model) {
+    /**
+     * {@code intent}·{@code outOfScope} 는 구버전 AI 서버가 안 내려줄 수 있다.
+     * 그 경우 각각 NONE·false 로 떨어져 기존 동작 그대로다.
+     *
+     * <p>AI 서버 응답은 snake_case 라 {@code @JsonProperty} 로 매핑한다. 전역 Jackson 설정은
+     * 건드리지 않는다({@code PythonMatchingAdapter} 와 같은 방식).
+     */
+    private record AnswerData(
+            String answer,
+            String intent,
+            String model,
+            @JsonProperty("out_of_scope") Boolean outOfScope
+    ) {
     }
 }
