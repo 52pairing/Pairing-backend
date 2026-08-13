@@ -1,12 +1,16 @@
 package com.pairing.chat.infrastructure.directory;
 
 import com.pairing.chat.application.port.out.ChatDirectoryPort;
+import com.pairing.contract.domain.model.ContractStatus;
 import com.pairing.file.application.usecase.FileQueryUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -91,6 +95,72 @@ public class ChatDirectoryAdapter implements ChatDirectoryPort {
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * 체결된 계약인데 방이 없는 협상. 조회 시점 복구용이라 <b>내 협상만</b> 본다.
+     *
+     * <p>당사자 판정은 {@code findPartiesByNegotiationId} 와 같은 경로다
+     * (협상 → 프리랜서 프로필 / 프로젝트 → 클라이언트 프로필 → 계정). {@code contract} 의
+     * {@code client_id}·{@code freelancer_id} 를 직접 쓰지 않는 이유는, 그 컬럼이 프로필 ID 인지
+     * 계정 ID 인지 스키마 문서와 실제가 다른 이력이 있어서다 — 이미 검증된 조인을 재사용한다.
+     */
+    @Override
+    public List<Long> findNegotiationIdsMissingRoom(Long accountId) {
+        if (accountId == null) {
+            return List.of();
+        }
+        String sql = """
+                SELECT DISTINCT c.negotiation_id
+                FROM contract c
+                JOIN negotiation n          ON n.id = c.negotiation_id
+                JOIN project p              ON p.id = n.project_id
+                JOIN client_profile cp      ON cp.id = p.client_id
+                JOIN freelancer_profile fp  ON fp.id = n.freelancer_id
+                LEFT JOIN chat_room r       ON r.negotiation_id = c.negotiation_id
+                WHERE r.id IS NULL
+                  AND c.status IN (%s)
+                  AND (cp.account_id = ? OR fp.account_id = ?)
+                """.formatted(placeholders(CONCLUDED_STATUSES.size()));
+
+        Object[] args = new Object[CONCLUDED_STATUSES.size() + 2];
+        CONCLUDED_STATUSES.toArray(args);
+        args[args.length - 2] = accountId;
+        args[args.length - 1] = accountId;
+        return jdbcTemplate.queryForList(sql, Long.class, args);
+    }
+
+    @Override
+    public boolean isContractConcluded(Long negotiationId) {
+        if (negotiationId == null) {
+            return false;
+        }
+        String sql = """
+                SELECT EXISTS (SELECT 1 FROM contract
+                               WHERE negotiation_id = ? AND status IN (%s))
+                """.formatted(placeholders(CONCLUDED_STATUSES.size()));
+
+        Object[] args = new Object[CONCLUDED_STATUSES.size() + 1];
+        args[0] = negotiationId;
+        for (int i = 0; i < CONCLUDED_STATUSES.size(); i++) {
+            args[i + 1] = CONCLUDED_STATUSES.get(i);
+        }
+        return Boolean.TRUE.equals(jdbcTemplate.queryForObject(sql, Boolean.class, args));
+    }
+
+    /**
+     * "체결됨"의 정의는 계약 도메인이 갖는다({@link ContractStatus#isConcluded()}).
+     *
+     * <p>상태 문자열을 여기 하드코딩하면 계약 쪽에 상태가 하나 늘어날 때 <b>조용히 어긋난다</b> —
+     * 방이 안 열리는데 아무 로그도 남지 않는 형태로 드러나서 찾기가 어렵다.
+     */
+    private static final List<String> CONCLUDED_STATUSES = Arrays.stream(ContractStatus.values())
+            .filter(ContractStatus::isConcluded)
+            .map(Enum::name)
+            .toList();
+
+    private static String placeholders(int count) {
+        return String.join(",", Collections.nCopies(count, "?"));
     }
 
     /** 파일이 없거나 지워졌으면 null. 사진은 선택이라 흔한 경우이므로 예외로 다루지 않는다. */
