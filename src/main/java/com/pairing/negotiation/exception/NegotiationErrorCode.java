@@ -22,6 +22,8 @@ public enum NegotiationErrorCode implements BaseErrorCode {
     ROUND_LIMIT_REACHED(HttpStatus.BAD_REQUEST, "NG_010", "라운드 상한(15회)을 소진했습니다."),
     ACCEPT_BREAKS_FLOOR(HttpStatus.BAD_REQUEST, "NG_011",
             "내가 정한 마지노선을 벗어난 제안입니다. 수락하려면 마지노선을 먼저 조정하세요."),
+    FLOOR_BELOW_MIN_ACCEPT(HttpStatus.BAD_REQUEST, "NG_012",
+            "등록해두신 최소 수용 금액보다 낮게 설정할 수 없습니다. 마이페이지에서 희망 조건을 먼저 수정해 주세요."),
     CHAT_INPUT_DISABLED(HttpStatus.FORBIDDEN, "NG_020", "아직 채팅 입력이 활성화되지 않았습니다.");
 
     private final HttpStatus status;
