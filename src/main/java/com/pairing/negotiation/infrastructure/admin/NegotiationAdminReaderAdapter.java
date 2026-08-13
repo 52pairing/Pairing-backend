@@ -77,12 +77,17 @@ public class NegotiationAdminReaderAdapter implements NegotiationAdminReaderPort
                 JOIN client_profile cp    ON cp.id = p.client_id
                 JOIN freelancer_profile fp ON fp.id = n.freelancer_id
                 LEFT JOIN account a       ON a.id = fp.account_id
-                WHERE (:status IS NULL OR n.status = :status)
-                  AND (:kw IS NULL
+                WHERE (CAST(:status AS varchar) IS NULL OR n.status = :status)
+                  AND (CAST(:kw AS varchar) IS NULL
                        OR LOWER(p.title) LIKE :kw
                        OR LOWER(cp.company_name) LIKE :kw
                        OR LOWER(a.name) LIKE :kw)
                 """;
+        // CAST 가 붙은 이유: 네이티브 SQL 에서 파라미터가 컬럼과 비교되지 않고 홀로
+        // "? IS NULL" 로 놓이면 PostgreSQL 이 타입을 추론하지 못해 파싱 단계에서 터진다
+        //   ERROR: could not determine data type of parameter $1
+        // 값이 null 인지와 무관하게 항상 실패하므로, 검색 API 전체가 500 이었다.
+        // 테스트 H2(MODE=PostgreSQL)는 이 구문을 통과시켜 초록불이었다 — 로컬만 보고 믿으면 안 된다.
 
         MapSqlParameterSource params = new MapSqlParameterSource()
                 .addValue("status", statusName)
