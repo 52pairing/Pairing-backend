@@ -42,6 +42,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -312,15 +313,19 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
         MatchingRequest request = matchingRequestRepository.findById(requestId)
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.REQUEST_NOT_FOUND));
 
-        // 클라이언트 소유 여부를 먼저 본다. resolveFreelancerId를 클라이언트 accountId로 부르면
-        // freelancer_profile이 없어 FREELANCER_NOT_FOUND(404)가 나서, 클라이언트가 자기 요청 상세를
-        // 볼 때마다 늘 404가 나던 버그가 있었다(테스트로 재현).
-        boolean isClientParty = projectDirectoryPort.isOwnedByAccount(request.getProjectId(), accountId);
-        if (!isClientParty) {
-            Long freelancerId = freelancerDirectoryPort.resolveFreelancerId(accountId);
-            if (!request.getFreelancerId().equals(freelancerId)) {
+        // 당사자 판별은 **예외가 아니라 값으로** 한다. 이 자리에서 두 번 사고가 났다.
+        //   2026-08-09: resolveFreelancerId 를 먼저 불러서 클라이언트가 늘 MT_015(404)
+        //   2026-08-13: isOwnedByAccount 를 먼저 불러서 프리랜서가 늘 AC_002(404)
+        // 둘 다 "던지는 조회로 신분을 확인"해서 난 문제다. isOwnedByAccount 는 accountId 로
+        // client_profile 을 찾는데 프리랜서에겐 그 행이 없고, resolveFreelancerId 는 반대다.
+        // 그래서 안 던지는 findFreelancerId 로 먼저 갈라놓고, 각 분기에서만 자기 쪽 조회를 쓴다.
+        Optional<Long> callerFreelancerId = freelancerDirectoryPort.findFreelancerId(accountId);
+        if (callerFreelancerId.isPresent()) {
+            if (!request.getFreelancerId().equals(callerFreelancerId.get())) {
                 throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
             }
+        } else if (!projectDirectoryPort.isOwnedByAccount(request.getProjectId(), accountId)) {
+            throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
         }
         return matchingRequestResponseAssembler.buildDetail(request, accountId);
     }
