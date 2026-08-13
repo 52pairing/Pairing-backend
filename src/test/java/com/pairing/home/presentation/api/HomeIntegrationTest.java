@@ -388,6 +388,8 @@ class HomeIntegrationTest {
         promote(first);
         promote(second);
 
+        // 나중에 만든 second(박낮음)가 나와야 한다. 두 건이 같은 밀리초에 저장되면 createdAt 이
+        // 같아지는데, 쿼리가 id DESC 를 2차 키로 쓰기 때문에 그때도 순서가 확정된다.
         mockMvc.perform(get("/api/v1/home/site-reviews").param("size", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))

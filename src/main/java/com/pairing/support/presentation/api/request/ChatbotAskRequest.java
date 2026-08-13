@@ -14,7 +14,13 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "챗봇 질의 요청")
 public record ChatbotAskRequest(
 
-        @Schema(description = "이어서 물을 세션 ID. 첫 질문이면 비운다.", example = "1200")
+        /**
+         * example 을 두지 않는다. Swagger 가 예시 값을 요청 본문에 그대로 채워 넣는데,
+         * 그 세션은 존재하지 않아서 "첫 질문"을 시험하려는 사람이 매번 {@code CB_001} 을 만난다.
+         * 비워 두면 Swagger 가 {@code null} 로 채워 실제 첫 질문과 같은 요청이 된다.
+         */
+        @Schema(description = "이어서 물을 세션 ID. **첫 질문이면 비우거나 null 로 보낸다** "
+                + "(서버가 새 세션을 만든다). 이어서 물을 때는 이전 응답의 sessionId 를 그대로 넣는다.")
         Long sessionId,
 
         @Schema(description = "질문", example = "착수금 수수료는 언제 결제하나요?")

@@ -11,7 +11,6 @@ import com.pairing.review.domain.repository.SiteReviewRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,10 +33,14 @@ public class SiteReviewPublicService implements SiteReviewPublicUseCase {
     private final ProjectQueryUseCase projectQueryUseCase;
     private final AccountQueryUseCase accountQueryUseCase;
 
+    /**
+     * 정렬은 {@code Pageable} 로 넘기지 않는다. 쿼리가 {@code createdAt DESC, id DESC} 를
+     * 직접 들고 있어서, 여기서 또 지정하면 두 곳이 어긋날 때 어느 쪽이 이기는지가 불분명해진다.
+     */
     @Override
     @Transactional(readOnly = true)
     public List<SiteReviewResult> findPromoted(int limit) {
-        Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Pageable pageable = PageRequest.of(0, limit);
         return siteReviewRepository.findPromoted(HOME_MIN_SCORE, pageable).stream()
                 .map(this::toResult)
                 .toList();
