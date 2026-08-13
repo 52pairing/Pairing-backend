@@ -5,6 +5,7 @@ import com.pairing.account.application.command.CardCommand;
 import com.pairing.account.application.command.CreateClientAccountCommand;
 import com.pairing.account.application.command.CreateFreelancerAccountCommand;
 import com.pairing.account.application.command.CreateSocialFreelancerAccountCommand;
+import com.pairing.account.application.command.WithdrawAccountCommand;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.PaymentMethod;
@@ -59,4 +60,14 @@ public interface AccountCommandUseCase {
 
     /** 마이페이지 &gt; 결제수단 정산 계좌 교체. 은행 코드가 유효하지 않으면 {@code AC_006}, 없으면 {@code AC_007}. */
     PaymentMethod updateBankAccount(Long accountId, BankAccountCommand command);
+
+    /**
+     * 회원 탈퇴. (R17, R31)
+     *
+     * <p>진행 중인 프로젝트·계약이 있거나({@code AC_010}) 미납 수수료가 있으면({@code AC_011})
+     * 탈퇴할 수 없다. 이미 탈퇴한 계정이면 {@code AC_008}.
+     *
+     * <p>계정 행은 지우지 않는다. 상태만 WITHDRAWN 으로 바꾸고 이메일·휴대폰을 더미로 치환한다.
+     */
+    void withdraw(WithdrawAccountCommand command);
 }

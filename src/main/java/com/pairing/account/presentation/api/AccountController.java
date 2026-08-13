@@ -1,7 +1,9 @@
 package com.pairing.account.presentation.api;
 
+import com.pairing.account.application.command.WithdrawAccountCommand;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
+import com.pairing.account.application.usecase.WithdrawalEligibilityUseCase;
 import com.pairing.account.domain.model.AccountStatus;
 import com.pairing.account.domain.model.PaymentMethodType;
 import com.pairing.account.domain.model.Role;
@@ -15,6 +17,7 @@ import com.pairing.account.presentation.api.response.AdminAccountDetailResponse;
 import com.pairing.account.presentation.api.response.AdminAccountResponse;
 import com.pairing.account.presentation.api.response.AdminAccountSummaryResponse;
 import com.pairing.account.presentation.api.response.PaymentMethodResponse;
+import com.pairing.account.presentation.api.response.WithdrawalEligibilityResponse;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
@@ -55,6 +58,7 @@ public class AccountController {
 
     private final AccountQueryUseCase accountQueryUseCase;
     private final AccountCommandUseCase accountCommandUseCase;
+    private final WithdrawalEligibilityUseCase withdrawalEligibilityUseCase;
 
     // ==========================================
     // 결제수단 (마이페이지 > 결제수단)
@@ -108,15 +112,34 @@ public class AccountController {
     // 탈퇴
     // ==========================================
 
+    @GetMapping("/me/withdrawal-eligibility")
+    @Operation(summary = "탈퇴 가능 여부 조회",
+            description = "회원 탈퇴 화면 진입 시 호출합니다. withdrawable 이 false 면 탈퇴 버튼을 열지 말고 "
+                    + "blockers 를 안내로 그려주세요. 문구(label)와 이동 경로(linkUrl)는 서버가 내려줍니다.")
+    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED"})
+    public ResponseEntity<ApiResponse<WithdrawalEligibilityResponse>> findWithdrawalEligibility(
+            @CurrentAccountId Long accountId
+    ) {
+        WithdrawalEligibilityResponse data = WithdrawalEligibilityResponse.from(
+                withdrawalEligibilityUseCase.getWithdrawalEligibility(accountId));
+        return ResponseEntity.ok(ApiResponse.success("WITHDRAWAL_ELIGIBILITY_FOUND", "조회에 성공했습니다.", data));
+    }
+
     @DeleteMapping("/me")
     @Operation(summary = "회원 탈퇴",
-            description = "진행 중인 프로젝트나 미납 요금이 있으면 탈퇴할 수 없습니다. 탈퇴 후 30일간 같은 이메일·휴대폰으로 재가입할 수 없습니다.")
+            description = "진행 중인 프로젝트나 미납 요금이 있으면 탈퇴할 수 없습니다. "
+                    + "탈퇴 후 30일간 같은 이메일·휴대폰으로 재가입할 수 없습니다. "
+                    + "agreed 는 true, confirmText 는 \"탈퇴하겠습니다\" 여야 합니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "UNAUTHORIZED"})
+    @ApiErrorCodeExample(domain = AccountErrorCode.class,
+            value = {"ALREADY_WITHDRAWN", "WITHDRAW_CONFIRM_MISMATCH",
+                    "WITHDRAW_BLOCKED_BY_PROJECT", "WITHDRAW_BLOCKED_BY_SETTLEMENT"})
     public ResponseEntity<ApiResponse<Void>> withdraw(
             @Valid @RequestBody AccountWithdrawRequest request,
             @CurrentAccountId Long accountId
     ) {
-        // TODO: 진행 중 프로젝트·미납 확인 -> 이메일 더미 치환 + 해시 보관 -> 세션 파기
+        accountCommandUseCase.withdraw(
+                new WithdrawAccountCommand(accountId, request.confirmText(), request.reason()));
         return ResponseEntity.ok(ApiResponse.success("ACCOUNT_WITHDRAWN", "탈퇴가 완료되었습니다."));
     }
 
