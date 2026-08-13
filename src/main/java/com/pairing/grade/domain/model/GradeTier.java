@@ -105,4 +105,57 @@ public record GradeTier(
         }
         throw new BusinessException(GradeErrorCode.INVALID_ROLE);
     }
+
+    /** 역할별 기본 등급(실버 / 주니어). 가입 직후이거나 실적이 없으면 이 등급이다. */
+    public static GradeTier base(Role role) {
+        return forRole(role).get(0);
+    }
+
+    /**
+     * 등급 유지 기준 기간(개월). 이 기간 내에 완료한 프로젝트가 없으면 등급을 잃는다. (정책 P01)
+     *
+     * <p>프리랜서 6개월, 클라이언트 12개월이다. 프리랜서는 프로젝트가 곧 일감이라 공백이 실력
+     * 신선도로 읽히고, 클라이언트는 발주 주기가 길어 6개월로 재면 정상 이용자도 걸린다.
+     */
+    public static int maintenanceMonths(Role role) {
+        return role == Role.CLIENT ? 12 : 6;
+    }
+
+    /** 코드로 등급을 찾는다. 저장된 값이 목록에 없으면(옛 코드 등) 기본 등급으로 본다. */
+    public static GradeTier ofCode(Role role, String code) {
+        return forRole(role).stream()
+                .filter(tier -> tier.code().equals(code))
+                .findFirst()
+                .orElseGet(() -> base(role));
+    }
+
+    /**
+     * 평점과 완료 건수로 산정한 등급. <b>지금 상태만 본다 — 이전 등급은 보지 않는다.</b>
+     *
+     * <p>아래에서 위로 한 칸씩 올라가다 조건이 깨지면 거기서 멈춘다. 그래서 <b>마스터였더라도
+     * 시니어 조건에 못 미치면 주니어</b>가 된다. 등급은 "달성한 훈장"이 아니라 "지금 이 사람이
+     * 어떤 상태인가"를 나타내는 값이다.
+     *
+     * <p>한 칸씩 올라가며 보는 이유는, 상위 등급 조건만 따로 보면 "골드 조건은 못 넘겼는데
+     * 다이아 조건은 넘긴" 판정이 나올 수 있어서다. 기준이 항상 단조롭게 오른다는 보장이
+     * 정책에 없다.
+     *
+     * <p>{@code ratingAverage} 가 null 이면(리뷰 없음) 기본 등급이다. 평점 조건을 통과할 수 없다.
+     */
+    public static GradeTier resolve(Role role, Double ratingAverage, int completedCount) {
+        List<GradeTier> tiers = forRole(role);
+        GradeTier reached = tiers.get(0);
+
+        for (int i = 0; i < tiers.size() - 1; i++) {
+            GradeTier tier = tiers.get(i);
+            boolean ratingMet = ratingAverage != null && ratingAverage >= tier.minRatingForNext();
+            boolean countMet = completedCount >= tier.minCompletedForNext();
+            if (!ratingMet || !countMet) {
+                break;
+            }
+            reached = tiers.get(i + 1);
+        }
+        return reached;
+    }
+
 }

@@ -334,6 +334,35 @@ public class AccountCommandService implements AccountCommandUseCase {
     }
 
     /**
+     * 등급 산정 결과 반영. (정책 P01)
+     *
+     * <p>프로필이 없으면 조용히 넘어간다. 가입이 중간에 끊긴 계정 하나 때문에 월간 산정 전체가
+     * 멈추면 안 된다.
+     */
+    @Override
+    @Transactional
+    public boolean applyGrade(Long accountId, Role role, String gradeCode) {
+        if (role == Role.CLIENT) {
+            return clientProfileRepository.findByAccountId(accountId)
+                    .map(profile -> {
+                        boolean changed = !gradeCode.equals(profile.getGrade());
+                        profile.applyGrade(gradeCode, LocalDateTime.now());
+                        clientProfileRepository.save(profile);
+                        return changed;
+                    })
+                    .orElse(false);
+        }
+        return freelancerProfileRepository.findByAccountId(accountId)
+                .map(profile -> {
+                    boolean changed = !gradeCode.equals(profile.getGrade());
+                    profile.applyGrade(gradeCode, LocalDateTime.now());
+                    freelancerProfileRepository.save(profile);
+                    return changed;
+                })
+                .orElse(false);
+    }
+
+    /**
      * 보관 기한이 지난 개인정보 파기. (개인정보 보관 1년)
      *
      * <p>탈퇴 시 {@code purgeAt} 에 파기 예정일을 적어 두고, 이 배치가 그날이 지난 계정을 집어

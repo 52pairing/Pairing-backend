@@ -44,4 +44,12 @@ public interface AccountRepository {
      * 배치 한 번이 그 전부를 메모리에 올린다.
      */
     List<Account> findPurgeTargets(LocalDateTime now, int limit);
+
+    /**
+     * 활성 계정 id. {@code afterId} 보다 큰 것만 id 오름차순으로 돌려준다.
+     *
+     * <p>등급 산정 배치가 전체 회원을 훑는 데 쓴다. 계정 전체를 한 번에 올리면 회원이 늘수록
+     * 배치 한 번이 메모리를 통째로 잡는다. 마지막 id 를 들고 이어서 읽는다.
+     */
+    List<Long> findActiveIdsByRole(Role role, Long afterId, int limit);
 }

@@ -57,6 +57,21 @@ public class FreelancerProfile {
                 matchingPaused, grade, gradeCheckedAt, deletedAt);
     }
 
+    /**
+     * 등급 산정 결과 반영. (정책 P01)
+     *
+     * <p>사용자가 바꿀 수 없다. 등급 도메인의 월간 산정만 이 메서드를 부른다.
+     * {@code gradeCheckedAt} 은 <b>등급이 그대로여도 갱신한다</b> — "언제 확인했는가"가
+     * "언제 바뀌었는가"보다 중요하다. 확인 시각이 안 움직이면 배치가 돌았는지 알 수 없다.
+     */
+    public void applyGrade(String grade, LocalDateTime checkedAt) {
+        if (grade == null || grade.isBlank()) {
+            throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
+        }
+        this.grade = grade;
+        this.gradeCheckedAt = checkedAt;
+    }
+
     /** 마이페이지 > 매칭 설정. {@code PUT /me/matching-settings}. */
     public void updateMatchingSettings(boolean aiMatchingAgreed, boolean matchingPaused) {
         this.aiMatchingAgreed = aiMatchingAgreed;

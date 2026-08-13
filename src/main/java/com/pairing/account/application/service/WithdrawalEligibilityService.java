@@ -41,12 +41,23 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class WithdrawalEligibilityService implements WithdrawalEligibilityUseCase {
 
-    /** 프로젝트가 이 상태면 더 진행할 게 없다. */
-    private static final Set<ProjectStatus> CLOSED_PROJECT_STATUSES =
-            Set.of(ProjectStatus.CLOSED, ProjectStatus.CANCELED);
+    /**
+     * 프로젝트가 이 상태면 탈퇴를 막지 않는다. (정책 P48)
+     *
+     * <p>정책이 허용하는 클라이언트 탈퇴 가능 상태는 <b>등록 완료 · 종료 · 취소됨</b>이다.
+     * {@code REGISTERED} 는 아직 모집도 시작하지 않아 <b>기다리는 상대가 없다.</b> 이걸 막으면
+     * 프로젝트만 올려두고 쓰지 않은 사용자가 탈퇴하지 못한다.
+     */
+    private static final Set<ProjectStatus> WITHDRAWABLE_PROJECT_STATUSES =
+            Set.of(ProjectStatus.REGISTERED, ProjectStatus.CLOSED, ProjectStatus.CANCELED);
 
-    /** 계약이 이 상태면 더 진행할 게 없다. */
-    private static final Set<ContractStatus> CLOSED_CONTRACT_STATUSES =
+    /**
+     * 계약이 이 상태면 탈퇴를 막지 않는다. (정책 P48)
+     *
+     * <p>정책이 허용하는 프리랜서 탈퇴 가능 상태는 <b>종료 · 중도 종료 · 거절 · 협상 결렬</b>이다.
+     * 협상 결렬은 계약이 아예 만들어지지 않아 여기서 볼 것이 없다.
+     */
+    private static final Set<ContractStatus> WITHDRAWABLE_CONTRACT_STATUSES =
             Set.of(ContractStatus.COMPLETED, ContractStatus.REJECTED, ContractStatus.TERMINATED);
 
     /**
@@ -81,7 +92,7 @@ public class WithdrawalEligibilityService implements WithdrawalEligibilityUseCas
     private List<Blocked> projectBlockers(Long accountId) {
         Map<ProjectStatus, Long> byStatus = projectQueryUseCase.findProjectIdsByAccountId(accountId).stream()
                 .map(projectQueryUseCase::findStatus)
-                .filter(status -> !CLOSED_PROJECT_STATUSES.contains(status))
+                .filter(status -> !WITHDRAWABLE_PROJECT_STATUSES.contains(status))
                 .collect(Collectors.groupingBy(status -> status, Collectors.counting()));
 
         long negotiating = byStatus.getOrDefault(ProjectStatus.NEGOTIATING, 0L);
@@ -98,7 +109,7 @@ public class WithdrawalEligibilityService implements WithdrawalEligibilityUseCas
                 .findMine(accountId, null, null, PageRequest.of(0, ONGOING_SCAN_LIMIT))
                 .getContent().stream()
                 .map(summary -> summary.contract().getStatus())
-                .filter(status -> !CLOSED_CONTRACT_STATUSES.contains(status))
+                .filter(status -> !WITHDRAWABLE_CONTRACT_STATUSES.contains(status))
                 .collect(Collectors.groupingBy(status -> status, Collectors.counting()));
 
         long signPending = byStatus.getOrDefault(ContractStatus.SIGN_PENDING, 0L);
