@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
  * @param room            방 애그리거트(상태·입력활성·나가기 가능 판정에 사용)
  * @param projectTitle    프로젝트명
  * @param counterpartName 상대 표시명(뷰어 기준)
+ * @param counterpartImageKey 상대 프로필 사진 오브젝트 키(등록이 선택이라 null 이 흔하다)
  * @param lastMessage     마지막 메시지 본문(없으면 null)
  * @param lastMessageAt   마지막 메시지 시각(없으면 null)
  * @param unreadCount     뷰어의 안 읽은 메시지 수
@@ -18,6 +19,7 @@ public record ChatRoomView(
         ChatRoom room,
         String projectTitle,
         String counterpartName,
+        String counterpartImageKey,
         String lastMessage,
         LocalDateTime lastMessageAt,
         int unreadCount

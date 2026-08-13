@@ -15,6 +15,7 @@ public record ChatMessageBroadcast(
         Long messageId,
         Long senderId,
         String senderName,
+        String senderImageUrl,
         ChatMessageType messageType,
         String content,
         LocalDateTime createdAt
