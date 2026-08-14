@@ -27,7 +27,8 @@ public class NegotiationMapper {
                 d.getFreelancerMonthlyPay(), d.getFloorAmount(),
                 d.getAiOutAt(), d.getStartedAt(), d.getEndedAt(), d.getEndReason(),
                 d.getClientLastReadAt(), d.getFreelancerLastReadAt(),
-                d.getAgentState(), d.getAgentStartedAt(), conds);
+                d.getAgentState(), d.getAgentStartedAt(),
+                d.isFinalOffer(), d.isClientFinalAccepted(), d.isFreelancerFinalAccepted(), conds);
     }
 
     public Negotiation toDomain(NegotiationJpaEntity e) {
@@ -59,20 +60,24 @@ public class NegotiationMapper {
                 e.getFreelancerMonthlyPay(), e.getFloorAmount(),
                 e.getAiOutAt(), e.getStartedAt(), e.getEndedAt(), e.getEndReason(),
                 e.getClientLastReadAt(), e.getFreelancerLastReadAt(),
-                e.getAgentState(), e.getAgentStartedAt(), conds);
+                e.getAgentState(), e.getAgentStartedAt(),
+                // 옛 협상은 컬럼이 없어 null 이다 — 도메인은 false 로 읽는다.
+                Boolean.TRUE.equals(e.getFinalOffer()),
+                Boolean.TRUE.equals(e.getClientFinalAccepted()),
+                Boolean.TRUE.equals(e.getFreelancerFinalAccepted()), conds);
     }
 
     private NegotiationConditionJpaEntity toConditionJpa(NegotiationCondition c) {
         return new NegotiationConditionJpaEntity(
                 c.getId(), c.getConditionType(), c.getClientValue(), c.getFreelancerValue(),
                 c.getClientFloor(), c.getFreelancerFloor(), c.getAgreedValue(), c.getStatus(),
-                c.getRoundCount(), c.getSortOrder(), c.getAgreedAt());
+                c.getRoundCount(), c.getSortOrder(), c.getAgreedAt(), c.getCompromiseValue());
     }
 
     private NegotiationCondition toConditionDomain(NegotiationConditionJpaEntity c, Long negotiationId) {
         return NegotiationCondition.reconstitute(
                 c.getId(), negotiationId, c.getConditionType(), c.getClientValue(), c.getFreelancerValue(),
                 c.getClientFloor(), c.getFreelancerFloor(), c.getAgreedValue(), c.getStatus(),
-                c.getRoundCount(), c.getSortOrder(), c.getAgreedAt());
+                c.getRoundCount(), c.getSortOrder(), c.getAgreedAt(), c.getCompromiseValue());
     }
 }

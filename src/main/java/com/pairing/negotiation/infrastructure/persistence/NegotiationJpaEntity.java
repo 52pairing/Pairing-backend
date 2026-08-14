@@ -81,6 +81,18 @@ public class NegotiationJpaEntity {
     @Column(name = "agent_started_at")
     private LocalDateTime agentStartedAt;
 
+    // 최종 절충 단계 상태. agent_state 와 같은 이유로 nullable(Boolean) 이다 — ddl-auto: update 로
+    // 배포된 RDS 에 컬럼이 새로 붙는데, NOT NULL 컬럼을 채워진 테이블에 추가하면 실패한다. 도메인은
+    // null 을 false 로 읽는다(매퍼에서 처리).
+    @Column(name = "final_offer")
+    private Boolean finalOffer;
+
+    @Column(name = "client_final_accepted")
+    private Boolean clientFinalAccepted;
+
+    @Column(name = "freelancer_final_accepted")
+    private Boolean freelancerFinalAccepted;
+
     // 애그리거트: 조건은 협상과 생명주기를 함께한다(cascade + orphanRemoval).
     //
     // @OrderBy 가 없으면 DB 가 돌려주는 순서를 그대로 쓴다 — 즉 매번 달라질 수 있다.
@@ -102,6 +114,7 @@ public class NegotiationJpaEntity {
                                 LocalDateTime endedAt, String endReason, LocalDateTime clientLastReadAt,
                                 LocalDateTime freelancerLastReadAt,
                                 NegotiationAgentState agentState, LocalDateTime agentStartedAt,
+                                Boolean finalOffer, Boolean clientFinalAccepted, Boolean freelancerFinalAccepted,
                                 List<NegotiationConditionJpaEntity> conditions) {
         this.id = id;
         this.requestId = requestId;
@@ -122,6 +135,9 @@ public class NegotiationJpaEntity {
         this.freelancerLastReadAt = freelancerLastReadAt;
         this.agentState = agentState;
         this.agentStartedAt = agentStartedAt;
+        this.finalOffer = finalOffer;
+        this.clientFinalAccepted = clientFinalAccepted;
+        this.freelancerFinalAccepted = freelancerFinalAccepted;
         this.conditions = conditions != null ? conditions : new ArrayList<>();
     }
 }

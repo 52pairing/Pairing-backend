@@ -51,10 +51,14 @@ public class NegotiationConditionJpaEntity {
     @Column(name = "agreed_at")
     private LocalDateTime agreedAt;
 
+    // 최종 절충값. 최종 절충 진입 시 미합의 조건에만 채워진다. 기존 행에는 null 이므로 nullable.
+    @Column(name = "compromise_value")
+    private String compromiseValue;
+
     public NegotiationConditionJpaEntity(Long id, ConditionType conditionType, String clientValue,
                                          String freelancerValue, String clientFloor, String freelancerFloor,
                                          String agreedValue, ConditionStatus status, int roundCount,
-                                         int sortOrder, LocalDateTime agreedAt) {
+                                         int sortOrder, LocalDateTime agreedAt, String compromiseValue) {
         this.id = id;
         this.conditionType = conditionType;
         this.clientValue = clientValue;
@@ -66,5 +70,6 @@ public class NegotiationConditionJpaEntity {
         this.roundCount = roundCount;
         this.sortOrder = sortOrder;
         this.agreedAt = agreedAt;
+        this.compromiseValue = compromiseValue;
     }
 }

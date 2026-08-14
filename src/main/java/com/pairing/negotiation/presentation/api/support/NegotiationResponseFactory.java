@@ -53,6 +53,9 @@ public final class NegotiationResponseFactory {
                 // 화면이 성공 카드에까지 사유를 붙이게 된다 — 타결은 사유가 없는 게 맞다.
                 n.getStatus() == NegotiationStatus.FAILED ? n.getEndReason() : null,
                 false,                      // finalApprovalRequired: 15회 자동 결렬 채택으로 항상 false
+                n.isFinalOffer(),
+                n.hasAcceptedFinalOffer(role),
+                n.hasAcceptedFinalOffer(role.opposite()),
                 conditions
         );
     }
@@ -69,6 +72,7 @@ public final class NegotiationResponseFactory {
                 view.freelancerName(),
                 n.getStatus(),
                 n.getTotalRound(),
+                n.isFinalOffer(),
                 view.waitingForMe(),
                 n.getAgentState(),
                 view.lastProposalBy(),
@@ -105,7 +109,8 @@ public final class NegotiationResponseFactory {
                 c.floorForViewer(role),     // 뷰어 본인 마지노선만
                 // 화면이 마지노선 안내 문구를 맞게 쓰려면 비교 방식을 알아야 한다.
                 // 프론트가 조건 타입으로 다시 판단하면 규칙이 두 곳에 생긴다.
-                c.getConditionType().getFloorComparison()
+                c.getConditionType().getFloorComparison(),
+                c.getCompromiseValue()      // 최종 절충값(최종 절충 단계의 미합의 조건에만)
         );
     }
 }

@@ -33,6 +33,9 @@ public class NegotiationCondition {
     private int roundCount;
     private int sortOrder;
     private LocalDateTime agreedAt;
+    // 최종 절충안(양쪽이 마지노선을 넘겨 만나는 중간값). 최종 절충 진입 시 미합의 조건에만 채워지고,
+    // 양측이 수락하면 이 값이 agreedValue 로 락된다. 그 외에는 null(합의됐거나 절충 불가).
+    private String compromiseValue;
 
     private NegotiationCondition(ConditionType conditionType, String clientValue, String freelancerValue, int sortOrder) {
         if (conditionType == null) {
@@ -50,7 +53,8 @@ public class NegotiationCondition {
                                 String clientValue, String freelancerValue,
                                 String clientFloor, String freelancerFloor,
                                 String agreedValue, ConditionStatus status,
-                                int roundCount, int sortOrder, LocalDateTime agreedAt) {
+                                int roundCount, int sortOrder, LocalDateTime agreedAt,
+                                String compromiseValue) {
         this.id = id;
         this.negotiationId = negotiationId;
         this.conditionType = conditionType;
@@ -63,6 +67,7 @@ public class NegotiationCondition {
         this.roundCount = roundCount;
         this.sortOrder = sortOrder;
         this.agreedAt = agreedAt;
+        this.compromiseValue = compromiseValue;
     }
 
     /** 협상 생성 시점의 불일치 조건 생성. 희망값만 채우고 마지노선은 이후 입력받는다. */
@@ -75,9 +80,11 @@ public class NegotiationCondition {
                                                     String clientValue, String freelancerValue,
                                                     String clientFloor, String freelancerFloor,
                                                     String agreedValue, ConditionStatus status,
-                                                    int roundCount, int sortOrder, LocalDateTime agreedAt) {
+                                                    int roundCount, int sortOrder, LocalDateTime agreedAt,
+                                                    String compromiseValue) {
         return new NegotiationCondition(id, negotiationId, conditionType, clientValue, freelancerValue,
-                clientFloor, freelancerFloor, agreedValue, status, roundCount, sortOrder, agreedAt);
+                clientFloor, freelancerFloor, agreedValue, status, roundCount, sortOrder, agreedAt,
+                compromiseValue);
     }
 
     /** 마지노선 입력/재조정. 요청자 role 쪽 floor 만 갱신한다(상대 것은 건드리지 않는다). */
@@ -87,6 +94,32 @@ public class NegotiationCondition {
         } else {
             this.freelancerFloor = floorValue;
         }
+    }
+
+    /**
+     * 최종 절충값을 붙인다(최종 절충 진입 시, 미합의 조건에만). 이미 합의된 조건은 절충 대상이 아니다.
+     *
+     * <p>값을 붙일 뿐 락하지는 않는다 — 양측이 모두 수락해야 {@link #lockCompromise} 로 확정된다.
+     */
+    public void proposeCompromise(String value) {
+        if (this.status == ConditionStatus.AGREED) {
+            throw new BusinessException(NegotiationErrorCode.CONDITION_ALREADY_LOCKED);
+        }
+        this.compromiseValue = value;
+    }
+
+    /**
+     * 양측이 최종 절충안을 수락 → 절충값을 합의값으로 락한다.
+     *
+     * <p>절충값은 사람이 자기 마지노선을 넘겨 받아들인 값이라 {@link NegotiationFloorGuard} 하한
+     * 검증을 거치지 않는다({@code acceptBelowFloor} 와 같은 정책). 대신 <b>양측이 모두 명시적으로
+     * 수락</b>했을 때만 이 경로가 열린다.
+     */
+    public void lockCompromise() {
+        if (this.compromiseValue == null || this.compromiseValue.isBlank()) {
+            throw new BusinessException(NegotiationErrorCode.NO_PROPOSAL_TO_RESPOND);
+        }
+        lock(this.compromiseValue);
     }
 
     /** 사람이 수락 → 합의값 확정, 락. */

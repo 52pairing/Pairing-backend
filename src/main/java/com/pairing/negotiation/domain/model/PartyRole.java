@@ -15,6 +15,11 @@ public enum PartyRole {
 
     private final String label;
 
+    /** 상대 당사자. 최종 절충안에서 "상대가 수락했는가"를 뷰어 기준으로 고를 때 쓴다. */
+    public PartyRole opposite() {
+        return this == CLIENT ? FREELANCER : CLIENT;
+    }
+
     /**
      * 이 당사자 쪽 발신자(본인 + 본인 대리인).
      *
