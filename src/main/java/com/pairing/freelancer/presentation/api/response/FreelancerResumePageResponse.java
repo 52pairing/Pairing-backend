@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
  * 마이페이지 "내 이력서" 한 화면. (요구사항 R21)
  *
  * <p>화면은 희망 조건과 이력서를 한 페이지에 붙여 보여준다. 그래서 조회는 이 응답 하나로 끝낸다.
- * 저장은 등록 위저드가 단계별로 나뉘어 있어 {@code PUT /me/condition} 과 {@code PUT /me/resume} 로 나눠서 한다.
+ *
+ * <p>저장도 한 번에 할 수 있다 — {@code PUT /me/resume} 요청에 {@code condition} 을 같이 실으면
+ * 둘이 한 트랜잭션으로 저장된다. 조건만 고치는 화면은 {@code PUT /me/condition} 을 쓴다.
  *
  * <p>아직 등록하지 않았으면 해당 항목이 null 이다.
  */

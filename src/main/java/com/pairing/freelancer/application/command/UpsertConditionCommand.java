@@ -16,7 +16,6 @@ public record UpsertConditionCommand(
         Long accountId,
         JobCategory jobCategory,
         JobRole jobRole,
-        String affiliation,
         WorkStyle workStyle,
         WorkForm workForm,
         PayUnit payUnit,

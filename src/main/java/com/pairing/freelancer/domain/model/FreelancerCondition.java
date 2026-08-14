@@ -31,7 +31,6 @@ public class FreelancerCondition {
     private Long accountId;
     private JobCategory jobCategory;
     private JobRole jobRole;
-    private String affiliation;
     private WorkStyle workStyle;
     private WorkForm workForm;
     private PayUnit payUnit;
@@ -46,7 +45,7 @@ public class FreelancerCondition {
     private List<ConditionSkill> skills;
 
     private FreelancerCondition(Long id, Long accountId, JobCategory jobCategory, JobRole jobRole,
-                                String affiliation, WorkStyle workStyle, WorkForm workForm, PayUnit payUnit,
+                                WorkStyle workStyle, WorkForm workForm, PayUnit payUnit,
                                 Long payAmount, Long minAcceptAmount, LocalDate availableFrom,
                                 boolean startNegotiable, Integer periodValue, PeriodUnit periodUnit,
                                 boolean hasFreelanceExperience, int careerYears, List<ConditionSkill> skills) {
@@ -56,7 +55,6 @@ public class FreelancerCondition {
         this.accountId = accountId;
         this.jobCategory = jobCategory;
         this.jobRole = jobRole;
-        this.affiliation = affiliation;
         this.workStyle = workStyle;
         this.workForm = workForm;
         this.payUnit = payUnit;
@@ -72,31 +70,31 @@ public class FreelancerCondition {
     }
 
     public static FreelancerCondition create(Long accountId, JobCategory jobCategory, JobRole jobRole,
-                                             String affiliation, WorkStyle workStyle, WorkForm workForm,
+                                             WorkStyle workStyle, WorkForm workForm,
                                              PayUnit payUnit, Long payAmount, Long minAcceptAmount,
                                              LocalDate availableFrom, boolean startNegotiable,
                                              Integer periodValue, PeriodUnit periodUnit,
                                              boolean hasFreelanceExperience, int careerYears,
                                              List<ConditionSkill> skills) {
-        return new FreelancerCondition(null, accountId, jobCategory, jobRole, affiliation, workStyle, workForm,
+        return new FreelancerCondition(null, accountId, jobCategory, jobRole, workStyle, workForm,
                 payUnit, payAmount, minAcceptAmount, availableFrom, startNegotiable, periodValue, periodUnit,
                 hasFreelanceExperience, careerYears, skills);
     }
 
     public static FreelancerCondition reconstitute(Long id, Long accountId, JobCategory jobCategory,
-                                                   JobRole jobRole, String affiliation, WorkStyle workStyle,
+                                                   JobRole jobRole, WorkStyle workStyle,
                                                    WorkForm workForm, PayUnit payUnit, Long payAmount,
                                                    Long minAcceptAmount, LocalDate availableFrom,
                                                    boolean startNegotiable, Integer periodValue,
                                                    PeriodUnit periodUnit, boolean hasFreelanceExperience,
                                                    int careerYears, List<ConditionSkill> skills) {
-        return new FreelancerCondition(id, accountId, jobCategory, jobRole, affiliation, workStyle, workForm,
+        return new FreelancerCondition(id, accountId, jobCategory, jobRole, workStyle, workForm,
                 payUnit, payAmount, minAcceptAmount, availableFrom, startNegotiable, periodValue, periodUnit,
                 hasFreelanceExperience, careerYears, skills);
     }
 
     /** {@code PUT /me/condition} 재호출. 기존 값을 전부 새 값으로 교체한다. */
-    public void replaceWith(JobCategory jobCategory, JobRole jobRole, String affiliation, WorkStyle workStyle,
+    public void replaceWith(JobCategory jobCategory, JobRole jobRole, WorkStyle workStyle,
                             WorkForm workForm, PayUnit payUnit, Long payAmount, Long minAcceptAmount,
                             LocalDate availableFrom, boolean startNegotiable, Integer periodValue,
                             PeriodUnit periodUnit, boolean hasFreelanceExperience, int careerYears,
@@ -105,7 +103,6 @@ public class FreelancerCondition {
                 periodUnit, skills);
         this.jobCategory = jobCategory;
         this.jobRole = jobRole;
-        this.affiliation = affiliation;
         this.workStyle = workStyle;
         this.workForm = workForm;
         this.payUnit = payUnit;

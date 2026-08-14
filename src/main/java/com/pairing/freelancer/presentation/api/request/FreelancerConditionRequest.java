@@ -37,9 +37,8 @@ public record FreelancerConditionRequest(
         @NotNull(message = "직무는 필수입니다.")
         JobRole jobRole,
 
-        @Schema(description = "소속(선택)", example = "프리랜서")
-        @Size(max = 100)
-        String affiliation,
+        // 소속은 없앴다(2026-08-13). 페어링 프리랜서는 개인만 받기로 해서 항상 같은 값이 되고,
+        // 항상 같은 값을 받는 입력칸은 사용자에게 물을 이유가 없다.
 
         @Schema(description = "근무 방식")
         @NotNull(message = "근무 방식은 필수입니다.")
@@ -97,7 +96,7 @@ public record FreelancerConditionRequest(
 
     public UpsertConditionCommand toCommand(Long accountId) {
         return new UpsertConditionCommand(
-                accountId, jobCategory, jobRole, affiliation, workStyle, workForm, payUnit, payAmount,
+                accountId, jobCategory, jobRole, workStyle, workForm, payUnit, payAmount,
                 minAcceptAmount, availableFrom, startNegotiable, periodValue, periodUnit,
                 hasFreelanceExperience, careerYears,
                 skills.stream().map(skill -> new UpsertConditionCommand.Skill(skill.skillCode(), skill.skillLevel()))
