@@ -91,7 +91,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         for (FloorInput floor : floors) {
             NegotiationCondition condition = findByType(negotiation, floor.conditionType());
             String normalized = normalizeFloor(condition, floor.value());
-            ensureRespectsMinAccept(negotiation, role, condition, normalized);
+            // 최초 제출에서만 belowMinAccept(사람의 명시적 확인) 로 등록 최소가 하한을 넘길 수 있다.
+            ensureRespectsMinAccept(negotiation, role, condition, normalized, floor.belowMinAccept());
             condition.submitFloor(role, normalized);
         }
 
@@ -317,7 +318,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
                 throw new BusinessException(NegotiationErrorCode.CONDITION_ALREADY_LOCKED);
             }
             String normalized = normalizeFloor(condition, floor.value());
-            ensureRespectsMinAccept(negotiation, role, condition, normalized);
+            // 재조정은 기존대로 등록 최소가 하한을 강제한다(경고-후-허용은 최초 제출에만 열었다).
+            ensureRespectsMinAccept(negotiation, role, condition, normalized, false);
             condition.submitFloor(role, normalized);
         }
         negotiationRepository.save(negotiation);
@@ -619,9 +621,18 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
      *
      * <p>등록값이 없으면(구 데이터) 가드할 기준이 없으므로 통과시킨다. 값을 <b>올리는</b> 것은 자유다 —
      * 이 협상에서만 더 받고 싶은 경우를 막지 않는다.
+     *
+     * <p>{@code allowBelowMinAccept} 가 참이면 이 검증을 건너뛴다 — 프리랜서가 <b>등록 최소가보다
+     * 낮게 긋겠다고 명시적으로 확인</b>한 경우다(최초 제출 {@code start} 경로에서만 열어 준다). 등록
+     * 최소가는 대리인의 기본 하한일 뿐 사람의 직접 결정을 막는 천장은 아니라는 정책({@code acceptBelowFloor}
+     * 와 동일). 재조정({@code updateFloors})은 항상 {@code false} 로 불러 기존대로 막는다.
      */
     private void ensureRespectsMinAccept(Negotiation negotiation, PartyRole role,
-                                         NegotiationCondition condition, String normalizedFloor) {
+                                         NegotiationCondition condition, String normalizedFloor,
+                                         boolean allowBelowMinAccept) {
+        if (allowBelowMinAccept) {
+            return;
+        }
         if (role != PartyRole.FREELANCER || condition.getConditionType() != ConditionType.AMOUNT) {
             return;
         }

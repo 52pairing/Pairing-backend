@@ -49,8 +49,20 @@ public interface NegotiationLoopUseCase {
      */
     void markRead(Long negotiationId, Long accountId);
 
-    /** 쟁점별 마지노선(요청자 본인 것). */
-    record FloorInput(ConditionType conditionType, String value) {
+    /**
+     * 쟁점별 마지노선(요청자 본인 것).
+     *
+     * <p>{@code belowMinAccept} 는 프리랜서가 <b>등록해둔 최소 수용가보다 낮게 마지노선을 긋겠다</b>는
+     * 명시적 확인이다(최초 제출 {@code start} 에서만 의미). 등록 최소가는 대리인의 기본 하한일 뿐,
+     * 사람이 이번 협상에서 더 낮은 선을 직접 정하겠다면 경고 후 존중한다({@code acceptBelowFloor} 와 같은
+     * 정책). 이 플래그가 없으면 등록 최소가 아래는 {@code NG_012} 로 막혀 프론트가 경고를 띄운다.
+     */
+    record FloorInput(ConditionType conditionType, String value, boolean belowMinAccept) {
+
+        /** 하위호환: {@code belowMinAccept} 는 기본 false. */
+        public FloorInput(ConditionType conditionType, String value) {
+            this(conditionType, value, false);
+        }
     }
 
     /**
