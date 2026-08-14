@@ -78,10 +78,11 @@ class PythonMatchingAdapterRetryTest {
     void circuitBreakerConfigIsActuallyApplied() {
         // 애노테이션만 붙어 있고 설정이 없으면 resilience4j 기본값(minimumNumberOfCalls=100,
         // slidingWindowSize=100)으로 돈다. 매칭 호출은 착수금 결제 시 한 번씩이라 100번이 쌓일 일이
-        // 없어 **차단기가 절대 안 열린다**. 실제로 그 상태로 배포돼 있었다(2026-08-13).
+        // 없어 **차단기가 절대 안 열린다**.
         //
-        // 챗봇(support)은 CircuitBreakerPolicy 빈으로 같은 문제를 해결했다. 매칭은 yaml 로 했는데,
-        // 둘 다 같은 레지스트리를 쓰고 이름이 달라(pythonChatbotApi vs pythonMatchingApi) 충돌하지 않는다.
+        // 값은 matching.infrastructure.config.MatchingCircuitBreakerConfig(CircuitBreakerPolicy 구현)가
+        // 등록한다. yaml 이 아니다 - GlobalCircuitBreakerRegistryConfig 가 @PostConstruct 에서 명시
+        // config 로 등록하므로, yaml 에 같은 인스턴스를 적어도 그쪽이 이긴다.
         var config = circuitBreakerRegistry.circuitBreaker("pythonMatchingApi").getCircuitBreakerConfig();
 
         assertThat(config.getMinimumNumberOfCalls()).isEqualTo(5);

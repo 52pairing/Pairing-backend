@@ -1,4 +1,7 @@
-# AI 서버(Pairing-python) 호출의 재시도·차단기. 매칭 어댑터(PythonMatchingAdapter)만 쓴다.
+# AI 서버(Pairing-python) 호출의 **재시도** 설정. 매칭 어댑터(PythonMatchingAdapter)만 쓴다.
+#
+# 차단기는 여기가 아니라 matching.infrastructure.config.MatchingCircuitBreakerConfig(자바 빈)에
+# 이미 있다(2026-08-07부터). yaml 에 같은 인스턴스를 적어도 그쪽이 이기므로 여기 두면 안 된다.
 #
 # **이 파일이 값의 유일한 출처다.** application.yaml 은 운영용(src/main/resources)과 테스트용
 # (src/test/resources)이 따로 있는데, 테스트용이 운영용을 통째로 가린다. 그래서 값을 양쪽에
@@ -6,8 +9,7 @@
 # 검증할 뻔했다(2026-08-13). 양쪽 application.yaml 은 이 파일을 import 만 한다.
 #
 # 이 파일이 없어지면 서버가 기동에 실패한다. 그게 낫다 - 설정이 조용히 빠지면 resilience4j
-# 기본값으로 도는데, 차단기 기본값(minimum-number-of-calls=100)은 이 호출량에서 영원히
-# 안 채워져서 **붙어만 있고 동작은 안 하는** 상태가 된다. 실제로 그랬다.
+# 기본값(모든 예외 재시도)으로 돌아서, 5xx 재시도 금지 같은 결정이 소리 없이 사라진다.
 resilience4j:
   retry:
     instances:
@@ -31,19 +33,3 @@ resilience4j:
         ignore-exceptions:
           - org.springframework.web.client.HttpClientErrorException
           - org.springframework.web.client.HttpServerErrorException
-  circuitbreaker:
-    instances:
-      pythonMatchingApi:
-        # 기본값(sliding-window-size=100, minimum-number-of-calls=100)은 이 호출량
-        # (프로젝트 착수금 결제 시 한 번씩)에서 영원히 안 채워진다. 10번 중 5번 실패면 연다.
-        sliding-window-size: 10
-        minimum-number-of-calls: 5
-        failure-rate-threshold: 50
-        # 열린 동안은 60초 읽기 타임아웃을 매번 기다리지 않고 즉시 실패한다.
-        wait-duration-in-open-state: 30s
-        permitted-number-of-calls-in-half-open-state: 2
-        automatic-transition-from-open-to-half-open-enabled: true
-        # 4xx 는 상대 서버 장애가 아니라 우리 요청 문제라 차단기를 열 이유가 없다.
-        # "후보 없음"(404)으로 차단기가 열리면 멀쩡한 다른 프로젝트의 추천까지 막힌다.
-        ignore-exceptions:
-          - org.springframework.web.client.HttpClientErrorException
