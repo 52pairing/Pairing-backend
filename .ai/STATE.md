@@ -1,6 +1,6 @@
 # 현재 상태 — AI매칭(4번 파트)
 
-최종 갱신: 2026-08-10
+최종 갱신: 2026-08-14
 
 ## 담당 범위
 
@@ -785,6 +785,36 @@ nmake /F Makefile.win install
 - ⚠️ **배포 DB도 같은 이유로 누군가 수동으로 넣었어야 한다.** 안 넣었으면 배포 환경에서도 추천이
   첫 쿼리에서 죽는다. C1을 한 번도 안 돌려봐서 **아직 아무도 모르는 상태일 수 있다.**
   확인: `SELECT extname FROM pg_extension WHERE extname='vector';`
+
+## 2026-08-14 갱신 — 프로젝트 취소 시 매칭 요청 정리 (P46, 3번 요청)
+
+3번이 모집 기간 만료 판정을 상태 기준(`RECRUITING`만)에서 **인원 기준**으로 바꿨다. 전에는 한 명이라도
+수락해 `NEGOTIATING`으로 넘어간 프로젝트는 마감이 지나도 방치됐다. 인원 미확정이면 파기(P46)라
+`CANCELED`로 보낸다.
+
+`ProjectCanceledEvent(projectId)`가 그 신호다(3번 소유, `8c56e94`). `ProjectClosedEvent`(정상 종료)와
+**다른 이벤트다** — 그쪽은 완료로 올리고 이쪽은 되돌린다. 계약·정산·매칭·협상·알림이 각자 자기 몫을
+정리한다.
+
+- **매칭 몫**: `ContractStageEventListener.onProjectCanceled` — `REQUEST_PENDING` 요청만 `expire()`로
+  종결. 새 클래스를 안 만들고 기존 리스너에 메서드 하나 추가했다(같은 클래스가 이미 남의 이벤트를 받아
+  `matching_request` 상태를 옮기는 자리다).
+- **`advanceStatus`를 쓰면 안 된다.** `rejectReason`이 비어 화면이 프리랜서의 직접 거절과 구분하지
+  못한다. `expire()`가 `EXPIRED`까지 남긴다. **새 `RejectReason`은 안 만들었다**(DB CHECK 제약 ALTER
+  없음) — 프리랜서가 놓친 게 아니라 요청 자체가 기한 안에 결론이 안 난 것이라 "응답 기한 만료"로 맞다.
+- **`MatchingRequestExpirer.expireNow()`도 쓰면 안 된다.** 만료 알림을 발행해서, 응답할 기회조차 없던
+  프리랜서에게 "기한이 지나 자동 종료됐어요"가 나간다. 취소 통지는 알림 담당이 `PROJECT_CANCELED`로
+  따로 보낸다. `syncStage`도 불필요 — `Project.syncStage`는 `CANCELED`면 early return.
+- **트랜잭션은 `@EventListener`(발행 쪽 합류)로 했다.** 같은 이벤트를 받는 계약·정산은
+  `AFTER_COMMIT + REQUIRES_NEW`인데 우리만 다르다. 이유: **`accept()`에는 프로젝트 상태 가드가 없다**
+  (`assertRecruiting`은 요청 *발송* 경로에만 걸려 있다 — 위 2026-08-09 ① 참고). 커밋 후에 정리하면 그
+  틈에 수락이 들어와 `advanceTo`가 PJ_012를 던지고, 프리랜서 화면에 남의 도메인 에러가 뜬다. 같은
+  트랜잭션의 행 잠금이 그 틈을 닫는다. 실패하면 취소가 롤백되고 스케줄러가 다음 주기에 재시도한다.
+- **범위 밖(3번이 뺀 것)**: `NEGOTIATING` 요청은 협상 담당이 `markNegotiationFailed`를 호출해야 따라
+  온다(자동 아님). `CONTRACT_PENDING`·`CONTRACTED`는 그대로 둔다(카드가 [종료됨] 탭으로 가고 재추천은
+  MT_014로 막힌다). `matching_candidate`도 추천 이력이라 남긴다.
+
+`feat/expire-matching-requests-on-project-cancel` 브랜치. **618 tests, 0 failures.** 변이 2건 확인.
 
 ## 아직 팀 확인 대기 중인 것
 

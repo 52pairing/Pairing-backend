@@ -2009,3 +2009,84 @@ null 을 돌려주고 협상이 라이브로 새어나간다 — 에러도 안 �
 
 이 테스트를 쓰면서 **픽스처에 이력서가 없다**는 것을 발견해 시딩을 추가했다. `findResume`이 던지는
 조건이 테스트 환경에 그대로 있었다 — 위 try/catch 방어가 가상의 상황이 아니라는 증거다.
+
+## 2026-08-14 (2) — 프로젝트 취소 시 매칭 요청 정리 (3번 요청, P46)
+
+3번이 프로젝트 모집 기간 만료를 **인원 기준**으로 판정하도록 바꿨다. 전에는 `RECRUITING`인
+프로젝트만 만료 대상이라, 프리랜서가 한 명이라도 수락해 `NEGOTIATING`으로 넘어간 프로젝트는
+마감이 지나도 영원히 방치됐다. 인원이 확정되지 않으면 파기(P46)라서 `CANCELED`로 보낸다.
+
+취소된 프로젝트의 **응답 대기 중인 매칭 요청을 종결**하는 것이 이번 우리 몫이다.
+
+### 받은 것
+
+`ProjectCanceledEvent(projectId)` — 3번이 이미 만들어 develop에 넣었다(`8c56e94`). 발행처 2곳:
+`ProjectExpirer.expireOne`(만료 스케줄러), `ProjectCommandService.closeRecruit`(클라이언트의 모집 종료).
+둘 다 트랜잭션 안에서 발행한다.
+
+같은 이벤트를 계약(`ContractLifecycleListener`)·정산(`SettlementProjectCancelListener`)도 받는다.
+
+### 한 것
+
+`ContractStageEventListener.onProjectCanceled` 메서드 하나. 새 클래스를 만들지 않았다 — 이 클래스가
+이미 남의 이벤트를 받아 `matching_request` 상태를 옮기는 자리다.
+
+`REQUEST_PENDING` 요청만 골라 `expire()`로 종결한다.
+
+### 판단한 것 3가지
+
+**1. `advance(request, REJECTED)`를 재사용하지 않았다.** `advanceStatus`는 상태만 바꾸고
+`rejectReason`을 비워둔다. 그러면 화면이 프리랜서의 직접 거절과 구분하지 못한다. `expire()`는
+사유까지 `EXPIRED`로 남긴다. 3번이 미리 짚어준 함정이고, 변이 테스트로 실제로 잡히는 것을 확인했다.
+
+**2. `MatchingRequestExpirer.expireNow()`를 쓰지 않았다.** 그쪽은 만료 알림을 발행한다. 프로젝트
+취소로 종결된 건에 "응답 기한 3일이 지나 자동으로 종료됐어요"가 나가면 사실과 다르다 — 프리랜서는
+응답할 기회가 없었고, 클라이언트는 자기가 접은 건이다. 취소 통지는 알림 담당이 `PROJECT_CANCELED`로
+따로 보낸다. `syncStage`도 부르지 않았다 — `Project.syncStage`는 `CANCELED`면 그냥 돌아 나온다.
+
+**3. 트랜잭션은 `@EventListener`(발행 쪽에 합류)로 했다.** 3번은 어느 쪽이든 괜찮다고 했고, 같은
+이벤트를 받는 계약·정산은 `AFTER_COMMIT + REQUIRES_NEW`를 골랐다. 그런데도 합류를 고른 이유:
+
+- 이 클래스의 기존 4개 리스너가 전부 합류 방식이고, 그 이유가 javadoc에 적혀 있다.
+- **`accept()`에는 프로젝트 상태 가드가 없다.** `assertRecruiting`은 요청 *발송* 경로에만 걸려 있다.
+  커밋 후에 정리하면 그 틈에 프리랜서가 수락할 수 있다. 그러면 `startNegotiating`의 `advanceTo`가
+  `PROJECT_ALREADY_CLOSED`(PJ_012)를 던져 수락이 롤백되는데, 프리랜서 화면에 남의 도메인 에러가
+  뜬다. 같은 트랜잭션에서 UPDATE하면 행 잠금이 그 틈을 닫는다.
+- 실패해도 반쯤 처리된 상태가 안 남는다. 취소가 롤백되고 스케줄러가 건별로 잡아 다음 주기에 재시도한다.
+
+계약·정산이 반대로 고른 것도 그쪽 기준으로 맞다. 돈·계약을 건드리는 무거운 작업이라 취소를
+되돌리면 안 된다.
+
+### `RejectReason`은 `EXPIRED`를 그대로 쓴다
+
+새 enum을 안 만들기로 3번과 정리했다. DB CHECK 제약 ALTER가 없다. 화면에 "응답 기한 만료"로 나가도
+프리랜서가 놓친 게 아니라 요청 자체가 기한 안에 결론이 안 난 것이라 맞다.
+
+### 안 한 것 (3번이 요청 범위에서 뺀 것)
+
+- `NEGOTIATING` 요청 — 협상 담당이 결렬 처리하며 `markNegotiationFailed(requestId)`를 호출하면 따라온다.
+- `CONTRACT_PENDING`·`CONTRACTED` — 그대로 둔다. 취소되면 카드가 [종료됨] 탭으로 가고,
+  재추천은 MT_014로 막혀 기능상 문제가 없다.
+- `matching_candidate` — 추천 이력이라 남기는 편이 낫다.
+
+### 검증
+
+`./gradlew cleanTest test` — **618 tests, 0 failures** (기존 613 + 신규 5).
+
+**변이 테스트 2건, 둘 다 잡혔다.**
+- `expire()` → `advance(request, REJECTED)`: 2건 실패, `expected: "EXPIRED"` (사유가 null이 된다)
+- 상태 필터를 `REQUEST_PENDING` → `NEGOTIATING`: 4건 실패, `BusinessException: 이미 응답한 매칭
+  요청입니다`. 필터를 빠뜨리면 종결된 요청까지 `expire()`에 들어가 예외가 나고, 같은 트랜잭션이라
+  프로젝트 취소까지 롤백된다는 3번의 우려가 실제로 재현된다.
+
+**알림 미발행은 이 테스트 클래스로 증명할 수 없다.** `MatchingNotificationListener`가
+`AFTER_COMMIT`이고 이 테스트는 트랜잭션 없이 이벤트를 발행하므로 어차피 안 뜬다 — 통과해도 의미가
+없다. 대신 `MatchingRequestExpirer`를 재사용하는 변이는 그 안의 `syncStage`가 존재하지 않는
+프로젝트를 조회해 터지므로 간접적으로 걸린다.
+
+### 참고 — 내 파일 아님
+
+`src/main/resources/application.yaml` 268행 `management.metrics.distribution.slo`의
+`http.server.requests`에 인텔리제이가 빨간 줄을 긋는다. **오탐이다.** 점을 YAML 중첩 경로로 읽어
+설정 키를 찾으려 하는데, 실제로는 `Map<String, ...>`의 키라 스프링은 정상 바인딩한다. 없애려면
+대괄호 표기(`"[http.server.requests]"`)로 바꾸면 되는데 모니터링 담당 설정이라 손대지 않았다.
