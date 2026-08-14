@@ -8,10 +8,10 @@ import { check, sleep } from 'k6';
  *
  * 실행:
  *   K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_EXPORT=report-before.html \
- *     k6 run K6/review/01-home-site-reviews.js
+ *     k6 run k6/review/01-home-site-reviews.js
  *
  * BASE_URL 로 대상 서버를 바꾼다. 기본은 로컬이다.
- *   k6 run -e BASE_URL=https://52pairing.kro.kr K6/review/01-home-site-reviews.js
+ *   k6 run -e BASE_URL=https://52pairing.kro.kr k6/review/01-home-site-reviews.js
  *
  * 전/후를 같은 조건에서 재려면 아래를 지켜야 한다.
  *   - 같은 장비, 같은 DB, 같은 더미 데이터
