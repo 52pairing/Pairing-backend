@@ -125,6 +125,19 @@ class MatchingRoundCreationService {
 
         // 포지션 조회가 추천 호출보다 앞이어야 한다 — budgetCap을 같이 넘겨야 해서다.
         ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
+
+        // **포지션 임베딩 생성을 여기서 한다(2026-08-14 이동).** 예전에는 회차를 만드는 트랜잭션
+        // 안에서 했는데, 결제 순간 AI 서버가 내려가 있으면 그 트랜잭션이 롤백돼 **회차도 안 남고**
+        // 복구 스케줄러는 RUNNING 회차만 찾으므로 화면이 "준비중"에서 영원히 멈췄다.
+        // 회차가 커밋된 뒤에 부르면 실패해도 회차가 RUNNING/FAILED 로 남아 복구가 잡아간다.
+        //
+        // 최초 추천에서만 만든다. 재추천은 이미 있는 벡터를 그대로 쓴다 — 매번 다시 부르면
+        // 같은 값으로 덮어쓰면서 AI 호출만 늘어난다. 복구가 최초 추천 회차를 다시 채울 때는
+        // 여기를 다시 타는데, upsert 라 중복이 생기지 않는다.
+        if (round.getRoundType() == RecommendationType.INITIAL) {
+            matchingPort.upsertPositionEmbedding(positionId, PositionEmbeddingTextBuilder.buildText(position));
+        }
+
         long budgetCap = budgetCapCalculator.calculate(projectId, position.budgetAmount(),
                 position.totalHeadcount(), position.periodValue(), position.periodUnit());
 
