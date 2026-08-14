@@ -1,5 +1,6 @@
 package com.pairing.settlement.domain.repository;
 
+import com.pairing.settlement.application.result.MySettlementSummary;
 import com.pairing.settlement.domain.model.Settlement;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
@@ -28,6 +29,16 @@ public interface SettlementRepository {
     /** 내 정산 목록. projectId / phase / status 는 null 이면 필터하지 않는다. */
     Page<Settlement> findByPayer(Long payerAccountId, Long projectId, SettlementPhase phase,
                                  SettlementStatus status, Pageable pageable);
+
+    /**
+     * 마이페이지 결제 내역 요약. <b>결제 완료만</b> 센다.
+     *
+     * <p>목록으로는 만들 수 없다. 페이징이라 한 페이지 몫만 더하게 되어 2페이지부터 틀린다.
+     *
+     * <p>낸 게 없으면 {@link MySettlementSummary#EMPTY} 다. null 을 돌려주지 않는다 —
+     * 신규 가입자가 대부분 이 경우라 화면이 매번 널 검사를 하게 만들 이유가 없다.
+     */
+    MySettlementSummary sumPaidByPayer(Long payerAccountId);
 
     /**
      * 프로젝트에 걸린 <b>클라이언트</b>의 결제 대기 정산 1건.
