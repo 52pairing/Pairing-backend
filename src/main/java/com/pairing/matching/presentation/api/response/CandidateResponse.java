@@ -80,10 +80,14 @@ public record CandidateResponse(
      * 누구에게 요청했는지 볼 수 없고, 거절은 되돌리는 API가 없는 데다 R02 예외조건 5로 다음 회차에도
      * 안 나오므로 그 후보를 영구히 잃는다. 그래서 상태를 표시하는 쪽을 택했다.
      *
-     * <p><b>거절이 요청보다 우선이다.</b> 둘 다 참일 수 있는데(요청을 보낸 뒤에도 거절할 수 있다),
-     * 이때 카드로 할 수 있는 일을 정하는 건 거절 쪽이다 —
-     * {@code MatchingCandidate.isSelectable()}이 {@code rejected}면 무조건 false다. 서버가 막는 기준과
-     * 화면 표시가 갈리지 않도록 같은 우선순위를 쓴다.
+     * <p><b>셋은 서로 배타적이다</b>(2026-08-13 확정). 요청을 보낸 후보는 거절할 수 없고
+     * ({@code MatchingErrorCode.CANDIDATE_ALREADY_REQUESTED}), 거절한 후보는 요청할 수 없다
+     * ({@code MatchingCandidate.isSelectable()}이 false → {@code MT_017}). 양쪽에서 다 막으므로
+     * 두 불리언이 동시에 참이 되는 경로가 없다.
+     *
+     * <p>그래도 {@code rejected}를 먼저 본다. 이 판정이 막기 전에 만들어진 데이터가 있을 수 있고,
+     * 그때 카드로 할 수 있는 일을 정하는 건 거절 쪽이기 때문이다 — {@code isSelectable()}은
+     * {@code rejected}면 무조건 false다. <b>서버가 막는 기준과 화면 표시가 갈리면 안 된다.</b>
      */
     public enum Status {
 

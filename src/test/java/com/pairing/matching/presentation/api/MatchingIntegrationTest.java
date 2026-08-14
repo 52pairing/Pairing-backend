@@ -534,19 +534,38 @@ class MatchingIntegrationTest {
     }
 
     @Test
-    @DisplayName("요청을 보낸 뒤 거절하면 거절이 앞선다 — 서버가 선택을 막는 기준과 같아야 한다")
-    void rejectedWinsOverRequestedSoTheLabelMatchesWhatTheServerAllows() throws Exception {
+    @DisplayName("요청을 보낸 후보는 거절할 수 없다 — 카드 상태는 셋 중 하나여야 한다")
+    void requestedCandidateCannotBeRejected() throws Exception {
         MatchingRound round = seedRound(2);
         MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
 
         sendRequest(candidate.getId()).andExpect(status().isCreated());
+
         mockMvc.perform(post("/api/v1/matchings/candidates/" + candidate.getId() + "/rejection")
                         .cookie(clientAccessToken))
-                .andExpect(status().isOk())
-                // "요청 보냄"으로 보이면 프론트가 다시 고를 수 있는 카드로 그리는데, 서버의
-                // isSelectable()은 rejected면 무조건 거부한다. 표시와 판정이 갈리면 안 된다.
-                .andExpect(jsonPath("$.data.candidates[0].status").value("REJECTED"))
-                .andExpect(jsonPath("$.data.candidates[0].requested").value(true));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_019"));
+
+        // 상태가 "요청 보냄"에서 흔들리지 않는다.
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(jsonPath("$.data.candidates[0].status").value("REQUESTED"))
+                .andExpect(jsonPath("$.data.candidates[0].rejected").value(false));
+    }
+
+    @Test
+    @DisplayName("거절한 후보에게는 요청을 보낼 수 없다 — 반대 방향도 막혀야 셋이 배타적이다")
+    void rejectedCandidateCannotBeRequested() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+
+        mockMvc.perform(post("/api/v1/matchings/candidates/" + candidate.getId() + "/rejection")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk());
+
+        sendRequest(candidate.getId())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_017"));
     }
 
     @Test
