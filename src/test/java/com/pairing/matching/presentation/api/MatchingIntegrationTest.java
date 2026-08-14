@@ -26,7 +26,9 @@ import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.RankedFreelancer;
 import com.pairing.matching.application.usecase.MatchingRequestCommandUseCase;
 import com.pairing.matching.domain.model.MatchingCandidate;
+import com.pairing.matching.application.service.StaleRoundRecoveryService;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingRoundStatus;
 import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.model.SnapshotType;
@@ -72,15 +74,21 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -144,6 +152,8 @@ class MatchingIntegrationTest {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private MatchingRequestCommandUseCase matchingRequestCommandUseCase;
+    @Autowired
+    private StaleRoundRecoveryService staleRoundRecoveryService;
 
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
@@ -418,6 +428,283 @@ class MatchingIntegrationTest {
         candidate.applyGuard(true, null);
         candidate.expose(rank);
         return matchingCandidateRepository.save(candidate);
+    }
+
+    @Test
+    @DisplayName("추천 라운드가 아직 없으면 에러가 아니라 준비중으로 내려간다")
+    void candidateListIsPreparingWhileTheFirstRoundIsStillBeingBuilt() throws Exception {
+        // 최초 추천은 착수금 결제 이벤트를 받아 비동기로 돌고 LLM 호출까지 수 초~수십 초가 걸린다.
+        // 결제 직후 추천 후보 탭을 열면 라운드가 없는 게 정상인데, 예전엔 MT_001 을 404로 던져서
+        // 화면에 빨간 에러가 뜨고 "다시 시도"를 눌러야 후보가 보였다.
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(true))
+                .andExpect(jsonPath("$.data.candidates").isEmpty())
+                .andExpect(jsonPath("$.data.roundId").doesNotExist())
+                // 대기 중에도 "0/4명" 같은 표기를 그릴 수 있어야 한다.
+                .andExpect(jsonPath("$.data.headcount").value(2));
+
+        // 라운드가 생기면 preparing 이 꺼지고 평소대로 내려간다.
+        MatchingRound round = seedRound(2);
+        seedExposedCandidate(round.getId(), 1);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(false))
+                .andExpect(jsonPath("$.data.failed").value(false))
+                .andExpect(jsonPath("$.data.candidates.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("회차는 생겼지만 아직 채우는 중이면 후보 0명이 아니라 준비중이다")
+    void runningRoundIsPreparingNotEmpty() throws Exception {
+        // 회차 레코드는 AI 호출 **전에** 커밋된다(2026-08-13). 그래서 회차가 있다고 후보가 있는 게
+        // 아니다. 상태를 안 보면 채우는 중인 회차가 "후보 없음"으로 보인다.
+        MatchingRound running = MatchingRound.create(PROJECT_ID, POSITION_ID, 1,
+                RecommendationType.INITIAL, null, 0L, 2, 6);
+        matchingRoundRepository.save(running);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(true))
+                .andExpect(jsonPath("$.data.failed").value(false))
+                .andExpect(jsonPath("$.data.candidates").isEmpty());
+    }
+
+    /** 회차를 만든 뒤 생성 시각을 과거로 돌린다. created_at 은 DB 기본값이라 직접 못 넣는다. */
+    private MatchingRound seedRunningRoundCreatedMinutesAgo(int minutesAgo) {
+        MatchingRound running = matchingRoundRepository.save(MatchingRound.create(PROJECT_ID, POSITION_ID, 1,
+                RecommendationType.INITIAL, null, 0L, 2, 6));
+        jdbcTemplate.update("UPDATE matching_round SET created_at = ? WHERE id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(minutesAgo)), running.getId());
+        return running;
+    }
+
+    @Test
+    @DisplayName("AI 호출 중 컨테이너가 죽어 RUNNING 으로 멈춘 회차를 스케줄러가 되살린다")
+    void staleRunningRoundIsRefilled() throws Exception {
+        // 후보 저장과 회차 완료가 한 트랜잭션이라, 중간에 죽은 회차에는 후보가 하나도 없다.
+        // 그래서 다시 채워도 중복이 생기지 않는다.
+        MatchingRound stale = seedRunningRoundCreatedMinutesAgo(30);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong())).willReturn(
+                new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
+                        new RankedFreelancer(freelancerAccountId, 91.0, "요구 스킬 일치", 0.8125))));
+
+        staleRoundRecoveryService.recoverStaleRounds();
+
+        assertThat(matchingRoundRepository.findById(stale.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchingRoundStatus.COMPLETED);
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(jsonPath("$.data.preparing").value(false))
+                .andExpect(jsonPath("$.data.candidates.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("되살리기도 실패하면 FAILED 로 닫는다 — RUNNING 으로 두면 매 주기마다 AI를 다시 부른다")
+    void staleRoundIsClosedWhenRefillAlsoFails() throws Exception {
+        MatchingRound stale = seedRunningRoundCreatedMinutesAgo(30);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
+                .willThrow(new IllegalStateException("AI 서버 호출 실패"));
+
+        staleRoundRecoveryService.recoverStaleRounds();
+
+        assertThat(matchingRoundRepository.findById(stale.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchingRoundStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("이미 끝난 회차는 다시 채우지 않는다 — 인스턴스가 둘이면 같은 회차를 집을 수 있다")
+    void alreadyFinishedRoundIsNotRefilled() throws Exception {
+        // 서버 인스턴스가 둘 이상이면 각자의 스케줄러가 같은 회차를 집을 수 있다. 그대로 두면
+        // Gemini 를 두 번 부르고 후보가 중복 저장된다.
+        MatchingRound stale = seedRunningRoundCreatedMinutesAgo(30);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong())).willReturn(
+                new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
+                        new RankedFreelancer(freelancerAccountId, 91.0, "요구 스킬 일치", 0.8125))));
+
+        staleRoundRecoveryService.recoverStaleRounds();
+        // 첫 번째로 이미 COMPLETED 가 됐다. 두 번째 주기(또는 다른 인스턴스)가 또 돌아도
+        // 후보가 늘어나면 안 된다.
+        long candidateCountAfterFirst = matchingCandidateJpaRepository.count();
+        staleRoundRecoveryService.recoverStaleRounds();
+
+        assertThat(matchingCandidateJpaRepository.count()).isEqualTo(candidateCountAfterFirst);
+        assertThat(matchingRoundRepository.findById(stale.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchingRoundStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("두 인스턴스가 같은 회차를 동시에 집어도 AI는 한 번만 부른다")
+    void concurrentRecoveryFillsTheRoundOnlyOnce() throws Exception {
+        // 복구 스케줄러는 인스턴스마다 같은 크론(0 */5)으로 돌아서 **동시에 뜨는 게 정상**이다.
+        // 상태 확인만으로는 두 트랜잭션이 나란히 RUNNING 을 읽고 둘 다 진행한다 - 그래서 행을 잠근다.
+        // 태스크가 1개여도 롤링 배포 중에는 항상 잠깐 인스턴스가 둘이다.
+        seedRunningRoundCreatedMinutesAgo(30);
+
+        CountDownLatch insideAiCall = new CountDownLatch(1);
+        CountDownLatch releaseAiCall = new CountDownLatch(1);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
+                .willAnswer(invocation -> {
+                    insideAiCall.countDown();
+                    releaseAiCall.await(10, TimeUnit.SECONDS);
+                    return new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
+                            new RankedFreelancer(freelancerAccountId, 91.0, "요구 스킬 일치", 0.8125)));
+                });
+
+        Thread first = new Thread(staleRoundRecoveryService::recoverStaleRounds, "recovery-1");
+        first.start();
+        // 첫 번째가 AI 호출 안에 들어갔다 = 회차 행을 잠근 상태다.
+        assertThat(insideAiCall.await(10, TimeUnit.SECONDS)).isTrue();
+
+        Thread second = new Thread(staleRoundRecoveryService::recoverStaleRounds, "recovery-2");
+        second.start();
+        // 두 번째가 잠금 대기에 실제로 들어갈 때까지 기다린다. 그냥 재우면(sleep) 아직 도착도 안 한
+        // 상태에서 풀어줘 **통과하지만 아무것도 검증하지 못하는** 테스트가 된다.
+        awaitBlocked(second);
+
+        releaseAiCall.countDown();
+        first.join(15_000);
+        second.join(15_000);
+
+        // 잠금이 없으면 두 번 부르고 후보도 두 번 저장된다.
+        verify(matchingPort, times(1)).recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong());
+        assertThat(matchingCandidateJpaRepository.count()).isEqualTo(1);
+    }
+
+    /** 스레드가 잠금 대기(BLOCKED/WAITING)에 들어갈 때까지 기다린다. 고정 sleep 대신 상태를 본다. */
+    private void awaitBlocked(Thread thread) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            Thread.State state = thread.getState();
+            if (state == Thread.State.BLOCKED || state == Thread.State.WAITING
+                    || state == Thread.State.TIMED_WAITING) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("두 번째 스레드가 잠금 대기에 들어가지 않았다");
+    }
+
+    @Test
+    @DisplayName("아직 진행 중일 수 있는 회차는 건드리지 않는다 — 다시 부르면 AI 비용이 두 배다")
+    void freshRunningRoundIsNotTouched() throws Exception {
+        MatchingRound fresh = seedRunningRoundCreatedMinutesAgo(1);
+
+        staleRoundRecoveryService.recoverStaleRounds();
+
+        assertThat(matchingRoundRepository.findById(fresh.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchingRoundStatus.RUNNING);
+        verify(matchingPort, never()).recommend(anyLong(), anyInt(), anyInt(), anyList(), anyLong());
+    }
+
+    @Test
+    @DisplayName("재추천이 도는 동안에도 기존 후보는 계속 내려간다 — preparing 이라고 목록을 비우면 안 된다")
+    void rerecommendInProgressKeepsShowingExistingCandidates() throws Exception {
+        // 재추천을 누르면 새 회차가 RUNNING 으로 먼저 생긴다. 그때 최신 회차만 보면 preparing=true 인데,
+        // 후보 목록은 포지션 전체 누적이라 **기존 후보가 그대로 들어있다.**
+        // 프론트가 preparing 을 보고 목록을 통째로 로딩 화면으로 덮으면, 재추천 도는 동안 기존 후보가
+        // 화면에서 사라진다 - 처음에 고친 버그가 그대로 재현된다.
+        MatchingRound first = seedRound(2);
+        seedExposedCandidate(first.getId(), 1);
+
+        MatchingRound rerecommending = MatchingRound.create(PROJECT_ID, POSITION_ID, 2,
+                RecommendationType.PAID, 1, 10_000L, 1, 3);
+        matchingRoundRepository.save(rerecommending);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(true))
+                .andExpect(jsonPath("$.data.candidates.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("준비중 응답도 남은 유료 재추천 횟수를 실제로 센다 — 한도는 프로젝트 단위다")
+    void preparingResponseCountsPaidRerecommendPerProject() throws Exception {
+        // 같은 프로젝트의 다른 포지션이 이미 유료 재추천을 썼는데 이 포지션엔 아직 회차가 없는 상황.
+        // 상한(5)을 그대로 내보내면 "5회 남음"이 거짓말이 된다.
+        MatchingRound paidOnAnotherPosition = MatchingRound.create(PROJECT_ID, 9_999L, 1,
+                RecommendationType.PAID, 1, 10_000L, 1, 3);
+        paidOnAnotherPosition.complete();
+        matchingRoundRepository.save(paidOnAnotherPosition);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(true))
+                .andExpect(jsonPath("$.data.paidRerecommendRemaining").value(4));
+    }
+
+    @Test
+    @DisplayName("추천 생성이 실패한 회차는 후보 없음이 아니라 실패로 내려간다")
+    void failedRoundIsReportedAsFailed() throws Exception {
+        MatchingRound failed = MatchingRound.create(PROJECT_ID, POSITION_ID, 1,
+                RecommendationType.INITIAL, null, 0L, 2, 6);
+        failed.fail();
+        matchingRoundRepository.save(failed);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.failed").value(true))
+                .andExpect(jsonPath("$.data.preparing").value(false))
+                .andExpect(jsonPath("$.data.candidates").isEmpty());
+    }
+
+    @Test
+    @DisplayName("라운드가 없어도 남의 포지션은 볼 수 없다")
+    void preparingResponseStillChecksOwnership() throws Exception {
+        // 평소엔 라운드에서 projectId 를 얻어 소유자를 확인하는데, 라운드가 없으면 그 경로가 없다.
+        // 확인을 건너뛰면 남의 프로젝트 모집 인원을 들여다볼 수 있다.
+        //
+        // **다른 클라이언트로 검증해야 한다.** 프리랜서로 부르면 컨트롤러의 hasRole('CLIENT')에서
+        // 먼저 막혀서, 이 검사를 지워도 테스트가 통과한다(실제로 그렇게 짰다가 변이 테스트로 걸렀다).
+        Cookie otherClientToken = signUpAndLoginOtherClient();
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(otherClientToken))
+                .andExpect(status().isForbidden());
+    }
+
+    /** 프로젝트를 소유하지 않은 두 번째 클라이언트. 소유자 검증 테스트에만 쓴다. */
+    private Cookie signUpAndLoginOtherClient() throws Exception {
+        String email = "other-client@pairing.com";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("companyName", "주식회사 남의회사");
+        body.put("businessNo", "9876543210");
+        body.put("businessField", "IT_CONTENTS_AI");
+        body.put("employeeCount", "SIZE_10_49");
+        body.put("address", "서울 마포구 월드컵북로 1");
+        body.put("email", email);
+        body.put("name", "박클라");
+        body.put("phone", "010-3333-4444");
+        body.put("password", PASSWORD);
+        body.put("passwordConfirm", PASSWORD);
+        body.put("card", Map.of("cardNumber", "9999-8888-7777-6666", "cardBrand", "국민카드"));
+        body.put("bankAccount", Map.of("bankCode", "004", "accountNo", "110-999-888777", "accountHolder", "박클라"));
+        body.put("agreements", List.of(
+                Map.of("termsId", clientTermsId, "agreed", true),
+                Map.of("termsId", privacyTermsId, "agreed", true),
+                Map.of("termsId", marketingTermsId, "agreed", false)));
+
+        mockMvc.perform(post("/api/v1/auth/signup/client")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated());
+
+        return mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"%s","role":"CLIENT"}"""
+                                .formatted(email, PASSWORD)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getCookie("accessToken");
     }
 
     @Test

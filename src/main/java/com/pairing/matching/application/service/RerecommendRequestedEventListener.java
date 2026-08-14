@@ -23,7 +23,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * 붙이지 않으면 재추천 API 응답이 AI 호출을 그대로 기다리게 된다. 커밋 후에 받아야 비동기
  * 스레드에서 방금 만든 회차를 조회할 수 있다.
  *
- * <p>트랜잭션은 {@link RerecommendRoundFiller}(별도 빈, REQUIRES_NEW)가 잡는다 — 성공 경로와 실패
+ * <p>트랜잭션은 {@link MatchingRoundFiller}(별도 빈, REQUIRES_NEW)가 잡는다 — 성공 경로와 실패
  * 처리가 서로 다른 트랜잭션이어야 실패 시 FAILED 저장이 같이 롤백되지 않는다.
  *
  * <p><b>이 메서드 자체에도 REQUIRES_NEW가 필요하다.</b> AFTER_COMMIT 시점에는 원 트랜잭션이
@@ -39,7 +39,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 class RerecommendRequestedEventListener {
 
-    private final RerecommendRoundFiller rerecommendRoundFiller;
+    private final MatchingRoundFiller matchingRoundFiller;
     private final NotificationCreateUseCase notificationCreateUseCase;
 
     @Async
@@ -47,11 +47,11 @@ class RerecommendRequestedEventListener {
     // AFTER_COMMIT 시점에는 원 트랜잭션이 "커밋 완료" 상태로 아직 붙어 있다. 여기서 알림 저장처럼
     // 기본 전파(REQUIRED)로 쓰기를 하면 그 끝난 트랜잭션에 합류해 **조용히 버려진다**(예외도 안 난다).
     // 그래서 이 메서드가 자기 트랜잭션을 새로 열어 알림이 커밋되게 한다.
-    // 회차 저장은 별도로 REQUIRES_NEW(RerecommendRoundFiller)라 실패해도 여기 트랜잭션과 분리된다.
+    // 회차 저장은 별도로 REQUIRES_NEW(MatchingRoundFiller)라 실패해도 여기 트랜잭션과 분리된다.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onRerecommendRequested(RerecommendRequestedEvent event) {
         try {
-            MatchingRound filled = rerecommendRoundFiller.fill(event.roundId());
+            MatchingRound filled = matchingRoundFiller.fill(event.roundId());
             notifyCompleted(event.clientAccountId(), filled);
         } catch (Exception e) {
             log.error("[재추천 후보 생성 실패] roundId={}", event.roundId(), e);
@@ -75,7 +75,7 @@ class RerecommendRequestedEventListener {
      */
     private void handleFailure(RerecommendRequestedEvent event) {
         try {
-            MatchingRound failed = rerecommendRoundFiller.markFailed(event.roundId());
+            MatchingRound failed = matchingRoundFiller.markFailed(event.roundId());
             notify(event.clientAccountId(), failed.getPositionId(), "추천 후보를 만들지 못했습니다.",
                     "일시적인 오류로 추천에 실패했어요. 잠시 후 다시 시도해주세요. "
                             + "사용한 재추천 횟수는 차감되지 않습니다.");

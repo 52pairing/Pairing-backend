@@ -22,6 +22,7 @@ import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.RankedFreelancer;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingRoundStatus;
 import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.model.SnapshotType;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
@@ -318,6 +319,28 @@ class RecruitingStartedEventListenerTest {
         // 총예산 6000만 - 수수료 10%(1억 미만, SILVER) = 5400만 ÷ 총인원 2 = 2700만 ÷ 6개월 = 450만.
         // AI 서버는 이 값을 스스로 못 구한다 — 수수료율이 클라이언트 등급(account 도메인)에 걸려 있다.
         verify(matchingPort).recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), eq(4_500_000L));
+    }
+
+    @Test
+    @DisplayName("추천 생성이 실패해도 회차는 FAILED 로 남는다 — 예전엔 회차 행까지 롤백돼 사라졌다")
+    void failedInitialRecommendationLeavesAFailedRound() {
+        // 예전에는 스냅샷·회차 생성과 AI 호출이 한 트랜잭션이었다. AI 호출이 실패하면 회차 행까지
+        // 같이 롤백돼 **아무것도 안 남았고**, 화면은 "추천 준비중"에서 영원히 멈췄다.
+        // 무엇이 실패했는지 알 방법도 없었다.
+        //
+        // 이 테스트는 트랜잭션이 실제로 쪼개졌는지를 증명한다 — 합쳐져 있으면 회차 자체가 없어서
+        // 아래 orElseThrow 에서 터진다.
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
+                .willThrow(new IllegalStateException("AI 서버 장애"));
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));
+
+        MatchingRound round = matchingRoundRepository.findLatestByPositionId(POSITION_ID).orElseThrow();
+        assertThat(round.getStatus()).isEqualTo(MatchingRoundStatus.FAILED);
+        // 스냅샷도 남아야 한다. 다시 만들면 "모집 시작 시점"이 밀려서 R32 가 깨진다.
+        assertThat(matchingSnapshotRepository.findByPositionIdAndSnapshotType(POSITION_ID, SnapshotType.POSITION))
+                .isPresent();
     }
 
     @Test

@@ -1,6 +1,9 @@
 package com.pairing.matching.application.service;
 
 import com.pairing.global.exception.BusinessException;
+import com.pairing.global.exception.GlobalErrorCode;
+import com.pairing.matching.application.port.out.ProjectDirectoryPort;
+import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.matching.application.usecase.MatchingCandidateCommandUseCase;
 import com.pairing.matching.application.usecase.MatchingCandidateQueryUseCase;
 import com.pairing.matching.domain.model.MatchingCandidate;
@@ -22,14 +25,31 @@ public class MatchingCandidateService implements MatchingCandidateQueryUseCase, 
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingCandidateRepository matchingCandidateRepository;
     private final MatchingRequestRepository matchingRequestRepository;
+    private final ProjectDirectoryPort projectDirectoryPort;
     private final CandidateResponseAssembler candidateResponseAssembler;
 
     @Override
     @Transactional(readOnly = true)
     public CandidateListResponse findCandidates(Long positionId, Long accountId) {
-        MatchingRound round = matchingRoundRepository.findLatestByPositionId(positionId)
-                .orElseThrow(() -> new BusinessException(MatchingErrorCode.ROUND_NOT_FOUND));
-        return candidateResponseAssembler.build(round, accountId);
+        // 라운드가 없는 건 에러가 아니라 **아직 만들어지는 중**이다. 최초 추천은 착수금 결제(모집 시작)
+        // 이벤트를 받아 비동기로 돌고 LLM 호출까지 포함해 수 초~수십 초가 걸린다. 결제 직후 추천 후보
+        // 탭을 열면 라운드가 없는 게 정상인데, 예전엔 여기서 MT_001 을 404로 던져 화면에 빨간 에러가
+        // 뜨고 "다시 시도"를 눌러야 후보가 보였다.
+        return matchingRoundRepository.findLatestByPositionId(positionId)
+                .map(round -> candidateResponseAssembler.build(round, accountId))
+                .orElseGet(() -> preparingResponse(positionId, accountId));
+    }
+
+    /**
+     * 라운드가 아직 없을 때의 응답. 소유자 확인은 그대로 한다 — 평소엔 라운드에서 projectId 를 얻지만
+     * 라운드가 없으므로 포지션에서 프로젝트를 거슬러 올라간다.
+     */
+    private CandidateListResponse preparingResponse(Long positionId, Long accountId) {
+        ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(positionId);
+        if (!projectDirectoryPort.isOwnedByAccount(position.projectId(), accountId)) {
+            throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
+        }
+        return candidateResponseAssembler.buildPreparing(positionId, position.projectId(), position.headcount());
     }
 
     @Override

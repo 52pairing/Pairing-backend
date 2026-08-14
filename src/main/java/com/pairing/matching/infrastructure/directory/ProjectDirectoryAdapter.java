@@ -64,6 +64,14 @@ public class ProjectDirectoryAdapter implements ProjectDirectoryPort {
     }
 
     @Override
+    public ProjectPositionSummary findPositionSummary(Long positionId) {
+        // projectId 를 모르는 상태이므로 포지션만으로 찾아서 projectId 를 얻어낸 뒤,
+        // 나머지 조립은 기존 경로를 그대로 탄다(두 벌로 만들면 한쪽만 고쳐진다).
+        return findPositionSummary(
+                projectQueryUseCase.findProjectPositionSummary(positionId).projectId(), positionId);
+    }
+
+    @Override
     public ProjectPositionSummary findPositionSummary(Long projectId, Long positionId) {
         com.pairing.project.application.result.ProjectPositionSummary source =
                 projectQueryUseCase.findProjectPositionSummary(projectId, positionId);

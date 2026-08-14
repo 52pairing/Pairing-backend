@@ -8,6 +8,7 @@ import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.FreelancerCardSummary;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingRoundStatus;
 import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
@@ -69,7 +70,23 @@ class CandidateResponseAssembler {
 
         return new CandidateListResponse(round.getPositionId(), round.getId(), round.getRoundNo(),
                 round.getRoundType(), round.getExposeCount(), freeAvailable, paidRemaining,
-                round.isLowScoreWarned(), budgetWarned, candidates);
+                round.isLowScoreWarned(), budgetWarned, candidates,
+                // 회차가 생기자마자 커밋되므로(2026-08-13), 회차가 있다고 후보가 있는 건 아니다.
+                // 상태를 안 보면 아직 채우는 중인 회차가 "후보 0명"으로 보인다.
+                round.getStatus() == MatchingRoundStatus.RUNNING,
+                round.getStatus() == MatchingRoundStatus.FAILED);
+    }
+
+    /**
+     * 회차가 아직 없을 때의 응답. 회차에서 읽을 게 없으니 포지션 정보를 직접 받는다.
+     *
+     * <p><b>남은 유료 재추천은 여기서도 실제로 센다.</b> 한도가 프로젝트 단위라 이 포지션에 회차가
+     * 없어도 같은 프로젝트의 다른 포지션이 이미 썼을 수 있다 — 상한을 그대로 내보내면 거짓말이 된다.
+     */
+    CandidateListResponse buildPreparing(Long positionId, Long projectId, int headcount) {
+        long paidUsed = matchingRoundRepository.countByProjectIdAndRoundType(projectId, RecommendationType.PAID);
+        return CandidateListResponse.preparing(positionId, headcount,
+                (int) Math.max(0, MAX_PAID_RERECOMMEND - paidUsed));
     }
 
     private CandidateResponse toCandidateResponse(MatchingCandidate candidate) {
