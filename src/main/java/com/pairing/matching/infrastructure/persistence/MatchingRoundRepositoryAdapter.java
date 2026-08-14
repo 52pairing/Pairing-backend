@@ -56,6 +56,11 @@ public class MatchingRoundRepositoryAdapter implements MatchingRoundRepository {
     }
 
     @Override
+    public Optional<MatchingRound> findByIdForUpdate(Long id) {
+        return springDataRepository.findByIdForUpdate(id).map(matchingRoundMapper::toDomain);
+    }
+
+    @Override
     public List<MatchingRound> findStaleRunning(LocalDateTime threshold) {
         return springDataRepository.findByStatusAndCreatedAtBefore(MatchingRoundStatus.RUNNING, threshold).stream()
                 .map(matchingRoundMapper::toDomain)

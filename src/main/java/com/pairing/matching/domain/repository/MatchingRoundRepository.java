@@ -44,4 +44,13 @@ public interface MatchingRoundRepository {
      * 중복이 생기지 않는다.
      */
     List<MatchingRound> findStaleRunning(LocalDateTime threshold);
+
+    /**
+     * 회차를 <b>잠그고</b> 읽는다. 후보 채우기를 두 곳에서 동시에 시작하는 것을 막는 데 쓴다.
+     *
+     * <p>상태 확인만으로는 부족하다 — 두 트랜잭션이 나란히 {@code RUNNING}을 읽고 둘 다 진행하면
+     * Gemini를 두 번 부르고 후보가 중복 저장된다. <b>롤링 배포 중에는 항상 잠깐 인스턴스가 둘</b>이라
+     * 이론적인 상황이 아니다.
+     */
+    Optional<MatchingRound> findByIdForUpdate(Long id);
 }
