@@ -1,6 +1,7 @@
 package com.pairing.settlement.infrastructure.persistence;
 
 import com.pairing.meta.domain.model.PartyRole;
+import com.pairing.settlement.application.result.MySettlementSummary;
 import com.pairing.settlement.domain.model.Settlement;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
@@ -33,6 +34,44 @@ public class SettlementRepositoryAdapter implements SettlementRepository {
     public Settlement save(Settlement settlement) {
         return settlementMapper.toDomain(
                 springDataRepository.save(settlementMapper.toJpaEntity(settlement)));
+    }
+
+    /**
+     * 단계별 집계를 받아 화면이 쓰는 모양으로 접는다.
+     *
+     * <p>낸 적이 없으면 쿼리가 0행을 준다. 그때 {@code EMPTY} 로 떨어지므로 화면은 널 검사 없이
+     * 0원을 그리면 된다.
+     */
+    @Override
+    public MySettlementSummary sumPaidByPayer(Long payerAccountId) {
+        List<PaidSettlementSumRow> rows = springDataRepository.sumPaidByPayerGroupedByPhase(payerAccountId);
+        if (rows.isEmpty()) {
+            return MySettlementSummary.EMPTY;
+        }
+
+        long deposit = sumOf(rows, SettlementPhase.DEPOSIT);
+        long successFee = sumOf(rows, SettlementPhase.SUCCESS_FEE);
+
+        return new MySettlementSummary(
+                deposit + successFee,
+                deposit,
+                successFee,
+                projectCountOf(rows, SettlementPhase.DEPOSIT),
+                projectCountOf(rows, SettlementPhase.SUCCESS_FEE));
+    }
+
+    private long sumOf(List<PaidSettlementSumRow> rows, SettlementPhase phase) {
+        return rows.stream()
+                .filter(row -> row.phase() == phase)
+                .mapToLong(row -> row.feeSum() == null ? 0L : row.feeSum())
+                .sum();
+    }
+
+    private long projectCountOf(List<PaidSettlementSumRow> rows, SettlementPhase phase) {
+        return rows.stream()
+                .filter(row -> row.phase() == phase)
+                .mapToLong(row -> row.projectCount() == null ? 0L : row.projectCount())
+                .sum();
     }
 
     @Override

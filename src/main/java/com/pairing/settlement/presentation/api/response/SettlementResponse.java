@@ -26,6 +26,14 @@ public record SettlementResponse(
         @Schema(description = "계약 ID", example = "600") Long contractId,
         @Schema(description = "납부자 구분") PartyRole payerRole,
         @Schema(description = "납부자 이름", example = "주식회사 페어링") String payerName,
+
+        /*
+         * 발주 기업명. payerName 과 다르다 — 그쪽은 "이 수수료를 낸 사람"이라 프리랜서가
+         * 조회하면 자기 이름이 나온다. 결제 내역 화면은 "어느 회사 프로젝트였나"를 보여줘야 해서
+         * 상대 쪽 이름이 따로 필요하다. 프로젝트가 지워졌으면 null 이다.
+         */
+        @Schema(description = "발주 기업명. 프로젝트가 삭제됐으면 null", example = "주식회사 오이랩")
+        String clientName,
         @Schema(description = "수수료 단계") SettlementPhase phase,
         @Schema(description = "기준 금액(원). 계약 금액", example = "22000000") Long baseAmount,
         @Schema(description = "수수료율(%)", example = "3.00") BigDecimal feeRate,
@@ -56,7 +64,7 @@ public record SettlementResponse(
      * null 로 흘린다. 결제일시·승인번호는 그대로 남으므로 화면이 빈 칸만 감추면 된다.
      */
     public static SettlementResponse from(SettlementResult result, String projectTitle, String payerName,
-                                          String paymentMethodLabel) {
+                                          String clientName, String paymentMethodLabel) {
         return new SettlementResponse(
                 result.settlementId(),
                 result.settlementNo(),
@@ -65,6 +73,7 @@ public record SettlementResponse(
                 result.contractId(),
                 result.payerRole(),
                 payerName,
+                clientName,
                 result.phase(),
                 result.baseAmount(),
                 result.feeRate(),

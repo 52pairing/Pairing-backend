@@ -401,6 +401,81 @@ class MatchingIntegrationTest {
         return seedExposedCandidate(roundId, rank, null);
     }
 
+    /** 회차 번호를 지정해 회차를 만든다. 재추천으로 회차가 쌓이는 상황을 재현할 때 쓴다. */
+    private MatchingRound seedRound(int recruitCount, int roundNo, RecommendationType type, Integer requestedCount) {
+        MatchingRound round = MatchingRound.create(PROJECT_ID, POSITION_ID, roundNo, type,
+                requestedCount, 0L, recruitCount, recruitCount * 3);
+        round.complete();
+        return matchingRoundRepository.save(round);
+    }
+
+    /** {@link #seedExposedCandidate(Long, int)}와 같되 프리랜서를 지정한다(회차별로 다른 사람이어야 한다). */
+    private MatchingCandidate seedExposedCandidateFor(Long roundId, int rank, Long freelancerId) {
+        MatchingCandidate candidate = MatchingCandidate.createFromEmbedding(roundId, POSITION_ID,
+                freelancerId, 0.8);
+        candidate.applyLlmResult(88.0, "요구 스킬 3개 중 3개 일치|경력 조건 충족");
+        candidate.applyGradeWeight(0.0);
+        candidate.applyGuard(true, null);
+        candidate.expose(rank);
+        return matchingCandidateRepository.save(candidate);
+    }
+
+    @Test
+    @DisplayName("재추천으로 회차가 늘어도 이전 회차 후보가 목록에서 사라지지 않는다")
+    void candidateListAccumulatesAcrossRounds() throws Exception {
+        // 클라이언트가 후보 2명을 받은 뒤, 선택도 거절도 하지 않고 유료 재추천으로 1명을 더 받은 상황.
+        // 이때 화면에는 3명이 다 보여야 한다.
+        //
+        // 최신 회차만 보여주면 이전 2명이 사라지는데, R02 예외조건 5(같은 프로젝트에서 이미 추천된
+        // 프리랜서는 다음 회차에서 제외)때문에 **다시 나올 방법이 없다.** 후보를 늘리려고 돈을 낸
+        // 클라이언트가 오히려 후보를 잃는다.
+        long secondFreelancerId = 7_009_101L;
+        long thirdFreelancerId = 7_009_102L;
+        seedFreelancerWithoutRequiredSkill(secondFreelancerId);
+        seedFreelancerWithoutRequiredSkill(thirdFreelancerId);
+
+        MatchingRound first = seedRound(2);
+        seedExposedCandidate(first.getId(), 1);
+        seedExposedCandidateFor(first.getId(), 2, secondFreelancerId);
+
+        MatchingRound paid = seedRound(1, 2, RecommendationType.PAID, 1);
+        seedExposedCandidateFor(paid.getId(), 1, thirdFreelancerId);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates.length()").value(3))
+                // 방금 재추천으로 받은 후보가 맨 위다 - 스크롤해서 찾게 하면 안 된다.
+                .andExpect(jsonPath("$.data.candidates[0].freelancerId").value(thirdFreelancerId))
+                .andExpect(jsonPath("$.data.candidates[1].freelancerId").value(freelancerAccountId))
+                .andExpect(jsonPath("$.data.candidates[2].freelancerId").value(secondFreelancerId))
+                // 머리말은 최신 회차 기준이다.
+                .andExpect(jsonPath("$.data.roundNo").value(2))
+                .andExpect(jsonPath("$.data.roundType").value("PAID"));
+    }
+
+    @Test
+    @DisplayName("이전 회차 후보를 거절해도 목록과 회차 머리말이 과거로 되돌아가지 않는다")
+    void rejectingOlderRoundCandidateKeepsLatestRoundHeader() throws Exception {
+        long secondFreelancerId = 7_009_103L;
+        seedFreelancerWithoutRequiredSkill(secondFreelancerId);
+
+        MatchingRound first = seedRound(2);
+        MatchingCandidate oldCandidate = seedExposedCandidate(first.getId(), 1);
+
+        MatchingRound paid = seedRound(1, 2, RecommendationType.PAID, 1);
+        seedExposedCandidateFor(paid.getId(), 1, secondFreelancerId);
+
+        mockMvc.perform(post("/api/v1/matchings/candidates/" + oldCandidate.getId() + "/rejection")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                // 거절해도 목록에서 빠지지 않고 거절 표시만 붙는다(회차 단위 조회 때와 같은 규칙).
+                .andExpect(jsonPath("$.data.candidates.length()").value(2))
+                // 거절한 후보가 1회차 소속이라고 머리말이 1회차로 돌아가면, 화면의 재추천 버튼 상태까지 어긋난다.
+                .andExpect(jsonPath("$.data.roundNo").value(2))
+                .andExpect(jsonPath("$.data.roundType").value("PAID"));
+    }
+
     private MatchingCandidate seedExposedCandidate(Long roundId, int rank, String guardReason) {
         MatchingCandidate candidate = MatchingCandidate.createFromEmbedding(roundId, POSITION_ID,
                 freelancerAccountId, 0.8);
@@ -426,7 +501,71 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.candidates[0].skills[0]").value("JAVA"))
                 .andExpect(jsonPath("$.data.candidates[0].requested").value(false))
                 .andExpect(jsonPath("$.data.candidates[0].rejected").value(false))
+                .andExpect(jsonPath("$.data.candidates[0].status").value("AVAILABLE"))
+                .andExpect(jsonPath("$.data.candidates[0].statusLabel").value("선택 가능"))
                 .andExpect(jsonPath("$.data.budgetWarned").value(false));
+    }
+
+    @Test
+    @DisplayName("선택·거절한 후보도 목록에 남고 상태로 구분된다")
+    void selectedAndRejectedCandidatesStayInTheListWithStatus() throws Exception {
+        // 숨기지 않는 이유: 요청한 후보를 숨기면 누구에게 보냈는지 볼 수 없고, 거절은 되돌리는 API가
+        // 없는 데다 R02 예외조건 5로 다음 회차에도 안 나와서 그 후보를 영구히 잃는다.
+        long rejectedFreelancerId = 7_009_104L;
+        seedFreelancerWithoutRequiredSkill(rejectedFreelancerId);
+
+        MatchingRound round = seedRound(2);
+        MatchingCandidate requestedCandidate = seedExposedCandidate(round.getId(), 1);
+        MatchingCandidate rejectedCandidate = seedExposedCandidateFor(round.getId(), 2, rejectedFreelancerId);
+
+        sendRequest(requestedCandidate.getId()).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/matchings/candidates/" + rejectedCandidate.getId() + "/rejection")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates.length()").value(2))
+                .andExpect(jsonPath("$.data.candidates[0].status").value("REQUESTED"))
+                .andExpect(jsonPath("$.data.candidates[0].statusLabel").value("요청 보냄"))
+                .andExpect(jsonPath("$.data.candidates[1].status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.candidates[1].statusLabel").value("거절함"));
+    }
+
+    @Test
+    @DisplayName("요청을 보낸 후보는 거절할 수 없다 — 카드 상태는 셋 중 하나여야 한다")
+    void requestedCandidateCannotBeRejected() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+
+        sendRequest(candidate.getId()).andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/matchings/candidates/" + candidate.getId() + "/rejection")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_019"));
+
+        // 상태가 "요청 보냄"에서 흔들리지 않는다.
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(jsonPath("$.data.candidates[0].status").value("REQUESTED"))
+                .andExpect(jsonPath("$.data.candidates[0].rejected").value(false));
+    }
+
+    @Test
+    @DisplayName("거절한 후보에게는 요청을 보낼 수 없다 — 반대 방향도 막혀야 셋이 배타적이다")
+    void rejectedCandidateCannotBeRequested() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+
+        mockMvc.perform(post("/api/v1/matchings/candidates/" + candidate.getId() + "/rejection")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk());
+
+        sendRequest(candidate.getId())
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("MT_017"));
     }
 
     @Test
