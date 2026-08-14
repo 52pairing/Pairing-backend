@@ -174,7 +174,8 @@ public class NegotiationController {
             @CurrentAccountId Long accountId
     ) {
         List<NegotiationLoopUseCase.AnswerInput> answers = request.answers().stream()
-                .map(a -> new NegotiationLoopUseCase.AnswerInput(a.conditionId(), a.accepted(), a.proposedValue()))
+                .map(a -> new NegotiationLoopUseCase.AnswerInput(a.conditionId(), a.accepted(), a.proposedValue(),
+                        Boolean.TRUE.equals(a.acceptBelowFloor())))
                 .toList();
         negotiationLoopUseCase.answer(negotiationId, accountId, request.roundNo(), answers);
         return ResponseEntity.ok(ApiResponse.success("ANSWER_SUBMITTED", "응답을 제출했습니다.",
