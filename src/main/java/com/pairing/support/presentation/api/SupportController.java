@@ -13,6 +13,7 @@ import com.pairing.support.exception.InquiryErrorCode;
 import com.pairing.support.presentation.api.request.ChatbotAskRequest;
 import com.pairing.support.presentation.api.request.InquiryCreateRequest;
 import com.pairing.support.presentation.api.response.ChatbotAnswerResponse;
+import com.pairing.support.presentation.api.response.ChatbotKnowledgeReindexResponse;
 import com.pairing.support.presentation.api.response.ChatbotQuotaResponse;
 import com.pairing.support.presentation.api.response.InquiryResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -22,7 +23,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import com.pairing.global.security.OpsApiKeyGuard;
+import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -51,6 +55,7 @@ public class SupportController {
 
     private final ChatbotUseCase chatbotUseCase;
     private final InquiryUseCase inquiryUseCase;
+    private final OpsApiKeyGuard opsApiKeyGuard;
 
     // ==========================================
     // 챗봇 (R44)
@@ -102,6 +107,27 @@ public class SupportController {
                 .map(ChatbotAnswerResponse::from)
                 .toList();
         return ResponseEntity.ok(ApiResponse.success("CHATBOT_MESSAGES_FOUND", "조회에 성공했습니다.", data));
+    }
+
+    @PostMapping("/ops/chatbot/knowledge/reindex")
+    @Operation(summary = "[운영] 챗봇 지식 재색인",
+            description = "AI 서버가 '이 질문이 페어링과 관련 있는지' 판정할 때 쓰는 지식을 다시 임베딩합니다. "
+                    + "정책·요구사항 문구를 고쳐 배포한 뒤 한 번 누르세요. "
+                    + "AI 서버는 외부에 열려 있지 않아 직접 부를 수 없어서 이 API 가 대신 호출합니다.\n\n"
+                    + "여러 번 눌러도 안전합니다. 문구가 그대로면 임베딩을 다시 만들지 않고 skipped 로 셉니다.\n\n"
+                    + "로그인에 더해 운영 키(`X-Ops-Api-Key`)가 필요합니다. 관리자 계정은 관리자 서버에만 있어 "
+                    + "이 서버에서는 쓸 수 없기 때문입니다. 키는 서버 환경변수 `OPS_API_KEY` 값입니다.")
+    @ApiErrorCodeExample(domain = ChatbotErrorCode.class, value = {"AI_SERVER_CALL_FAILED"})
+    public ResponseEntity<ApiResponse<ChatbotKnowledgeReindexResponse>> reindexChatbotKnowledge(
+            @Parameter(description = "운영 키. 서버 환경변수 OPS_API_KEY 와 같은 값", required = true)
+            @RequestHeader("X-Ops-Api-Key") String opsApiKey
+    ) {
+        opsApiKeyGuard.verify(opsApiKey);
+
+        ChatbotKnowledgeReindexResponse data =
+                ChatbotKnowledgeReindexResponse.from(chatbotUseCase.reindexKnowledge());
+        return ResponseEntity.ok(
+                ApiResponse.success("CHATBOT_KNOWLEDGE_REINDEXED", "재색인에 성공했습니다.", data));
     }
 
     // ==========================================

@@ -63,8 +63,32 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
                 });
 
         AnswerData data = requireData(response);
-        // outOfScope 는 Boolean 이라 구버전 AI 서버(필드 없음)에서 null 이 온다. false 로 본다.
-        return new Answer(data.answer(), data.intent(), Boolean.TRUE.equals(data.outOfScope()));
+        // 구버전 AI 서버는 charge_quota 를 안 내려준다. 그때는 차감하는 쪽(기존 동작)이 기본이다.
+        return new Answer(data.answer(), data.intent(), !Boolean.FALSE.equals(data.chargeQuota()));
+    }
+
+    /**
+     * 재색인은 서킷브레이커를 걸지 않는다. 사람이 눌러서 한 번 도는 운영 작업이라, 실패하면
+     * 그 자리에서 에러를 보고 다시 누르면 된다. 여기서 서킷이 열리면 <b>질의 쪽 서킷과 통계가
+     * 섞여</b> 챗봇 전체가 막힌 것처럼 보인다.
+     */
+    @Override
+    public KnowledgeReindexResult reindexKnowledge() {
+        PythonApiResponse<ReindexData> response = restClient.post()
+                .uri("/api/v1/chatbot/knowledge/reindex")
+                .headers(this::withCommonHeaders)
+                .retrieve()
+                .body(new ParameterizedTypeReference<PythonApiResponse<ReindexData>>() {
+                });
+
+        if (response == null || response.data() == null) {
+            log.warn("[Pairing-python] 지식 재색인 응답 data 가 비어 있습니다.");
+            throw new BusinessException(ChatbotErrorCode.AI_SERVER_CALL_FAILED);
+        }
+        ReindexData data = response.data();
+        log.info("[Pairing-python] 챗봇 지식 재색인 완료 — 전체 {}건, 신규·변경 {}건, 유지 {}건",
+                data.total(), data.embedded(), data.skipped());
+        return new KnowledgeReindexResult(data.total(), data.embedded(), data.skipped());
     }
 
     private void withCommonHeaders(HttpHeaders headers) {
@@ -92,9 +116,17 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
     private record PythonApiResponse<T>(String code, String message, T data) {
     }
 
+    /** 재색인 결과. 이 응답은 한 단어 필드뿐이라 snake_case 매핑이 필요 없다. */
+    private record ReindexData(int total, int embedded, int skipped) {
+    }
+
     /**
-     * {@code intent}·{@code outOfScope} 는 구버전 AI 서버가 안 내려줄 수 있다.
-     * 그 경우 각각 NONE·false 로 떨어져 기존 동작 그대로다.
+     * {@code intent}·{@code chargeQuota} 는 구버전 AI 서버가 안 내려줄 수 있다.
+     * 그 경우 각각 NONE·차감으로 떨어져 기존 동작 그대로다.
+     *
+     * <p>{@code out_of_scope} 는 받지 않는다. 차감 판단은 {@code charge_quota} 하나로 끝나고,
+     * 범위 밖이라는 사실 자체는 AI 서버 로그에 남는다. 여기서 또 들고 있으면 둘이 어긋날 때
+     * 어느 쪽을 믿어야 하는지가 불분명해진다.
      *
      * <p>AI 서버 응답은 snake_case 라 {@code @JsonProperty} 로 매핑한다. 전역 Jackson 설정은
      * 건드리지 않는다({@code PythonMatchingAdapter} 와 같은 방식).
@@ -103,7 +135,7 @@ public class PythonChatbotAdapter implements ChatbotAiPort {
             String answer,
             String intent,
             String model,
-            @JsonProperty("out_of_scope") Boolean outOfScope
+            @JsonProperty("charge_quota") Boolean chargeQuota
     ) {
     }
 }

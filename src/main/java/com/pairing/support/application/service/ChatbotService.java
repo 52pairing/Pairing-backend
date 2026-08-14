@@ -51,12 +51,12 @@ public class ChatbotService implements ChatbotUseCase {
         ChatbotMessage saved = messageRepository.save(
                 ChatbotMessage.create(session.getId(), command.question(), aiAnswer.answer(), intent));
 
-        // 페어링과 무관한 질문이면 사용량을 차감하지 않는다. 답을 못 받았는데 횟수만 빠지면
-        // 오타 한 번에 하루 10회 중 1회가 날아간다. quota 는 위에서 메모리로만 증가시켰으므로
+        // AI 서버가 "이건 안 깎아도 된다"고 하면 차감하지 않는다. 범위 밖 질문(답을 못 줌)과
+        // 단순 인사(질문이 아님)가 여기 해당한다. quota 는 위에서 메모리로만 증가시켰으므로
         // 저장하지 않으면 그대로 없던 일이 된다.
         //
         // 대화 자체는 남긴다. 새로고침했을 때 방금 한 질문이 사라지면 그게 더 이상하다.
-        if (aiAnswer.outOfScope()) {
+        if (!aiAnswer.chargeQuota()) {
             return new ChatbotAnswerResult(session.getId(), saved.getQuestion(), saved.getAnswer(),
                     saved.getIntent(), getQuota(command.accountId()).remainingCount(),
                     saved.getCreatedAt());
@@ -102,6 +102,12 @@ public class ChatbotService implements ChatbotUseCase {
                 .map(message -> new ChatbotAnswerResult(message.getSessionId(), message.getQuestion(),
                         message.getAnswer(), message.getIntent(), remaining, message.getCreatedAt()))
                 .toList();
+    }
+
+    /** 그대로 AI 서버에 넘긴다. 재색인 규칙은 지식을 가진 쪽이 안다. */
+    @Override
+    public ChatbotAiPort.KnowledgeReindexResult reindexKnowledge() {
+        return chatbotAiPort.reindexKnowledge();
     }
 
     private ChatbotQuota findOrCreateTodayQuota(Long accountId) {
