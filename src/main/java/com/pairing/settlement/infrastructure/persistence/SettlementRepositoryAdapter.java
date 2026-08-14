@@ -99,6 +99,13 @@ public class SettlementRepositoryAdapter implements SettlementRepository {
     }
 
     @Override
+    public List<Settlement> findAllPayableByProjectId(Long projectId) {
+        return springDataRepository.findByProjectIdAndStatusIn(projectId, PAYABLE_STATUSES).stream()
+                .map(settlementMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public boolean existsUnpaidByPayer(Long payerAccountId) {
         return springDataRepository.existsByPayerAccountIdAndStatusIn(payerAccountId, PAYABLE_STATUSES);
     }

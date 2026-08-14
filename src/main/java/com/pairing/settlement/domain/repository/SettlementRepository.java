@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -47,6 +48,15 @@ public interface SettlementRepository {
      * 역할로 좁힌다. 클라이언트 기준으로는 착수금과 성공보수가 동시에 미결제일 수 없어 단건이면 된다.
      */
     Optional<Settlement> findPayableByProjectId(Long projectId);
+
+    /**
+     * 프로젝트에 걸린 미결제 정산 전부. 납부자 구분을 가리지 않는다.
+     *
+     * <p>{@link #findPayableByProjectId} 는 클라이언트 1건만 찾는다. 등록 취소용이라 그때는
+     * 그것뿐이어서 맞았다. 모집 기간 만료(P46)는 계약이 체결된 만큼 프리랜서 착수금이
+     * 여러 건 붙어 있어 전부 봐야 한다.
+     */
+    List<Settlement> findAllPayableByProjectId(Long projectId);
 
     /**
      * 아직 내지 않은 정산이 있는지. 탈퇴 가능 여부 판정용이라 건수를 세지 않고 존재만 본다.
