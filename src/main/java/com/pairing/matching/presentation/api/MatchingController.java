@@ -17,6 +17,7 @@ import com.pairing.matching.presentation.api.request.MatchingRejectRequest;
 import com.pairing.matching.presentation.api.request.MatchingRequestCreateRequest;
 import com.pairing.matching.presentation.api.request.RerecommendRequest;
 import com.pairing.matching.presentation.api.response.CandidateListResponse;
+import com.pairing.matching.presentation.api.response.CandidateProfileSnapshotResponse;
 import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -68,6 +69,19 @@ public class MatchingController {
     ) {
         CandidateListResponse response = matchingCandidateQueryUseCase.findCandidates(positionId, accountId);
         return ResponseEntity.ok(ApiResponse.success("CANDIDATES_FOUND", "조회에 성공했습니다.", response));
+    }
+
+    @GetMapping("/candidates/{candidateId}/profile")
+    @PreAuthorize("hasRole('CLIENT')")
+    @Operation(summary = "추천 후보 프로필 스냅샷 조회",
+            description = "후보가 매칭 추천에 노출된 시점에 저장된 프리랜서 프로필을 조회합니다.")
+    public ResponseEntity<ApiResponse<CandidateProfileSnapshotResponse>> findCandidateProfile(
+            @PathVariable Long candidateId,
+            @CurrentAccountId Long accountId
+    ) {
+        CandidateProfileSnapshotResponse response =
+                matchingCandidateQueryUseCase.findCandidateProfile(candidateId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("CANDIDATE_PROFILE_FOUND", "조회에 성공했습니다.", response));
     }
 
     @PostMapping("/candidates/{candidateId}/rejection")

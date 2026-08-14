@@ -1,23 +1,36 @@
 package com.pairing.matching.application.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.global.exception.GlobalErrorCode;
+import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.matching.application.usecase.MatchingCandidateCommandUseCase;
 import com.pairing.matching.application.usecase.MatchingCandidateQueryUseCase;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingSnapshot;
+import com.pairing.matching.domain.model.SnapshotType;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
+import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.exception.MatchingErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.pairing.matching.presentation.api.response.CandidateListResponse;
+import com.pairing.matching.presentation.api.response.CandidateProfileSnapshotResponse;
 
+import java.util.function.Supplier;
+
+import java.time.LocalDateTime;
+
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MatchingCandidateService implements MatchingCandidateQueryUseCase, MatchingCandidateCommandUseCase {
@@ -25,8 +38,11 @@ public class MatchingCandidateService implements MatchingCandidateQueryUseCase, 
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingCandidateRepository matchingCandidateRepository;
     private final MatchingRequestRepository matchingRequestRepository;
+    private final MatchingSnapshotRepository matchingSnapshotRepository;
     private final ProjectDirectoryPort projectDirectoryPort;
+    private final FreelancerDirectoryPort freelancerDirectoryPort;
     private final CandidateResponseAssembler candidateResponseAssembler;
+    private final ObjectMapper objectMapper;
 
     @Override
     @Transactional(readOnly = true)
@@ -75,5 +91,88 @@ public class MatchingCandidateService implements MatchingCandidateQueryUseCase, 
         MatchingRound round = matchingRoundRepository.findLatestByPositionId(candidate.getPositionId())
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.ROUND_NOT_FOUND));
         return candidateResponseAssembler.build(round, accountId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CandidateProfileSnapshotResponse findCandidateProfile(Long candidateId, Long accountId) {
+        MatchingCandidate candidate = matchingCandidateRepository.findById(candidateId)
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.CANDIDATE_NOT_FOUND));
+        MatchingRound round = matchingRoundRepository.findById(candidate.getRoundId())
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.ROUND_NOT_FOUND));
+        if (!projectDirectoryPort.isOwnedByAccount(round.getProjectId(), accountId)) {
+            throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
+        }
+
+        CandidateProfileSnapshotResponse.SnapshotPayload payload = matchingSnapshotRepository
+                .findByFreelancerIdAndPositionIdAndSnapshotType(candidate.getFreelancerId(),
+                        candidate.getPositionId(), SnapshotType.FREELANCER)
+                .map(this::readSnapshot)
+                .filter(this::hasProfilePayload)
+                .orElseGet(() -> liveFallbackPayload(candidate.getFreelancerId()));
+        boolean requested = matchingRequestRepository.existsByCandidateId(candidate.getId());
+
+        return new CandidateProfileSnapshotResponse(
+                candidate.getId(),
+                round.getProjectId(),
+                candidate.getPositionId(),
+                candidate.getFreelancerId(),
+                payload.card().name(),
+                payload.card().profileImageUrl(),
+                payload.card().grade().name(),
+                payload.card().ratingAverage(),
+                payload.card().reviewCount(),
+                candidate.getFitScore(),
+                CandidateResponseAssembler.splitFitReasons(candidate.getFitReason()),
+                candidate.getRankNo(),
+                requested,
+                candidate.isRejected(),
+                payload.capturedAt(),
+                payload.condition(),
+                payload.resume()
+        );
+    }
+
+    private boolean hasProfilePayload(CandidateProfileSnapshotResponse.SnapshotPayload payload) {
+        return payload.card() != null && payload.condition() != null && payload.resume() != null;
+    }
+
+    /**
+     * 스냅샷이 없을 때 <b>현재</b> 프로필로 대체한다. 이 코드가 배포되기 전에 이미 노출됐던 후보는
+     * 스냅샷이 없으므로, 없으면 화면이 아예 안 열린다.
+     *
+     * <p><b>조건·이력서는 없으면 null 로 둔다.</b> 스냅샷 캡처가 실패하는 이유가 대개 "이력서가
+     * 없다"인데({@code findResume}가 MT_015를 던진다), 폴백도 같은 것을 읽으므로 그대로 두면
+     * <b>같은 이유로 또 실패해 프로필이 영영 안 열린다</b>. 카드 정보(이름·등급·평점)만 있으면
+     * 화면은 그릴 수 있고, 프론트 타입도 두 필드를 nullable 로 받는다.
+     *
+     * <p>{@code capturedAt}은 지금 시각이다 — 얼린 값이 아니라 현재 값이라는 표시다.
+     */
+    private CandidateProfileSnapshotResponse.SnapshotPayload liveFallbackPayload(Long freelancerId) {
+        return new CandidateProfileSnapshotResponse.SnapshotPayload(
+                freelancerDirectoryPort.findCardSummary(freelancerId),
+                findOrNull(() -> freelancerDirectoryPort.findCondition(freelancerId), freelancerId, "condition"),
+                findOrNull(() -> freelancerDirectoryPort.findResume(freelancerId), freelancerId, "resume"),
+                LocalDateTime.now()
+        );
+    }
+
+    private <T> T findOrNull(Supplier<T> lookup, Long freelancerId, String what) {
+        try {
+            return lookup.get();
+        } catch (Exception e) {
+            log.warn("MATCHING_DEBUG java.candidate.profile.live_fallback_partial freelancerId={} missing={} cause={}",
+                    freelancerId, what, e.getMessage());
+            return null;
+        }
+    }
+
+    private CandidateProfileSnapshotResponse.SnapshotPayload readSnapshot(MatchingSnapshot snapshot) {
+        try {
+            return objectMapper.readValue(snapshot.getSnapshotJson(),
+                    CandidateProfileSnapshotResponse.SnapshotPayload.class);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(MatchingErrorCode.INVALID_MATCHING_STATE);
+        }
     }
 }

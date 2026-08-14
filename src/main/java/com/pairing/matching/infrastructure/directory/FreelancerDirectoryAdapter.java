@@ -10,6 +10,7 @@ import com.pairing.freelancer.application.usecase.ResumeUseCase;
 import com.pairing.freelancer.domain.model.Career;
 import com.pairing.freelancer.domain.model.Education;
 import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
+import com.pairing.freelancer.presentation.api.response.ResumeResponse;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
 import com.pairing.matching.application.result.FreelancerCardSummary;
@@ -99,6 +100,16 @@ public class FreelancerDirectoryAdapter implements FreelancerDirectoryPort {
                 .filter(FreelancerDirectoryAdapter::hasText)
                 .toList();
         return new FreelancerResumeSummary(resume.selfIntroduction(), majors, careerDescriptions);
+    }
+
+    @Override
+    public ResumeResponse findResume(Long freelancerId) {
+        Long accountId = accountQueryUseCase.findFreelancerProfileById(freelancerId)
+                .map(FreelancerProfile::getAccountId)
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.FREELANCER_NOT_FOUND));
+        ResumeResult resume = resumeUseCase.findMyResume(accountId)
+                .orElseThrow(() -> new BusinessException(MatchingErrorCode.FREELANCER_NOT_FOUND));
+        return ResumeResponse.from(resume);
     }
 
     @Override

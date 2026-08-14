@@ -18,9 +18,14 @@ import com.pairing.auth.application.port.SignUpTicketPort;
 import com.pairing.auth.application.port.TokenStorePort;
 import com.pairing.auth.application.port.VerifiedMarkerPort;
 import com.pairing.freelancer.application.command.UpsertConditionCommand;
+import com.pairing.freelancer.application.command.UpsertResumeCommand;
+import com.pairing.freelancer.application.usecase.ResumeUseCase;
+import com.pairing.freelancer.domain.model.GraduationStatus;
 import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.global.ratelimit.RateLimitPolicy;
 import com.pairing.global.ratelimit.RateLimitProvider;
+import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
+import com.pairing.matching.presentation.api.response.CandidateProfileSnapshotResponse;
 import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.RankedFreelancer;
@@ -154,6 +159,10 @@ class MatchingIntegrationTest {
     private MatchingRequestCommandUseCase matchingRequestCommandUseCase;
     @Autowired
     private StaleRoundRecoveryService staleRoundRecoveryService;
+    @Autowired
+    private FreelancerDirectoryPort freelancerDirectoryPort;
+    @Autowired
+    private ResumeUseCase resumeUseCase;
 
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
@@ -1032,6 +1041,107 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("협상은 후보로 노출될 때 얼린 조건에서 시작한다 — 그 뒤 프리랜서가 단가를 올려도 안 따라간다")
+    void negotiationStartsFromTheConditionFrozenAtExposure() throws Exception {
+        // 클라이언트는 노출 당시의 희망 단가를 보고 후보를 골랐다. 추천된 뒤 프리랜서가 단가를 올렸다고
+        // 협상 출발점이 따라 올라가면, 클라이언트는 **본 적도 동의한 적도 없는 숫자**에서 시작한다.
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        long exposedPayAmount = 6_500_000L;
+        seedFreelancerSnapshotAtExposure(candidate.getFreelancerId(), exposedPayAmount);
+
+        // 노출 뒤 프리랜서가 희망 단가를 올린다.
+        freelancerConditionUseCase.upsert(new UpsertConditionCommand(
+                freelancerAccountId, JobCategory.DEVELOPMENT, JobRole.BACKEND,
+                WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 9_000_000L, 8_000_000L,
+                LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 5,
+                List.of(new UpsertConditionCommand.Skill(SkillCode.JAVA, SkillLevel.ADVANCED),
+                        new UpsertConditionCommand.Skill(SkillCode.SPRING_BOOT, SkillLevel.ADVANCED))));
+
+        Long requestId = sendRequestAndGetId(candidate.getId());
+        MvcResult accepted = mockMvc.perform(post("/api/v1/matchings/requests/" + requestId + "/acceptance")
+                        .cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        long negotiationId = objectMapper.readTree(accepted.getResponse().getContentAsString())
+                .get("data").get("negotiationId").asLong();
+
+        // 협상이 들고 있는 프리랜서 희망값이 **노출 시점 값**이어야 한다.
+        String negotiation = mockMvc.perform(get("/api/v1/negotiations/" + negotiationId)
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(negotiation).contains(String.valueOf(exposedPayAmount));
+        assertThat(negotiation).doesNotContain("9000000");
+    }
+
+    @Test
+    @DisplayName("실제로 저장되는 스냅샷 JSON이 그대로 다시 읽힌다 — 모양이 안 맞으면 조용히 라이브로 새어나간다")
+    void realSnapshotJsonRoundTripsBackIntoTheSamePayload() throws Exception {
+        // 위 테스트는 payload 를 손으로 만들어 심는다. 그래서 **실제 저장 경로가 만든 JSON**이 다시
+        // 읽히는지는 증명하지 못한다. 두 record(FreelancerConditionResponse / ResumeResponse /
+        // FreelancerCardSummary)가 직렬화-역직렬화를 왕복하지 못하면, 협상은 아무 에러 없이
+        // 라이브 조건으로 넘어가고(폴백) 아무도 모른다.
+        // 이 픽스처의 프리랜서에겐 이력서가 없다. 실제 저장 경로와 같은 자료를 넣으려면 심어야 한다.
+        // (이력서가 없으면 findResume 이 MT_015 로 던진다 — 그래서 스냅샷 캡처는 실패를 삼킨다.)
+        resumeUseCase.upsert(new UpsertResumeCommand(
+                freelancerAccountId, 1L, null, null, "06234", "서울 강남구", null, "백엔드 6년차입니다.", 1L,
+                List.of(new UpsertResumeCommand.Education(LocalDate.of(2014, 3, 1), LocalDate.of(2018, 2, 1),
+                        "페어링대학교", "컴퓨터공학과", GraduationStatus.GRADUATED, null)),
+                List.of(new UpsertResumeCommand.Career(LocalDate.of(2018, 3, 1), null, "A사",
+                        "백엔드팀", "대리", "주문 시스템 개발")),
+                List.of(),
+                List.of(),
+                new UpsertResumeCommand.Agreements(true, true, true, true)));
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("card", freelancerDirectoryPort.findCardSummary(freelancerAccountId));
+        payload.put("condition", freelancerDirectoryPort.findCondition(freelancerAccountId));
+        payload.put("resume", freelancerDirectoryPort.findResume(freelancerAccountId));
+        payload.put("capturedAt", LocalDateTime.now());
+
+        String json = objectMapper.writeValueAsString(payload);
+        CandidateProfileSnapshotResponse.SnapshotPayload read =
+                objectMapper.readValue(json, CandidateProfileSnapshotResponse.SnapshotPayload.class);
+
+        assertThat(read.card()).isNotNull();
+        assertThat(read.condition()).isNotNull();
+        assertThat(read.resume()).isNotNull();
+        // 협상 출발 조건으로 쓰는 값들이 살아남아야 한다.
+        assertThat(read.condition().payAmount())
+                .isEqualTo(freelancerDirectoryPort.findCondition(freelancerAccountId).payAmount());
+        assertThat(read.condition().payUnit()).isNotNull();
+        assertThat(read.condition().workStyle()).isNotNull();
+        assertThat(read.condition().workForm()).isNotNull();
+        // 프로필 화면이 쓰는 값.
+        assertThat(read.card().name()).isNotBlank();
+        assertThat(read.capturedAt()).isNotNull();
+    }
+
+    /** 후보 노출 시점에 찍히는 프리랜서 스냅샷을 직접 심는다(실제로는 fillCandidates 가 찍는다). */
+    private void seedFreelancerSnapshotAtExposure(Long freelancerId, long payAmount) throws Exception {
+        Map<String, Object> condition = new LinkedHashMap<>();
+        condition.put("payUnit", "MONTHLY");
+        condition.put("payAmount", payAmount);
+        condition.put("workStyle", "REMOTE");
+        condition.put("workForm", "FULL_TIME");
+        condition.put("availableFrom", LocalDate.now().plusDays(14).toString());
+        condition.put("minAcceptAmount", payAmount - 500_000L);
+        condition.put("startNegotiable", false);
+        condition.put("periodValue", 6);
+        condition.put("periodUnit", "MONTH");
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("card", Map.of("name", "이프리", "grade", "SENIOR", "reviewCount", 0));
+        payload.put("condition", condition);
+        payload.put("resume", Map.of());
+        payload.put("capturedAt", LocalDateTime.now().toString());
+
+        matchingSnapshotRepository.save(MatchingSnapshot.create(PROJECT_ID, POSITION_ID, freelancerId,
+                SnapshotType.FREELANCER, objectMapper.writeValueAsString(payload)));
+    }
+
+    @Test
     @DisplayName("매칭 요청을 수락하면 실제 협상이 생성되고 상태가 협상중으로 바뀐다")
     void acceptRequestCreatesRealNegotiation() throws Exception {
         MatchingRound round = seedRound(2);
@@ -1287,6 +1397,11 @@ class MatchingIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.candidates.length()").value(1))
                 .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"));
+
+        // **재추천은 포지션 임베딩을 다시 만들지 않는다.** 최초 추천 때 만든 벡터를 그대로 쓴다 —
+        // 매번 다시 부르면 같은 값으로 덮어쓰면서 AI 호출만 늘어난다(2026-08-14 임베딩 생성을
+        // fillCandidates 로 옮길 때 최초 추천으로 한정한 이유).
+        verify(matchingPort, never()).upsertPositionEmbedding(anyLong(), anyString());
     }
 
     @Test
