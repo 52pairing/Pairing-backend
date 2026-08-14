@@ -74,6 +74,22 @@ class PythonMatchingAdapterRetryTest {
     }
 
     @Test
+    @DisplayName("차단기 설정이 실제로 붙는다 — 기본값(100회)이면 이 호출량에서 영원히 안 열린다")
+    void circuitBreakerConfigIsActuallyApplied() {
+        // 애노테이션만 붙어 있고 설정이 없으면 resilience4j 기본값(minimumNumberOfCalls=100,
+        // slidingWindowSize=100)으로 돈다. 매칭 호출은 착수금 결제 시 한 번씩이라 100번이 쌓일 일이
+        // 없어 **차단기가 절대 안 열린다**. 실제로 그 상태로 배포돼 있었다(2026-08-13).
+        //
+        // 챗봇(support)은 CircuitBreakerPolicy 빈으로 같은 문제를 해결했다. 매칭은 yaml 로 했는데,
+        // 둘 다 같은 레지스트리를 쓰고 이름이 달라(pythonChatbotApi vs pythonMatchingApi) 충돌하지 않는다.
+        var config = circuitBreakerRegistry.circuitBreaker("pythonMatchingApi").getCircuitBreakerConfig();
+
+        assertThat(config.getMinimumNumberOfCalls()).isEqualTo(5);
+        assertThat(config.getSlidingWindowSize()).isEqualTo(10);
+        assertThat(config.getFailureRateThreshold()).isEqualTo(50.0f);
+    }
+
+    @Test
     @DisplayName("연결이 안 되면 다시 부른다 — 두 번째에 성공하면 그대로 결과를 돌려준다")
     void retriesWhenTheConnectionFailsAndSucceedsOnSecondAttempt() {
         // 파이썬 재배포·재시작 중에 나는 실패가 이것이다. Gemini 를 부르기 전이라 재시도해도
