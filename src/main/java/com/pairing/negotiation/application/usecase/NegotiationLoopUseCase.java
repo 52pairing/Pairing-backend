@@ -34,6 +34,16 @@ public interface NegotiationLoopUseCase {
     void giveUp(Long negotiationId, Long accountId, String reason);
 
     /**
+     * 최종 절충안을 수락한다. 라운드 상한(15회)까지 합의에 이르지 못해 최종 절충 단계에 들어간
+     * 협상에서, 이 당사자가 제시된 절충값(양쪽이 마지노선을 넘겨 만나는 중간 지점)을 받아들인다.
+     *
+     * <p><b>양측이 모두 수락해야 타결된다.</b> 한쪽만 수락하면 상대 응답을 기다리는 상태로 남고,
+     * 상대가 {@link #giveUp} 으로 포기하면 결렬된다. 수락은 {@code acceptBelowFloor} 와 같은 정책 —
+     * 사람이 자기 마지노선을 넘겨서라도 받아들이겠다는 명시적 확인이다.
+     */
+    void acceptFinalOffer(Long negotiationId, Long accountId);
+
+    /**
      * 협상 읽음 처리. 요청자 본인 쪽의 "마지막 읽은 시각"을 현재로 갱신한다.
      * "확인하지 않은 새 제안 수" 배지의 기준선이 된다(채팅 읽음 처리와 같은 패턴).
      */

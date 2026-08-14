@@ -42,17 +42,30 @@ public interface SpringDataProjectRepository extends JpaRepository<ProjectJpaEnt
             Long clientId, List<ProjectStatus> statuses, Pageable pageable);
 
     /**
-     * 모집 마감이 지났는데 아직 모집 중인 프로젝트. (정책 P46 만료 처리)
+     * 모집 마감이 지났는데 인원이 확정되지 않은 프로젝트. (정책 P46 만료 처리)
      *
      * <p>연장 여부는 조건에 넣지 않는다. 연장하지 않아도 기본 2주가 지나면 만료 대상이다.
+     * 연장 소진 여부는 파기 판정에만 쓴다.
+     *
+     * <p><b>상태를 모집중으로 한정하지 않는다.</b> 프리랜서가 한 명이라도 수락하면 프로젝트가
+     * 협상중으로 넘어가는데, 상태로 거르면 그 프로젝트는 마감이 지나도 영원히 잡히지 않는다.
+     * 정책의 기준은 상태가 아니라 "인원 확정" 이라 인원으로 판정한다.
+     *
+     * <p>{@code confirmed_headcount} 는 <b>계약 서명이 끝난 인원</b>이다. 협상 중이거나
+     * 계약서만 만들어진 상태는 확정으로 세지 않는다.
+     *
+     * <p>인원 조건만으로도 진행중 이후는 걸러지지만(인원이 차야 그 상태가 된다) 상태 목록을
+     * 함께 건다. 의도를 드러내고, 파생값이 어긋났을 때 진행 중인 프로젝트까지 끌려오는 것을 막는다.
      */
     @Query("""
             SELECT p FROM ProjectJpaEntity p
-             WHERE p.status = com.pairing.project.domain.model.ProjectStatus.RECRUITING
+             WHERE p.status IN :statuses
                AND p.recruitDeadline < :now
+               AND p.confirmedHeadcount < p.totalHeadcount
                AND p.deletedAt IS NULL
             """)
-    List<ProjectJpaEntity> findExpiredRecruiting(@Param("now") LocalDateTime now);
+    List<ProjectJpaEntity> findExpiredUnderstaffed(@Param("statuses") List<ProjectStatus> statuses,
+                                                   @Param("now") LocalDateTime now);
 
     /** 탭 배지용. [status, count] 배열로 돌아온다. 건수가 0인 상태는 결과에 없다. */
     @Query("SELECT p.status, COUNT(p) FROM ProjectJpaEntity p "

@@ -137,9 +137,17 @@ public class ProjectRepositoryAdapter implements ProjectRepository {
                 .map(projectMapper::toDomain);
     }
 
+    /**
+     * 만료 대상 상태. 진행중 이후는 인원이 차야 도달하므로 인원 조건만으로도 걸러지지만,
+     * 파생값({@code confirmed_headcount})이 어긋났을 때 진행 중인 프로젝트가 끌려오지 않도록
+     * 상태로 한 번 더 막는다.
+     */
+    private static final List<ProjectStatus> CANCELABLE_STATUSES = List.of(
+            ProjectStatus.RECRUITING, ProjectStatus.NEGOTIATING, ProjectStatus.CONTRACT_PENDING);
+
     @Override
-    public List<Project> findExpiredRecruiting(LocalDateTime now) {
-        return springDataRepository.findExpiredRecruiting(now).stream()
+    public List<Project> findExpiredUnderstaffed(LocalDateTime now) {
+        return springDataRepository.findExpiredUnderstaffed(CANCELABLE_STATUSES, now).stream()
                 .map(projectMapper::toDomain)
                 .toList();
     }

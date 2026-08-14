@@ -4,6 +4,7 @@ import com.pairing.global.exception.BusinessException;
 import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.project.application.command.CreateProjectCommand;
 import com.pairing.project.application.command.UpdateProjectCommand;
+import com.pairing.project.application.event.ProjectCanceledEvent;
 import com.pairing.project.application.event.ProjectClosedEvent;
 import com.pairing.project.application.event.ProjectCompletionRequestedEvent;
 import com.pairing.project.application.event.ProjectUpdatedEvent;
@@ -175,6 +176,10 @@ public class ProjectCommandService implements ProjectCommandUseCase {
         project.closeRecruit(LocalDate.now().plusYears(RETENTION_YEARS));
         // 프로젝트 상태와 포지션 상태가 함께 바뀐다. 수정용 경로는 상태를 옮기지 않는다.
         projectRepository.updateStateWithPositions(project);
+
+        // 모집중이 아닐 때도 닫을 수 있게 되면서 진행 중이던 요청·협상·계약이 남는다.
+        // 정리는 받는 쪽이 각자 한다. 만료 스케줄러와 같은 이벤트를 쓴다.
+        eventPublisher.publishEvent(new ProjectCanceledEvent(projectId));
     }
 
     @Override

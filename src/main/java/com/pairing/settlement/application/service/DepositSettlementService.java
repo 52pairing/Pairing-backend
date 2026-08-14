@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -112,5 +113,20 @@ public class DepositSettlementService implements DepositSettlementUseCase {
             settlement.cancel();
             settlementRepository.save(settlement);
         });
+    }
+
+    /**
+     * 프로젝트 취소로 미결제 정산을 전부 접는다. (P46)
+     *
+     * <p>이미 결제된 건은 조회에서 빠진다. 낸 돈은 환불 영역이라 여기서 손대지 않는다.
+     */
+    @Override
+    public int cancelAllPayable(Long projectId) {
+        List<Settlement> payable = settlementRepository.findAllPayableByProjectId(projectId);
+        payable.forEach(settlement -> {
+            settlement.cancel();
+            settlementRepository.save(settlement);
+        });
+        return payable.size();
     }
 }
