@@ -26,7 +26,7 @@
 | POST | `/api/v1/auth/email-verifications/confirm` | X | 코드 확인. body `{email, purpose, code}` |
 
 - 코드 유효 3분, 입력 시도 5회, 발송 1시간 15회.
-- `purpose`: `SIGNUP` / `UNLOCK` / `PASSWORD_CHANGE` / `PROFILE_UPDATE`. 용도가 다르면 코드도 다르다.
+- `purpose`: `SIGNUP` / `UNLOCK` / `PASSWORD_CHANGE` / `PROFILE_UPDATE` / `PAYMENT_METHOD`. 용도가 다르면 코드도 다르다.
 - 발송 응답 data: `{expiresAt, remainingSendCount}` — 프론트 타이머와 재발송 안내에 사용.
 - 확인 성공 후 30분 안에 가입을 제출해야 한다.
 
@@ -43,13 +43,14 @@
 
 공통 body 항목(세 경로 모두 필수):
 
-- `card`: `{cardNumber, cardBrand}` — 수수료 결제용
+- `address`: `{sido, sigungu, roadAddress, addressDetail, zipCode}` — **세 가입 경로 모두 필수**(2026-08-14 부터 프리랜서도). 주소 찾기 위젯 결과를 합치지 말고 조각째 보낸다. `sigungu`는 세종시처럼 없는 지역이 있어 선택
+- `card`: `{cardNumber, cardBrand}` — 수수료 결제용. `cardNumber`는 숫자 16자리(4자리씩 4묶음), `cardBrand`는 `GET /api/v1/meta/card-companies` 의 code(예: `SHINHAN`)
 - `bankAccount`: `{bankCode, accountNo, accountHolder}` — 용역비 수령용
 - `agreements[]`: `{termsId, agreed}`
 
 소셜 가입 body에는 email이 없다. 티켓에 담긴 공급자 이메일을 사용한다.
 카드번호·계좌번호는 하이픈을 넣어도 되며 서버가 숫자만 남겨 AES로 암호화 저장한다. 조회 시에는 카드 끝 4자리만 나간다.
-`bankCode`는 `GET /api/v1/meta/banks` 의 코드를 쓴다. 목록에 없는 코드는 `AC_006`.
+`bankCode`는 `GET /api/v1/meta/banks` 의 코드를 쓴다. 목록에 없는 코드는 `AC_006`. `accountNo`는 숫자 10~14자리.
 
 **이메일·휴대폰은 역할별로 유니크하다.** 같은 사람이 클라이언트 계정과 프리랜서 계정을 각각 가질 수 있고,
 같은 역할 안에서는 소셜↔일반을 포함해 중복이 불가하다.
@@ -61,9 +62,15 @@
 | POST | `/api/v1/auth/login` | X | body `{email, password, role}` (role 필수). 쿠키 2종 발급 |
 | POST | `/api/v1/auth/refresh` | 쿠키 | Access 재발급 + Refresh 회전 |
 | POST | `/api/v1/auth/logout` | 쿠키 | Redis 토큰·세션 삭제 + 쿠키 만료 |
-| GET | `/api/v1/auth/me` | O | 현재 로그인 사용자 |
+| GET | `/api/v1/auth/me` | O | 현재 로그인 사용자. `name`은 담당자명, `companyName`은 클라이언트만 채워진다 |
 
-- Access 30분 / Refresh 7일.
+- **Access 1시간 / Refresh 7일.** 액세스 토큰은 **요청이 들어올 때마다 만료가 미뤄진다**(슬라이딩 세션).
+  남은 수명이 30분 아래인 요청에서 서버가 새 `accessToken` 쿠키를 응답에 실어 준다.
+  즉 **30분 안에 아무 API나 한 번이라도 부르면 세션이 끊기지 않는다.** 프론트가 할 일은 없다
+  (HttpOnly 쿠키라 브라우저가 알아서 교체한다).
+- 갱신은 **쿠키로 인증한 요청에만** 적용된다. `Authorization: Bearer` 로 부르면 쿠키를 건드리지 않는다.
+- **Refresh 7일은 절대 상한이다.** 슬라이딩으로 늘어나지 않아, 계속 활동해도 7일 뒤에는 재로그인이 필요하다.
+- 클라이언트 화면(메인·프로필)에 찍는 이름은 `name`이 아니라 `companyName`이다. 기업 회원이라서다.
 - 중복 로그인 불가. 새 로그인이 이전 세션을 끊고, 이전 기기는 다음 요청에서 `401 GLOBAL_011`을 받는다.
 - 로그인 응답 data의 `tempPassword=true`면 비밀번호 변경 화면으로 보내야 한다.
 
@@ -106,6 +113,7 @@
 | GET | `/api/v1/meta/business-fields` | X | 사업 분야 코드 목록 |
 | GET | `/api/v1/meta/employee-counts` | X | 직원수 구간 코드 목록 |
 | GET | `/api/v1/meta/banks` | X | 은행 코드 목록(금융결제원 기관코드) |
+| GET | `/api/v1/meta/card-companies` | X | 카드사 목록. code 는 enum 이름(`SHINHAN`) |
 | GET | `/api/v1/meta/job-categories` | X | 직무 대분류 6종 |
 | GET | `/api/v1/meta/job-roles?category=` | X | 직무 26종. `category` 생략 시 전체 |
 | GET | `/api/v1/meta/skills?category=` | X | 기술스택 63종 |
@@ -166,9 +174,17 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/accounts/me/payment-methods` | O | 카드·계좌 목록(각 1건, `methodType` 으로 구분: CARD/BANK_ACCOUNT) |
-| PUT | `/api/v1/accounts/me/payment-methods/card` | O | body `{cardBrand, cardNumber, cardHolder}` 카드 정보 수정 |
-| PUT | `/api/v1/accounts/me/payment-methods/bank-account` | O | body `{bankCode, accountNo, accountHolder}` 계좌 정보 수정 |
+| GET | `/api/v1/accounts/me/payment-methods` | O + 이메일 인증 | 카드·계좌 목록(각 1건, `methodType` 으로 구분: CARD/BANK_ACCOUNT) |
+| PUT | `/api/v1/accounts/me/payment-methods/card` | O + 이메일 인증 | body `{cardBrand, cardNumber, cardHolder}` 카드 정보 수정. `cardBrand`는 카드사 code |
+| PUT | `/api/v1/accounts/me/payment-methods/bank-account` | O + 이메일 인증 | body `{bankCode, accountNo, accountHolder}` 계좌 정보 수정 |
+
+**결제수단 세 API 는 `purpose=PAYMENT_METHOD` 이메일 인증을 요구한다(2026-08-14).** 수정만이 아니라
+**조회부터** 막는다 — 마스킹해도 은행명·예금주·끝 4자리가 단서가 되기 때문이다. 미인증이면 `400 AU_006`.
+
+인증 마커는 **소비하지 않는다.** 탭에 들어가 목록을 보고 카드·계좌를 잇달아 고치는 흐름이 인증 한 번으로
+끝나야 해서다. 유효 시간은 마커 TTL(`app.auth.verified-marker-ttl`, 30분)이 정한다.
+
+`PROFILE_UPDATE` 인증으로는 열리지 않는다. 프로필 화면에서 받은 코드로 결제수단이 열리면 안 된다.
 | DELETE | `/api/v1/accounts/me` | O | body `{currentPassword, reason}` 회원 탈퇴 |
 | GET | `/api/v1/accounts/admin/summary` | ADMIN | 회원 요약 카드(전체·정상·정지·탈퇴·역할별) |
 | GET | `/api/v1/accounts/admin?role=&status=&signupType=&keyword=&page=&size=` | ADMIN | 회원 목록 |

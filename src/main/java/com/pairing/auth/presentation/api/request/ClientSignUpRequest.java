@@ -1,6 +1,7 @@
 package com.pairing.auth.presentation.api.request;
 
 import com.pairing.account.domain.model.BusinessField;
+import com.pairing.account.presentation.api.request.AddressRequest;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.auth.application.command.ClientSignUpCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -25,6 +26,9 @@ public record ClientSignUpRequest(
 
         @Schema(description = "사업자등록번호(하이픈 없이 숫자 10자리)", example = "1234567890")
         @Pattern(regexp = "^\\d{10}$", message = "사업자등록번호는 하이픈 없이 숫자 10자리입니다.")
+        // @Pattern 만으로는 null 이 통과한다. 그러면 도메인까지 내려가 AC_001 로 나가서
+        // 프론트가 어느 칸이 비었는지 알 수 없다.
+        @NotBlank(message = "사업자등록번호는 필수입니다.")
         String businessNo,
 
         @Schema(description = "사업 분야", example = "IT_CONTENTS_AI")
@@ -36,10 +40,11 @@ public record ClientSignUpRequest(
         EmployeeCount employeeCount,
 
         // 계약서 갑 표시에 쓰이는 값이라 가입 시점에 확정받는다. 이후 변경은 마이페이지(PATCH /clients/me).
-        @Schema(description = "기업 주소", example = "서울 강남구 테헤란로 1")
-        @NotBlank(message = "기업 주소는 필수입니다.")
-        @Size(max = 255, message = "주소는 255자 이하여야 합니다.")
-        String address,
+        // 주소 찾기 위젯이 준 조각을 그대로 보낸다. 합쳐서 보내면 수정 화면에서 다시 나눌 수 없다.
+        @Schema(description = "기업 주소")
+        @NotNull(message = "기업 주소는 필수입니다.")
+        @Valid
+        AddressRequest address,
 
         @Schema(description = "업무 이메일(로그인 아이디)", example = "owner@pairing.com")
         @NotBlank(message = "이메일은 필수입니다.")
@@ -53,6 +58,8 @@ public record ClientSignUpRequest(
 
         @Schema(description = "휴대폰번호(법인폰)", example = "010-1234-5678")
         @Pattern(regexp = "^01[016789]-?\\d{3,4}-?\\d{4}$", message = "전화번호 형식이 올바르지 않습니다.")
+        // @Pattern 은 null 을 통과시킨다(Bean Validation 명세). @NotBlank 가 함께 있어야 막힌다.
+        @NotBlank(message = "전화번호는 필수입니다.")
         String phone,
 
         @Schema(description = "비밀번호(대소문자+숫자+특수문자, 8~20자)", example = "Passw0rd!")
@@ -90,7 +97,7 @@ public record ClientSignUpRequest(
                 businessNo,
                 businessField,
                 employeeCount,
-                address,
+                address.toAddress(),
                 card.toCommand(),
                 bankAccount.toCommand(),
                 agreements.stream().map(TermsAgreementRequest::toCommand).toList(),

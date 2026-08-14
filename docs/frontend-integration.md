@@ -126,6 +126,7 @@ export async function apiCall<T>(path: string, init: RequestInit = {}, retry = t
   GET  /api/v1/meta/business-fields        사업 분야 셀렉트
   GET  /api/v1/meta/employee-counts        직원수 셀렉트
   GET  /api/v1/meta/banks                  은행 셀렉트
+  GET  /api/v1/meta/card-companies         카드사 셀렉트
   GET  /api/v1/terms?role=CLIENT           약관 목록
 
 [입력 중 - blur 시점]
@@ -242,6 +243,18 @@ POST /api/v1/auth/login  { email, password, role }
 
 계좌 등록 셀렉트에 씁니다. `code`(금융결제원 기관코드)를 `bankAccount.bankCode`로 그대로 보냅니다.
 
+#### `GET /api/v1/meta/card-companies` (X)
+
+```json
+{ "code": "CARD_COMPANIES_FOUND",
+  "data": [ { "code": "BC", "label": "BC카드" }, { "code": "SHINHAN", "label": "신한카드" } ] }
+```
+
+카드 등록 셀렉트에 씁니다. `code`를 `card.cardBrand`로 그대로 보냅니다.
+
+**은행과 달리 숫자 코드가 아닙니다.** 카드사는 금융결제원 기관코드 같은 외부 규격이 없어서 `SHINHAN` 처럼
+영문 코드가 내려갑니다. `"신한카드"`(한글명)를 보내면 400입니다. `label`은 화면 표시 전용입니다.
+
 #### `GET /api/v1/terms?role=CLIENT` (X)
 
 `role`은 `CLIENT` 또는 `FREELANCER`입니다.
@@ -319,7 +332,14 @@ POST /api/v1/auth/login  { email, password, role }
   "phone": "010-1234-5678",
   "password": "Passw0rd!",
   "passwordConfirm": "Passw0rd!",
-  "card": { "cardNumber": "1234-5678-1234-5678", "cardBrand": "신한카드" },
+  "address": {
+    "sido": "서울",
+    "sigungu": "강남구",
+    "roadAddress": "서울 강남구 테헤란로 123",
+    "addressDetail": "10층 1002호",
+    "zipCode": "06234"
+  },
+  "card": { "cardNumber": "1234-5678-1234-5678", "cardBrand": "SHINHAN" },
   "bankAccount": { "bankCode": "088", "accountNo": "110-123-456789", "accountHolder": "홍길동" },
   "agreements": [
     { "termsId": 1, "agreed": true },
@@ -343,6 +363,7 @@ POST /api/v1/auth/login  { email, password, role }
   "password": "Passw0rd!",
   "passwordConfirm": "Passw0rd!",
   "birthDate": "1995-03-01",
+  "address": { /* 위와 동일 */ },
   "card": { /* 위와 동일 */ },
   "bankAccount": { /* 위와 동일 */ },
   "agreements": [ /* 위와 동일 */ ]
@@ -359,6 +380,7 @@ POST /api/v1/auth/login  { email, password, role }
   "name": "홍길동",
   "phone": "010-1234-5678",
   "birthDate": "1995-03-01",
+  "address": { /* 동일 */ },
   "card": { /* 동일 */ },
   "bankAccount": { /* 동일 */ },
   "agreements": [ /* 동일 */ ]
@@ -374,8 +396,17 @@ POST /api/v1/auth/login  { email, password, role }
 
 **공통 규칙**
 
-- `card`와 `bankAccount`는 세 가입 경로 모두 **필수**입니다. 카드번호·계좌번호는 하이픈을 넣어도 되고, 서버가 숫자만 남겨 암호화 저장합니다. 조회 시에는 카드 끝 4자리만 나갑니다.
+- `card`와 `bankAccount`는 세 가입 경로 모두 **필수**입니다. 카드번호·계좌번호는 하이픈·공백을 넣어도 되고, 서버가 숫자만 남겨 암호화 저장합니다. 조회 시에는 카드 끝 4자리만 나갑니다.
+- **`cardNumber`는 숫자 16자리(4자리씩 4묶음)입니다.** `1234-5678-1234-5678`, `1234 5678 1234 5678`, `1234567812345678` 모두 받습니다. 자릿수가 다르면 400입니다.
+- **`accountNo`는 숫자 10~14자리입니다.** 은행마다 자릿수가 달라 범위로 받습니다. 하이픈·공백은 허용하지만 맨 앞·맨 뒤 하이픈이나 연속된 하이픈은 400입니다.
+- `cardBrand`는 `GET /api/v1/meta/card-companies` 응답의 `code`를 그대로 보냅니다. 한글 카드사명이 아니라 `SHINHAN` 같은 enum 이름입니다. 목록에 없는 값이면 400입니다.
 - `bankCode`는 `GET /api/v1/meta/banks` 응답의 `code`를 그대로 보냅니다. 목록에 없는 값이면 `AC_006`입니다.
+- **`address`는 세 가입 경로 모두 필수입니다.** 프리랜서 가입도 2026-08-14 부터 주소를 받습니다(그 전에는 가입 후 마이페이지에서만 채울 수 있었습니다).
+- 주소는 **주소 찾기 위젯(다음·카카오 우편번호) 결과를 합치지 말고 조각째** 보냅니다. 합쳐 보내면 수정 화면에서 다시 나눌 수 없습니다. 사용자가 직접 쓰는 칸은 `addressDetail` 하나입니다.
+- `sido`와 `roadAddress`는 필수, `sigungu`·`addressDetail`·`zipCode`는 선택입니다. **`sigungu`가 선택인 이유는 세종특별자치시에 시·군·구가 없어서**입니다 — 필수로 두면 세종시 사용자가 가입할 수 없습니다.
+- 서버는 형식(길이·필수)만 봅니다. 시·군·구 코드표를 들고 있지 않아 "실존하는 지역인가"는 검증하지 않습니다.
+- 조회 응답에는 한 줄로 합친 `address`와 나눠 담은 `addressParts`가 **둘 다** 나갑니다. 화면 표시는 `address`, 수정 폼은 `addressParts`를 쓰세요.
+- `phone`·`businessNo`·`bankAccount.bankCode` 는 **필수**입니다. 빠뜨리면 400 `GLOBAL_002` 로 어느 칸이 비었는지 함께 옵니다.
 - `phone`은 하이픈이 있어도 없어도 됩니다. 서버가 숫자만 남겨 저장합니다.
 - `businessNo`는 하이픈 없이 숫자 10자리만 허용합니다. (국세청 진위확인은 아직 연동 전이라 형식·중복만 봅니다)
 
@@ -398,7 +429,14 @@ POST /api/v1/auth/login  { email, password, role }
 
 #### `POST /api/v1/auth/refresh` (쿠키)
 
-액세스 토큰(30분) 만료 시 호출합니다. 리프레시 토큰(7일)도 함께 회전됩니다.
+액세스 토큰(1시간) 만료 시 호출합니다. 리프레시 토큰(7일)도 함께 회전됩니다.
+
+> **평소에는 부를 일이 거의 없습니다.** 액세스 토큰은 요청이 들어올 때마다 만료가 미뤄집니다(슬라이딩 세션).
+> 남은 수명이 30분 아래인 요청에서 서버가 새 `accessToken` 쿠키를 내려주므로, **30분 안에 아무 API나
+> 한 번이라도 부르면 세션이 유지됩니다.** HttpOnly 쿠키라 브라우저가 알아서 교체하고 프론트가 할 일은 없습니다.
+>
+> 이 API 가 필요한 경우는 **30분 넘게 아무것도 안 하다가 돌아온 상황**뿐입니다. 그때는 기존대로
+> `GLOBAL_009` → `/auth/refresh` → 원래 요청 1회 재시도 흐름을 그대로 쓰면 됩니다.
 응답 형식은 로그인과 같고 `code`는 `TOKEN_REISSUED`입니다.
 
 #### `POST /api/v1/auth/logout` (쿠키)
@@ -410,10 +448,26 @@ Redis의 토큰·세션을 지우고 쿠키를 만료시킵니다. 만료된 토
 ```json
 { "code": "ME_FOUND",
   "data": { "accountId": 7, "email": "user@pairing.com", "role": "FREELANCER",
-            "name": "홍길동", "tempPassword": false } }
+            "name": "홍길동", "companyName": null, "tempPassword": false } }
+```
+
+클라이언트로 로그인하면 `companyName`이 함께 옵니다.
+
+```json
+{ "code": "ME_FOUND",
+  "data": { "accountId": 3, "email": "owner@pairing.com", "role": "CLIENT",
+            "name": "홍길동", "companyName": "주식회사 페어링", "tempPassword": false } }
 ```
 
 새로고침 시 로그인 상태 복원에 쓰면 됩니다. 401이면 비로그인으로 처리하세요.
+
+**화면에 찍는 이름은 역할마다 다릅니다.**
+
+- `name`은 **담당자명**입니다. 클라이언트도 대표자 개인 이름이지 기업명이 아닙니다.
+- 클라이언트의 **메인 페이지·프로필에는 `companyName`을 찍어야 합니다.** 기업 회원이라 화면에 개인 이름이 뜨면 안 됩니다.
+- 프리랜서는 `companyName`이 항상 `null`이므로 `companyName ?? name`으로 두 역할을 함께 처리할 수 있습니다.
+- 두 값을 하나로 합쳐 내리지 않은 이유는 **프로필 화면이 기업명과 담당자명을 동시에** 보여주기 때문입니다. `name`을 기업명으로 덮어쓰면 "담당자: OOO" 줄까지 기업명이 됩니다.
+- 클라이언트 계정인데 기업 프로필이 없는 예외 데이터에서는 `companyName`이 `null`로 옵니다. 이 API는 로그인 상태 확인이 본업이라 프로필이 없다고 401/404를 내지 않습니다. 프론트에서 `name` 폴백을 두세요.
 
 ### 2-6. 소셜 로그인
 
@@ -518,6 +572,10 @@ Redis의 토큰·세션을 지우고 쿠키를 만료시킵니다. 만료된 토
 | 카드번호 | 숫자 11~25자, 하이픈 허용 | `GLOBAL_002` |
 | 계좌번호 | 숫자 6~26자, 하이픈 허용 | `GLOBAL_002` |
 | 은행 코드 | `/meta/banks` 목록의 code | `AC_006` |
+| 카드사 | `/meta/card-companies` 목록의 code (한글명 아님) | 400 |
+| 주소 | 객체. `sido`·`roadAddress` 필수, `sigungu` 선택(세종시) | 400 |
+| 카드번호 | 숫자 16자리(4자리씩 4묶음). 하이픈·공백 허용 | 400 |
+| 계좌번호 | 숫자 10~14자리. 하이픈·공백 허용 | 400 |
 | 약관 | 필수 항목 전부 동의 | `TM_002` |
 
 **화면 요구사항으로 프론트가 처리할 것** (서버 관여 없음)

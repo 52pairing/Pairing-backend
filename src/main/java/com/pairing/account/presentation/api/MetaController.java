@@ -2,6 +2,7 @@ package com.pairing.account.presentation.api;
 
 import com.pairing.account.domain.model.BankCode;
 import com.pairing.account.domain.model.BusinessField;
+import com.pairing.account.domain.model.CardCompany;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.presentation.api.response.CodeLabelResponse;
 import com.pairing.global.common.api.response.ApiResponse;
@@ -43,6 +44,17 @@ public class MetaController {
                 .toList();
 
         return ResponseEntity.ok(ApiResponse.success("BANKS_FOUND", "조회에 성공했습니다.", responseData));
+    }
+
+    @GetMapping("/card-companies")
+    @Operation(summary = "카드사 목록",
+            description = "카드 등록에 쓰는 카드사 목록입니다. code 를 그대로 보내면 됩니다. (은행과 달리 숫자 코드가 아닙니다)")
+    public ResponseEntity<ApiResponse<List<CodeLabelResponse>>> getCardCompanies() {
+        List<CodeLabelResponse> responseData = Arrays.stream(CardCompany.values())
+                .map(company -> new CodeLabelResponse(company.name(), company.getLabel()))
+                .toList();
+
+        return ResponseEntity.ok(ApiResponse.success("CARD_COMPANIES_FOUND", "조회에 성공했습니다.", responseData));
     }
 
     @GetMapping("/employee-counts")

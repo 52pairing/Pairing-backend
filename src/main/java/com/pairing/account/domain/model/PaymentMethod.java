@@ -136,10 +136,22 @@ public class PaymentMethod {
                 .orElse(null);
     }
 
+    /**
+     * 카드사 이름. 저장하는 값은 {@link CardCompany} 의 enum 이름이라 조회 시점에 한글명으로 푼다.
+     *
+     * <p>이 기능이 들어오기 전에 저장된 행에는 한글 카드사명이 그대로 들어 있다. 그런 값은 못 찾으므로
+     * <b>저장된 문자열을 그대로 돌려준다</b> — 옛 데이터 때문에 마이페이지가 빈칸이 되면 안 된다.
+     */
+    public String getCardBrandName() {
+        return CardCompany.find(this.cardBrand)
+                .map(CardCompany::getLabel)
+                .orElse(this.cardBrand);
+    }
+
     /** 화면 표시용 이름. 카드는 "신한카드 **** 5678", 계좌는 "신한은행 **** 6789". */
     public String getDisplayName() {
         if (isCard()) {
-            return joinMasked(this.cardBrand, this.cardLast4);
+            return joinMasked(getCardBrandName(), this.cardLast4);
         }
         return joinMasked(getBankName(), this.accountLast4);
     }

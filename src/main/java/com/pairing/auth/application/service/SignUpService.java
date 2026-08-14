@@ -119,6 +119,7 @@ public class SignUpService implements SignUpUseCase {
                 command.name(),
                 phone,
                 command.birthDate(),
+                command.address(),
                 PaymentPolicy.normalize(command.card()),
                 PaymentPolicy.normalize(command.bankAccount())
         ));
@@ -158,6 +159,7 @@ public class SignUpService implements SignUpUseCase {
                         ticket.providerUid(),
                         ticket.email(),
                         ticket.emailVerified(),
+                        command.address(),
                         PaymentPolicy.normalize(command.card()),
                         PaymentPolicy.normalize(command.bankAccount())
                 ));

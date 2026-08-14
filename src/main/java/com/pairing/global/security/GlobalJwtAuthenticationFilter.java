@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -105,6 +106,8 @@ public class GlobalJwtAuthenticationFilter extends OncePerRequestFilter {
                         new UsernamePasswordAuthenticationToken(subject, null, authorities);
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                renewAccessTokenIfDue(response, resolved, claims);
             }
         } catch (ExpiredJwtException e) {
             // 여기서는 쿠키를 지우지 않는다. 액세스 토큰 만료는 리프레시 토큰으로 복구되는 정상 흐름이고,
@@ -128,6 +131,25 @@ public class GlobalJwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * 인증에 성공한 요청에서 액세스 토큰의 만료를 미룬다(슬라이딩 세션).
+     *
+     * <p>발급 시점 기준으로 딱 끊으면 작업 중이던 사용자가 갑자기 로그인 화면으로 튕긴다.
+     * 남은 수명이 임계값 아래일 때만 새로 발급하므로, 그 안에 아무 API나 한 번 부르면 세션이 이어진다.
+     *
+     * <p><b>쿠키로 들어온 토큰만 갱신한다.</b> {@code Authorization} 헤더로 인증하는 쪽(Swagger·스크립트)은
+     * 쿠키를 쓰지 않는데 여기서 쿠키를 심으면, 같은 브라우저에 있던 다른 계정의 로그인이 덮어써진다.
+     *
+     * <p>응답이 커밋되기 전에 헤더를 붙여야 해서 필터 체인을 타기 <b>전</b>에 호출한다.
+     */
+    private void renewAccessTokenIfDue(HttpServletResponse response, ResolvedToken resolved, Claims claims) {
+        if (!resolved.fromCookie()) {
+            return;
+        }
+        globalJwtProvider.renewAccessTokenCookie(claims)
+                .ifPresent(cookie -> response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString()));
     }
 
     private boolean isSessionAlive(String subject, String sessionId) {

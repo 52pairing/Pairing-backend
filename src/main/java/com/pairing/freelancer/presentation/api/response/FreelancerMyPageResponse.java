@@ -1,5 +1,6 @@
 package com.pairing.freelancer.presentation.api.response;
 
+import com.pairing.account.presentation.api.response.AddressResponse;
 import com.pairing.freelancer.application.result.FreelancerMyPageResult;
 import com.pairing.freelancer.domain.model.FreelancerGrade;
 import com.pairing.global.infrastructure.s3.CdnMappable;
@@ -21,7 +22,10 @@ public record FreelancerMyPageResponse(
         @Schema(description = "이메일(수정 불가)", example = "user@pairing.com") String email,
         @Schema(description = "전화번호", example = "01012345678") String phone,
         @Schema(description = "생년월일(수정 불가)") LocalDate birthDate,
-        @Schema(description = "주소", example = "서울 강남구") String address,
+        @Schema(description = "주소(한 줄). 화면에 그대로 찍는다.", example = "서울특별시 강남구 테헤란로 123 10층")
+        String address,
+        @Schema(description = "주소 상세. 수정 폼이 쓴다. 나눠 담기 전 가입한 계정은 null")
+        AddressResponse addressParts,
         @Schema(description = "프로필 사진 URL") String profileImageUrl,
         @Schema(description = "AI 매칭 사용 여부", example = "true") boolean aiMatchingAgreed,
         @Schema(description = "등급") FreelancerGrade grade,
@@ -39,6 +43,7 @@ public record FreelancerMyPageResponse(
                 result.phone(),
                 result.birthDate(),
                 result.address(),
+                AddressResponse.from(result.addressParts()),
                 result.profileImageUrl(),
                 result.aiMatchingAgreed(),
                 result.grade(),

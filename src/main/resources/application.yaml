@@ -104,7 +104,15 @@ jwt:
   # 같은 원인 불명 메시지만 보인다. 빈 값으로 들여보낸 뒤 GlobalJwtProvider가 검증해
   # 무엇을 주입해야 하는지 알려주는 편이 낫다.
   secret-key: ${JWT_SECRET_KEY:}
-  access-token-expiration: 1800000 # 30분
+  access-token-expiration: 3600000 # 1시간
+  # 요청이 들어올 때마다 만료 시각을 미룬다(슬라이딩 세션). 남은 수명이 이 값 아래로 내려간
+  # 요청에서만 새 액세스 토큰 쿠키를 내려보낸다. 매 요청마다 발급하면 응답마다 Set-Cookie 가
+  # 붙고, 병렬 요청이 서로 다른 토큰을 덮어써 쿠키가 계속 튄다.
+  #
+  # 30분으로 두면 "30분 안에 아무 API나 한 번이라도 부르면 세션이 끊기지 않는다"가 된다.
+  # 0 으로 두면 슬라이딩이 꺼지고 발급 시점부터 1시간 뒤에 그대로 만료된다.
+  access-token-renew-threshold: 1800000 # 30분
+  # 리프레시 토큰 수명은 절대 상한이다. 슬라이딩으로 늘어나지 않는다.
   refresh-token-expiration: 604800000 # 7일
   # 값을 비워두면 쿠키에 Domain 속성을 붙이지 않아(host-only) localhost에서도 정상 동작한다.
   cookie-domain: ${COOKIE_DOMAIN:}

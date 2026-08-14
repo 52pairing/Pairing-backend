@@ -3,6 +3,7 @@ package com.pairing.client.presentation.api.response;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.client.application.result.ClientMyPageResult;
+import com.pairing.account.presentation.api.response.AddressResponse;
 import com.pairing.client.domain.model.ClientGrade;
 import com.pairing.global.infrastructure.s3.CdnMappable;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -24,7 +25,10 @@ public record ClientMyPageResponse(
         @Schema(description = "업무 이메일(수정 불가)", example = "owner@pairing.com") String email,
         @Schema(description = "담당자명(대표자명, 수정 불가)", example = "홍길동") String name,
         @Schema(description = "전화번호", example = "01012345678") String phone,
-        @Schema(description = "주소") String address,
+        @Schema(description = "주소(한 줄). 화면에 그대로 찍는다.", example = "서울특별시 강남구 테헤란로 123 10층")
+        String address,
+        @Schema(description = "주소 상세. 수정 폼이 쓴다. 나눠 담기 전 가입한 계정은 null")
+        AddressResponse addressParts,
         @Schema(description = "등급") ClientGrade grade,
         @Schema(description = "평균 별점", example = "4.2") Double ratingAverage,
         @Schema(description = "리뷰 건수", example = "8") int reviewCount,
@@ -43,6 +47,7 @@ public record ClientMyPageResponse(
                 result.name(),
                 result.phone(),
                 result.address(),
+                AddressResponse.from(result.addressParts()),
                 result.grade(),
                 result.ratingAverage(),
                 result.reviewCount(),

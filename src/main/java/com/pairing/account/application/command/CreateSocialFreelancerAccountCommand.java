@@ -1,5 +1,6 @@
 package com.pairing.account.application.command;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.SocialProvider;
 
 import java.time.LocalDate;
@@ -14,6 +15,8 @@ public record CreateSocialFreelancerAccountCommand(
         String providerUid,
         String providerEmail,
         boolean providerEmailVerified,
+        /** 주소(필수). 소셜 가입도 일반 가입과 같은 화면을 쓴다. */
+        Address address,
         CardCommand card,
         BankAccountCommand bankAccount
 ) {

@@ -1,5 +1,6 @@
 package com.pairing.auth.presentation.api.request;
 
+import com.pairing.account.presentation.api.request.AddressRequest;
 import com.pairing.auth.application.command.FreelancerSignUpCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
@@ -25,6 +26,8 @@ public record FreelancerSignUpRequest(
 
         @Schema(description = "전화번호", example = "010-1234-5678")
         @Pattern(regexp = "^01[016789]-?\\d{3,4}-?\\d{4}$", message = "전화번호 형식이 올바르지 않습니다.")
+        // @Pattern 은 null 을 통과시킨다(Bean Validation 명세). @NotBlank 가 함께 있어야 막힌다.
+        @NotBlank(message = "전화번호는 필수입니다.")
         String phone,
 
         @Schema(description = "이메일(로그인 아이디)", example = "user@pairing.com")
@@ -44,6 +47,12 @@ public record FreelancerSignUpRequest(
         @NotNull(message = "생년월일은 필수입니다.")
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
         LocalDate birthDate,
+
+        // 주소 찾기 위젯이 준 조각을 그대로 보낸다. 합쳐서 보내면 수정 화면에서 다시 나눌 수 없다.
+        @Schema(description = "주소")
+        @NotNull(message = "주소는 필수입니다.")
+        @Valid
+        AddressRequest address,
 
         @Schema(description = "수수료 결제용 카드")
         @NotNull(message = "카드 정보는 필수입니다.")
@@ -69,6 +78,7 @@ public record FreelancerSignUpRequest(
                 name,
                 phone,
                 birthDate,
+                address.toAddress(),
                 card.toCommand(),
                 bankAccount.toCommand(),
                 agreements.stream().map(TermsAgreementRequest::toCommand).toList(),

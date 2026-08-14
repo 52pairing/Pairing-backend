@@ -1,8 +1,10 @@
 package com.pairing.client.presentation.api.request;
 
 import com.pairing.account.domain.model.EmployeeCount;
+import com.pairing.account.presentation.api.request.AddressRequest;
 import com.pairing.client.application.command.ClientProfileUpdateCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -27,11 +29,15 @@ public record ClientProfileUpdateRequest(
 
         @Schema(description = "전화번호", example = "010-1234-5678")
         @Pattern(regexp = "^01[016789]-?\\d{3,4}-?\\d{4}$", message = "전화번호 형식이 올바르지 않습니다.")
+        // @Pattern 은 null 을 통과시킨다(Bean Validation 명세). @NotBlank 가 함께 있어야 막힌다.
+        @NotBlank(message = "전화번호는 필수입니다.")
         String phone,
 
-        @Schema(description = "회사 주소", example = "서울특별시 강남구 테헤란로 123 10층")
-        @Size(max = 255)
-        String address,
+        // 가입 때 필수인 값이라 수정에서도 필수다. 비울 수 있으면 계약서 갑 주소가 사라진다.
+        @Schema(description = "회사 주소")
+        @NotNull(message = "회사 주소는 필수입니다.")
+        @Valid
+        AddressRequest address,
 
         @Schema(description = "기업 로고 fileId. POST /api/v1/files?purpose=COMPANY_LOGO 로 먼저 올린다. "
                 + "보내지 않으면 기존 로고를 그대로 둔다.", example = "7")
@@ -39,6 +45,7 @@ public record ClientProfileUpdateRequest(
 ) {
 
     public ClientProfileUpdateCommand toCommand(Long accountId) {
-        return new ClientProfileUpdateCommand(accountId, companyName, employeeCount, phone, address, logoFileId);
+        return new ClientProfileUpdateCommand(accountId, companyName, employeeCount, phone,
+                address.toAddress(), logoFileId);
     }
 }

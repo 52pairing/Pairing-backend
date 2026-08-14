@@ -2,6 +2,7 @@ package com.pairing.auth.application.command;
 
 import com.pairing.account.application.command.BankAccountCommand;
 import com.pairing.account.application.command.CardCommand;
+import com.pairing.account.domain.model.Address;
 import com.pairing.terms.application.command.AgreeTermsCommand;
 
 import java.time.LocalDate;
@@ -17,6 +18,7 @@ public record SocialSignUpCommand(
         String name,
         String phone,
         LocalDate birthDate,
+        Address address,
         CardCommand card,
         BankAccountCommand bankAccount,
         List<AgreeTermsCommand> agreements,

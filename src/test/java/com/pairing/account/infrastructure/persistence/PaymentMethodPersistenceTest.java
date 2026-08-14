@@ -1,6 +1,7 @@
 package com.pairing.account.infrastructure.persistence;
 
 import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.CardCompany;
 import com.pairing.account.domain.model.PaymentMethod;
 import com.pairing.account.domain.model.PaymentMethodType;
 import com.pairing.account.domain.model.Role;
@@ -48,7 +49,8 @@ class PaymentMethodPersistenceTest {
         Long accountId = createAccount();
 
         paymentMethodRepository.saveAll(List.of(
-                PaymentMethod.createCard(accountId, dataEncryptionPort.encrypt(CARD_NUMBER), "신한카드", "5678"),
+                PaymentMethod.createCard(accountId, dataEncryptionPort.encrypt(CARD_NUMBER),
+                        CardCompany.SHINHAN.name(), "5678"),
                 PaymentMethod.createBankAccount(
                         accountId, "088", dataEncryptionPort.encrypt(ACCOUNT_NO), "6789", "홍길동")));
 

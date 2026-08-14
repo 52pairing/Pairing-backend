@@ -23,8 +23,13 @@ public record PaymentMethodResponse(
         @Schema(description = "화면 표시용 이름", example = "신한카드 **** 1234")
         String displayName,
 
-        @Schema(description = "카드사. 계좌면 null", example = "신한카드")
+        @Schema(description = "카드사명(화면 표시용). 계좌면 null", example = "신한카드")
         String cardBrand,
+
+        // 수정 폼의 카드사 select 초기값으로 쓴다. cardBrand(한글명)로는 항목을 고를 수 없다.
+        @Schema(description = "카드사 코드. GET /api/v1/meta/card-companies 의 code 와 같다. 계좌면 null",
+                example = "SHINHAN")
+        String cardCompany,
 
         @Schema(description = "카드번호 끝 4자리. 계좌면 null", example = "1234")
         String cardLast4,
@@ -55,6 +60,7 @@ public record PaymentMethodResponse(
                 paymentMethod.getId(),
                 paymentMethod.getMethodType(),
                 paymentMethod.getDisplayName(),
+                card ? paymentMethod.getCardBrandName() : null,
                 card ? paymentMethod.getCardBrand() : null,
                 card ? paymentMethod.getCardLast4() : null,
                 card ? paymentMethod.getCardHolder() : null,
