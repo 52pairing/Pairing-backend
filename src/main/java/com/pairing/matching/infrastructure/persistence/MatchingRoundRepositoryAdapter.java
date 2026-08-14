@@ -8,6 +8,7 @@ import com.pairing.matching.infrastructure.mapper.MatchingRoundMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,5 +53,12 @@ public class MatchingRoundRepositoryAdapter implements MatchingRoundRepository {
         // FAILED 회차는 후보를 한 명도 못 만든 회차라 한도를 쓴 걸로 치지 않는다(포트 주석 참고).
         return springDataRepository.countByProjectIdAndRoundTypeAndStatusNot(projectId, roundType,
                 MatchingRoundStatus.FAILED);
+    }
+
+    @Override
+    public List<MatchingRound> findStaleRunning(LocalDateTime threshold) {
+        return springDataRepository.findByStatusAndCreatedAtBefore(MatchingRoundStatus.RUNNING, threshold).stream()
+                .map(matchingRoundMapper::toDomain)
+                .toList();
     }
 }

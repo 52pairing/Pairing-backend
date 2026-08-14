@@ -39,18 +39,32 @@ class RecruitingStartedPositionHandler {
     private final MatchingRoundCreationService matchingRoundCreationService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 스냅샷 동결 + 포지션 임베딩 + <b>회차 레코드까지만</b>. AI 호출은 하지 않는다.
+     *
+     * <p><b>후보 채우기(AI 호출)를 여기에 같이 두면 안 된다.</b> 한 트랜잭션이면 회차 행이 AI 호출이
+     * 끝날 때까지 커밋되지 않는다. 그 수 초~수십 초 동안 클라이언트가 추천 후보 탭을 열면 회차가
+     * 아예 없고, 호출이 실패하거나 컨테이너가 교체되면 회차 행이 <b>흔적도 없이 사라진다</b> —
+     * 그러면 "무엇이 실패했는지"를 알 방법이 없다(2026-08-13).
+     *
+     * <p>재추천 경로({@code MatchingRerecommendService} → {@link RerecommendRequestedEventListener})는
+     * 원래부터 이렇게 쪼개져 있었다. 최초 추천만 안 그랬다.
+     *
+     * @return 만든 회차 ID. 이미 회차가 있으면(멱등 스킵) null
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void startInitialRecommendation(Long projectId, Long positionId) {
+    Long openInitialRound(Long projectId, Long positionId) {
         if (matchingRoundRepository.countByPositionId(positionId) > 0) {
             log.info("[모집 시작 - 멱등 스킵] 이미 회차가 있어 건너뜀. positionId={}", positionId);
-            return;
+            return null;
         }
 
         ProjectPositionSummary summary = projectDirectoryPort.findPositionSummary(projectId, positionId);
         freezeSnapshot(projectId, positionId, summary);
         matchingPort.upsertPositionEmbedding(positionId, PositionEmbeddingTextBuilder.buildText(summary));
-        matchingRoundCreationService.createRound(projectId, positionId, RecommendationType.INITIAL,
-                summary.headcount(), 0L);
+        return matchingRoundCreationService
+                .openRound(projectId, positionId, RecommendationType.INITIAL, summary.headcount(), 0L)
+                .getId();
     }
 
     private void freezeSnapshot(Long projectId, Long positionId, ProjectPositionSummary summary) {

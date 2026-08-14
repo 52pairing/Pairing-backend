@@ -8,6 +8,7 @@ import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.FreelancerCardSummary;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingRoundStatus;
 import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
@@ -69,7 +70,11 @@ class CandidateResponseAssembler {
 
         return new CandidateListResponse(round.getPositionId(), round.getId(), round.getRoundNo(),
                 round.getRoundType(), round.getExposeCount(), freeAvailable, paidRemaining,
-                round.isLowScoreWarned(), budgetWarned, candidates, false);
+                round.isLowScoreWarned(), budgetWarned, candidates,
+                // 회차가 생기자마자 커밋되므로(2026-08-13), 회차가 있다고 후보가 있는 건 아니다.
+                // 상태를 안 보면 아직 채우는 중인 회차가 "후보 0명"으로 보인다.
+                round.getStatus() == MatchingRoundStatus.RUNNING,
+                round.getStatus() == MatchingRoundStatus.FAILED);
     }
 
     private CandidateResponse toCandidateResponse(MatchingCandidate candidate) {

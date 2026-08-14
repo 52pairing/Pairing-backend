@@ -26,7 +26,9 @@ import com.pairing.matching.application.result.MatchingRecommendation;
 import com.pairing.matching.application.result.RankedFreelancer;
 import com.pairing.matching.application.usecase.MatchingRequestCommandUseCase;
 import com.pairing.matching.domain.model.MatchingCandidate;
+import com.pairing.matching.application.service.StaleRoundRecoveryService;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingRoundStatus;
 import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.model.RecommendationType;
 import com.pairing.matching.domain.model.SnapshotType;
@@ -77,10 +79,13 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -144,6 +149,8 @@ class MatchingIntegrationTest {
     private JdbcTemplate jdbcTemplate;
     @Autowired
     private MatchingRequestCommandUseCase matchingRequestCommandUseCase;
+    @Autowired
+    private StaleRoundRecoveryService staleRoundRecoveryService;
 
     @MockitoBean
     private VerifiedMarkerPort verifiedMarkerPort;
@@ -443,7 +450,95 @@ class MatchingIntegrationTest {
                         .cookie(clientAccessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.preparing").value(false))
+                .andExpect(jsonPath("$.data.failed").value(false))
                 .andExpect(jsonPath("$.data.candidates.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("회차는 생겼지만 아직 채우는 중이면 후보 0명이 아니라 준비중이다")
+    void runningRoundIsPreparingNotEmpty() throws Exception {
+        // 회차 레코드는 AI 호출 **전에** 커밋된다(2026-08-13). 그래서 회차가 있다고 후보가 있는 게
+        // 아니다. 상태를 안 보면 채우는 중인 회차가 "후보 없음"으로 보인다.
+        MatchingRound running = MatchingRound.create(PROJECT_ID, POSITION_ID, 1,
+                RecommendationType.INITIAL, null, 0L, 2, 6);
+        matchingRoundRepository.save(running);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(true))
+                .andExpect(jsonPath("$.data.failed").value(false))
+                .andExpect(jsonPath("$.data.candidates").isEmpty());
+    }
+
+    /** 회차를 만든 뒤 생성 시각을 과거로 돌린다. created_at 은 DB 기본값이라 직접 못 넣는다. */
+    private MatchingRound seedRunningRoundCreatedMinutesAgo(int minutesAgo) {
+        MatchingRound running = matchingRoundRepository.save(MatchingRound.create(PROJECT_ID, POSITION_ID, 1,
+                RecommendationType.INITIAL, null, 0L, 2, 6));
+        jdbcTemplate.update("UPDATE matching_round SET created_at = ? WHERE id = ?",
+                java.sql.Timestamp.valueOf(LocalDateTime.now().minusMinutes(minutesAgo)), running.getId());
+        return running;
+    }
+
+    @Test
+    @DisplayName("AI 호출 중 컨테이너가 죽어 RUNNING 으로 멈춘 회차를 스케줄러가 되살린다")
+    void staleRunningRoundIsRefilled() throws Exception {
+        // 후보 저장과 회차 완료가 한 트랜잭션이라, 중간에 죽은 회차에는 후보가 하나도 없다.
+        // 그래서 다시 채워도 중복이 생기지 않는다.
+        MatchingRound stale = seedRunningRoundCreatedMinutesAgo(30);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong())).willReturn(
+                new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
+                        new RankedFreelancer(freelancerAccountId, 91.0, "요구 스킬 일치", 0.8125))));
+
+        staleRoundRecoveryService.recoverStaleRounds();
+
+        assertThat(matchingRoundRepository.findById(stale.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchingRoundStatus.COMPLETED);
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(jsonPath("$.data.preparing").value(false))
+                .andExpect(jsonPath("$.data.candidates.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("되살리기도 실패하면 FAILED 로 닫는다 — RUNNING 으로 두면 매 주기마다 AI를 다시 부른다")
+    void staleRoundIsClosedWhenRefillAlsoFails() throws Exception {
+        MatchingRound stale = seedRunningRoundCreatedMinutesAgo(30);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
+                .willThrow(new IllegalStateException("AI 서버 호출 실패"));
+
+        staleRoundRecoveryService.recoverStaleRounds();
+
+        assertThat(matchingRoundRepository.findById(stale.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchingRoundStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("아직 진행 중일 수 있는 회차는 건드리지 않는다 — 다시 부르면 AI 비용이 두 배다")
+    void freshRunningRoundIsNotTouched() throws Exception {
+        MatchingRound fresh = seedRunningRoundCreatedMinutesAgo(1);
+
+        staleRoundRecoveryService.recoverStaleRounds();
+
+        assertThat(matchingRoundRepository.findById(fresh.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchingRoundStatus.RUNNING);
+        verify(matchingPort, never()).recommend(anyLong(), anyInt(), anyInt(), anyList(), anyLong());
+    }
+
+    @Test
+    @DisplayName("추천 생성이 실패한 회차는 후보 없음이 아니라 실패로 내려간다")
+    void failedRoundIsReportedAsFailed() throws Exception {
+        MatchingRound failed = MatchingRound.create(PROJECT_ID, POSITION_ID, 1,
+                RecommendationType.INITIAL, null, 0L, 2, 6);
+        failed.fail();
+        matchingRoundRepository.save(failed);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.failed").value(true))
+                .andExpect(jsonPath("$.data.preparing").value(false))
+                .andExpect(jsonPath("$.data.candidates").isEmpty());
     }
 
     @Test

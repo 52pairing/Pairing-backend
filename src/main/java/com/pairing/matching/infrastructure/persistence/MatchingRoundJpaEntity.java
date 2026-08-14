@@ -14,6 +14,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
+
 /**
  * matching_round 테이블 매핑.
  *
@@ -60,6 +62,14 @@ public class MatchingRoundJpaEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
     private MatchingRoundStatus status;
+
+    /**
+     * 생성 시각. <b>읽기 전용 매핑이다</b>({@code insertable/updatable = false}) — 값은 DB 기본값
+     * {@code CURRENT_TIMESTAMP}가 채운다. 도메인 모델에는 없는 값이고, "언제부터 RUNNING이었나"를
+     * 판단하는 조회에만 쓴다({@code findStaleRunning}).
+     */
+    @Column(name = "created_at", insertable = false, updatable = false)
+    private LocalDateTime createdAt;
 
     public MatchingRoundJpaEntity(Long id, Long projectId, Long positionId, int roundNo, RecommendationType roundType,
                                   Integer requestedCount, long costAmount, int exposeCount,

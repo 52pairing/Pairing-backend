@@ -40,6 +40,7 @@ class RecruitingStartedEventListener {
 
     private final ProjectDirectoryPort projectDirectoryPort;
     private final RecruitingStartedPositionHandler positionHandler;
+    private final MatchingRoundFiller roundFiller;
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -47,10 +48,30 @@ class RecruitingStartedEventListener {
         List<Long> positionIds = projectDirectoryPort.findPositionIds(event.projectId());
         for (Long positionId : positionIds) {
             try {
-                positionHandler.startInitialRecommendation(event.projectId(), positionId);
+                // 1단계: 회차 레코드까지만 만들고 **바로 커밋한다**. 이 시점부터 클라이언트에게
+                // "추천 준비중(RUNNING)"이 보인다.
+                Long roundId = positionHandler.openInitialRound(event.projectId(), positionId);
+                if (roundId == null) {
+                    continue;
+                }
+                // 2단계: AI 호출은 별도 트랜잭션. 실패하면 회차를 FAILED로 닫는다.
+                //
+                // 한 트랜잭션으로 묶으면 실패 시 회차 행까지 롤백돼 사라진다. 그러면 화면은
+                // "준비중"에서 영원히 멈추고, 무엇이 실패했는지 아무 데도 안 남는다.
+                fillOrMarkFailed(event.projectId(), positionId, roundId);
             } catch (Exception e) {
                 log.error("[모집 시작 처리 실패] projectId={}, positionId={}", event.projectId(), positionId, e);
             }
+        }
+    }
+
+    private void fillOrMarkFailed(Long projectId, Long positionId, Long roundId) {
+        try {
+            roundFiller.fill(roundId);
+        } catch (Exception e) {
+            log.error("MATCHING_DEBUG java.round.initial.failed projectId={} positionId={} roundId={}",
+                    projectId, positionId, roundId, e);
+            roundFiller.markFailed(roundId);
         }
     }
 }

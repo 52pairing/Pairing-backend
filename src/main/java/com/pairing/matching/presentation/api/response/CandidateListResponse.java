@@ -46,7 +46,11 @@ public record CandidateListResponse(
 
         @Schema(description = "AI가 아직 후보를 고르는 중인지. true면 잠시 뒤 다시 조회하면 된다.",
                 example = "false")
-        boolean preparing
+        boolean preparing,
+
+        @Schema(description = "추천 생성이 실패했는지. 서버가 5분 주기로 자동 재시도하므로 기다리면 된다.",
+                example = "false")
+        boolean failed
 ) {
 
     /** 마지막 회차의 남은 유료 재추천 계산과 같은 상한. 라운드가 없으면 한 번도 안 썼다는 뜻이다. */
@@ -67,6 +71,6 @@ public record CandidateListResponse(
      */
     public static CandidateListResponse preparing(Long positionId, int headcount) {
         return new CandidateListResponse(positionId, null, 0, null, headcount,
-                false, MAX_PAID_RERECOMMEND, false, false, List.of(), true);
+                false, MAX_PAID_RERECOMMEND, false, false, List.of(), true, false);
     }
 }

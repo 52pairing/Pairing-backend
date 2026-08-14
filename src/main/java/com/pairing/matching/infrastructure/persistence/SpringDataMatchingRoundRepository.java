@@ -5,6 +5,7 @@ import com.pairing.matching.domain.model.RecommendationType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,4 +28,7 @@ public interface SpringDataMatchingRoundRepository extends JpaRepository<Matchin
 
     long countByProjectIdAndRoundTypeAndStatusNot(Long projectId, RecommendationType roundType,
                                                   MatchingRoundStatus excludedStatus);
+
+    List<MatchingRoundJpaEntity> findByStatusAndCreatedAtBefore(MatchingRoundStatus status,
+                                                                LocalDateTime threshold);
 }
