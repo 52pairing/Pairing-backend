@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Pairing 부하 테스트 빌더</title>
+<!--
+  k6 실행 명령을 만들어 주는 도구.
+
+  브라우저에서 이 파일을 그냥 열면 된다(file:// 로 동작한다). 서버가 필요 없다.
+  API 목록은 catalog.js 에서 읽는다 — 그 파일은 k6/endpoints.js 에서 자동 생성된다.
+  ES 모듈이 아니라 일반 스크립트인 이유는 file:// 에서 import 가 막히기 때문이다.
+
+  API 를 추가·수정하려면 k6/endpoints.js 를 고친 뒤:
+      k6 run k6/tools/dump-catalog.js
+-->
+<script src="catalog.js"></script>
+<script src="logic.js"></script>
+<style>
+  :root {
+    --fg:#e8ecf4; --dim:#98a2b8; --line:rgba(255,255,255,.10); --card:rgba(17,21,33,.6);
+    --accent:#7aa2ff; --ok:#4ade80; --bad:#f87171; --warn:#fbbf24; --info:#38bdf8;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:#05070f; color:var(--fg); padding:32px 20px 120px;
+    font:14.5px/1.6 -apple-system,"Segoe UI","Malgun Gothic",sans-serif;
+  }
+  .wrap { max-width:1080px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--dim); font-size:13.5px; margin-bottom:28px; }
+  h2 {
+    font-size:15px; margin:30px 0 10px; color:var(--accent);
+    display:flex; align-items:center; gap:10px;
+  }
+  h2 .n {
+    width:20px; height:20px; border-radius:50%; background:rgba(122,162,255,.18);
+    color:var(--accent); font-size:11.5px; display:grid; place-items:center; flex:none;
+  }
+  .panel { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .grid { display:grid; gap:12px; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); }
+  label.f { display:block; font-size:12.5px; color:var(--dim); margin-bottom:4px; }
+  input[type=text], input[type=number], select {
+    width:100%; background:rgba(0,0,0,.35); color:var(--fg);
+    border:1px solid var(--line); border-radius:7px; padding:7px 9px; font:inherit; font-size:13.5px;
+  }
+  input:focus, select:focus { outline:none; border-color:rgba(122,162,255,.55); }
+  .hint { color:var(--dim); font-size:11.5px; margin-top:3px; }
+  button {
+    background:rgba(122,162,255,.14); color:var(--accent); border:1px solid rgba(122,162,255,.35);
+    border-radius:7px; padding:6px 12px; font:inherit; font-size:13px; cursor:pointer;
+  }
+  button:hover { background:rgba(122,162,255,.24); }
+  button.ghost { background:transparent; color:var(--dim); border-color:var(--line); }
+  button.ghost:hover { color:var(--fg); border-color:rgba(255,255,255,.3); }
+
+  /* 계정 */
+  .acct { display:grid; grid-template-columns:1fr 1fr 150px 34px; gap:8px; margin-bottom:8px; }
+  .acct button { padding:6px 0; }
+  @media (max-width:640px) { .acct { grid-template-columns:1fr 1fr; } }
+
+  /* API 목록 */
+  .group { margin-bottom:6px; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .ghead {
+    display:flex; align-items:center; gap:10px; padding:9px 14px;
+    background:rgba(255,255,255,.03); cursor:pointer; user-select:none;
+  }
+  .ghead .t { font-weight:600; font-size:13.5px; }
+  .ghead .c { color:var(--dim); font-size:12px; margin-left:auto; }
+  .glist { padding:4px 0; }
+  .glist.hidden { display:none; }
+  .row {
+    display:flex; align-items:flex-start; gap:9px; padding:5px 14px; font-size:13px;
+  }
+  .row:hover { background:rgba(255,255,255,.03); }
+  .row input { margin-top:4px; flex:none; }
+  .row .body { min-width:0; flex:1; }
+  .row .p { font-family:ui-monospace,Consolas,monospace; font-size:12px; word-break:break-all; }
+  .row .l { color:var(--dim); font-size:11.5px; }
+  .row .w { color:var(--warn); font-size:11.5px; margin-top:1px; }
+  .badge {
+    display:inline-block; font-size:10.5px; padding:1px 6px; border-radius:4px;
+    border:1px solid var(--line); color:var(--dim); margin-right:5px; vertical-align:1px;
+  }
+  .b-get { color:#7dd3fc; border-color:rgba(125,211,252,.3); }
+  .b-post, .b-put { color:#fbbf24; border-color:rgba(251,191,36,.3); }
+  .b-role { color:#c084fc; border-color:rgba(192,132,252,.35); }
+  .b-int { color:#f472b6; border-color:rgba(244,114,182,.35); }
+  .b-need { color:var(--dim); }
+
+  /* 경고 */
+  .msgs { display:grid; gap:7px; }
+  .msg { font-size:13px; padding:8px 12px; border-radius:7px; border-left:3px solid; }
+  .m-bad { background:rgba(248,113,113,.10); border-color:var(--bad); }
+  .m-warn { background:rgba(251,191,36,.10); border-color:var(--warn); }
+  .m-info { background:rgba(56,189,248,.10); border-color:var(--info); }
+  .m-ok { background:rgba(74,222,128,.10); border-color:var(--ok); }
+
+  /* 명령 */
+  .cmdbox { position:relative; }
+  pre {
+    background:rgba(0,0,0,.55); border:1px solid var(--line); border-radius:8px;
+    padding:14px 16px; overflow-x:auto; font-size:12.5px; line-height:1.7; margin:0;
+    font-family:ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-all;
+  }
+  .tabs { display:flex; gap:6px; margin-bottom:8px; }
+  .tabs button.on { background:rgba(122,162,255,.28); color:#fff; }
+  .toolbar { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  code { background:rgba(0,0,0,.45); border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-size:12px; }
+  .note { color:var(--dim); font-size:12.5px; border-left:2px solid var(--line); padding:2px 0 2px 12px; margin:10px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Pairing 부하 테스트 빌더</h1>
+
+<div class="msg m-info" style="margin-bottom:26px">
+  <b>이 페이지는 테스트를 실행하지 않는다. 실행할 명령을 만들어 줄 뿐이다.</b>
+  브라우저는 보안상 내 PC 의 프로그램(k6)을 실행할 수 없다.
+  <br><br>
+  <b>1.</b> 아래에서 대상·계정·API·부하를 고른다 &nbsp;→&nbsp;
+  <b>2.</b> 맨 아래 <b>[명령 복사]</b> 를 누른다 &nbsp;→&nbsp;
+  <b>3.</b> <b>PowerShell 을 열고 <code>Pairing-backend</code> 폴더에서 붙여넣어 실행</b>
+  <br><br>
+  <span style="color:var(--dim)">
+    폴더가 중요하다. 리포트를 <code>k6/reports/</code> 에 상대경로로 저장하기 때문에,
+    다른 폴더에서 실행하면 테스트는 돌아도 마지막에 리포트 저장이 실패한다.
+  </span>
+</div>
+
+<!-- ===================================================== 1. 대상 -->
+<h2><span class="n">1</span>대상 서버</h2>
+<div class="panel">
+  <div class="grid">
+    <div>
+      <label class="f">스프링부트 주소 (BASE_URL)</label>
+      <input type="text" id="baseUrl" value="http://localhost:8080"/>
+      <div class="hint">배포된 dev 를 칠 때는 ALB 주소를 넣는다</div>
+    </div>
+    <div>
+      <label class="f">AI 서버 주소 (AI_BASE_URL)</label>
+      <input type="text" id="aiBaseUrl" value="http://localhost:8000"/>
+      <div class="hint">AI 항목을 고를 때만 쓴다. 파이썬에 직접 붙는다</div>
+    </div>
+    <div>
+      <label class="f">내부 API 키 (INTERNAL_API_KEY)</label>
+      <input type="text" id="internalKey" value="" placeholder="AI 항목을 고를 때만 필요"/>
+      <div class="hint">파이썬 .env 의 INTERNAL_API_KEY 와 같아야 한다</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================== 2. 계정 -->
+<h2><span class="n">2</span>테스트 계정</h2>
+<div class="panel">
+  <div class="msg m-warn" style="margin-bottom:14px">
+    <b>이 서비스는 로그인하면 그 계정의 이전 세션을 끊는다.</b><br>
+    그래서 <b>동시에 살아 있을 수 있는 세션 수 = 계정 수</b>다. 계정 1개로 VU 50 을 돌려도
+    로그인은 setup 에서 한 번만 하므로 동작은 하지만, 50개 VU 가 같은 토큰·같은 사용자 데이터를
+    공유하게 된다. 계정 단위 캐시나 락이 있으면 실제와 다른 숫자가 나온다.
+    <br><br>
+    <b>권장: VU 10명당 계정 1개, 최대 20개까지</b> (기본값 VU 150 이면 15개다).
+    비율을 더 높이면 테스트 계정을 수십 개 만들어야 해서 현실적이지 않고,
+    계정당 VU 10명이면 계정 단위 캐시·락의 영향을 판별하기에 충분하다.
+    <br><br>
+    역할이 필요한 API 를 고르면 그 역할 계정이 최소 1개는 있어야 한다.
+  </div>
+
+  <div id="accts"></div>
+  <div class="toolbar">
+    <button onclick="addAcct()">+ 계정 추가</button>
+    <button class="ghost" onclick="addAcct('','','CLIENT')">+ 클라이언트 추가</button>
+    <span class="hint" id="acctSummary" style="margin-left:auto"></span>
+  </div>
+  <div class="note">
+    비밀번호에 <code>:</code> 가 들어가면 이 형식으로 표현할 수 없다. 테스트 계정은 <code>:</code> 없는
+    비밀번호를 쓴다. 그리고 <b>비밀번호를 틀리면 안 된다</b> — 실패가 IP 기준 20회를 넘으면
+    그 IP 가 2시간 차단된다.
+  </div>
+</div>
+
+<!-- ===================================================== 3. 시나리오 -->
+<h2><span class="n">3</span>부하 시나리오</h2>
+<div class="panel">
+  <div class="grid">
+    <div>
+      <label class="f">프로파일</label>
+      <select id="profile">
+        <option value="smoke">smoke — 1 VU 30초 (스크립트 점검)</option>
+        <option value="load">load — 목표 VU 까지 올려 유지 (기본 측정)</option>
+        <option value="stress" selected>stress — 계단식 증가 (무릎 지점 찾기)</option>
+        <option value="soak">soak — 낮은 부하 장시간 (누수 확인)</option>
+      </select>
+      <div class="hint" id="profileHint"></div>
+    </div>
+    <div>
+      <label class="f">목표 VU (VUS)</label>
+      <input type="number" id="vus" value="150" min="1"/>
+      <div class="hint">stress 는 이 값의 25/50/75/100/150% 를 차례로 밟는다. <b>150 이면 38 → 75 → 113 → 150 → 225명</b>.
+        ECS 1 vCPU 는 50~100 req/s 가 천장이고, 생각 시간 1초면 VU 하나가 약 0.83 req/s 를 만든다 —
+        즉 한계는 동시 60~150명 사이다. 계단이 그 구간을 가운데 두고 지나가도록 잡은 값이다.</div>
+    </div>
+    <div>
+      <label class="f">유지 시간 (DURATION)</label>
+      <input type="text" id="duration" value="2m"/>
+      <div class="hint">stress 에서는 <b>계단 하나를 유지하는 시간</b>이다. 총 시간 = (증감+유지)×5 + 증감.
+        1 vCPU 로 묶으면 JIT·GC 안정화가 느려서 1분은 워밍업 중 수치를 재게 된다</div>
+    </div>
+    <div>
+      <label class="f">증감 시간 (RAMP)</label>
+      <input type="text" id="ramp" value="30s"/>
+      <div class="hint">VU 를 올리고 내리는 구간. 짧으면 순간 폭주가 되어 정상 부하가 아니다</div>
+    </div>
+    <div>
+      <label class="f">생각 시간 (THINK_MS)</label>
+      <input type="number" id="thinkMs" value="1000" min="0"/>
+      <div class="hint">반복 사이 대기. 0 이면 서버가 아니라 k6 한계를 재게 된다</div>
+    </div>
+    <div>
+      <label class="f">실행 이름 (TESTID)</label>
+      <input type="text" id="testid" value="before"/>
+      <div class="hint">리포트 파일명이 된다. before / after 로 두면 비교가 쉽다</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================== 4. API -->
+<h2><span class="n">4</span>호출할 API</h2>
+<div class="panel">
+  <div class="toolbar" style="margin:0 0 12px">
+    <button class="ghost" onclick="preset('polling')">프론트 폴링 경로</button>
+    <button class="ghost" onclick="preset('read')">조회 전부</button>
+    <button class="ghost" onclick="preset('public')">비로그인만</button>
+    <button class="ghost" onclick="preset('ai')">AI 만</button>
+    <button class="ghost" onclick="preset('none')">전체 해제</button>
+    <span class="hint" id="apiSummary" style="margin-left:auto"></span>
+  </div>
+  <div id="groups"></div>
+  <div style="margin-top:12px">
+    <label class="f">직접 입력 (카탈로그에 없는 key 를 추가할 때, 쉼표 구분)</label>
+    <input type="text" id="extraApis" placeholder="예) my_new_endpoint"/>
+    <div class="hint">
+      endpoints.js 에 없는 key 를 넣으면 k6 가 시작할 때 사용 가능한 목록을 보여주며 멈춘다
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================== 5. WebSocket -->
+<h2><span class="n">5</span>WebSocket (선택)</h2>
+<div class="panel">
+  <label style="display:flex; align-items:center; gap:8px; font-size:13.5px">
+    <input type="checkbox" id="wsOn"/> STOMP 연결을 유지하는 시나리오를 함께 돌린다
+  </label>
+  <div class="grid" style="margin-top:12px">
+    <div>
+      <label class="f">WebSocket VU (WS_VUS)</label>
+      <input type="number" id="wsVus" value="50" min="1"/>
+      <div class="hint">동시 접속 수. 화면을 열어 둔 사용자의 절반쯤으로 잡는다 (목표 VU 150 기준)</div>
+    </div>
+    <div>
+      <label class="f">연결 유지 시간 (WS_HOLD)</label>
+      <input type="text" id="wsHold" value="13m"/>
+      <div class="hint">기본값 13m 은 stress 전체 실행 시간이다 — 연결이 계단 내내 살아 있어야 브로커 부담이 드러난다.
+        비우면 DURATION(계단 하나) 과 같아져서 첫 계단에서 끊긴다</div>
+    </div>
+  </div>
+  <div class="note">
+    연결을 맺고 구독한 뒤 하트비트만 보내며 유지한다. 실제 사용자가 화면을 열어 둔 상태다.
+    스프링 태스크가 2대 이상이면 <b>인스턴스 간 push 유실이 재현된다</b> — 브로커가 인메모리
+    SimpleBroker 라서 그렇다(StompWebSocketConfig 주석). 부하 테스트로 드러낼 수 있는 실제 문제다.
+  </div>
+</div>
+
+<!-- ===================================================== 6. 기준 -->
+<h2><span class="n">6</span>합격 기준 (선택)</h2>
+<div class="panel">
+  <div class="grid">
+    <div><label class="f">비로그인 p95 (ms)</label><input type="number" id="p95Public" value="500"/></div>
+    <div><label class="f">조회 p95 (ms)</label><input type="number" id="p95Read" value="1000"/></div>
+    <div><label class="f">쓰기 p95 (ms)</label><input type="number" id="p95Write" value="1500"/></div>
+    <div><label class="f">AI p95 (ms)</label><input type="number" id="p95Ai" value="30000"/></div>
+    <div><label class="f">허용 실패율</label><input type="text" id="maxFail" value="0.01"/></div>
+  </div>
+  <div class="note">
+    기준을 넘기면 k6 가 종료 코드 99 로 끝난다. AI 를 조회와 같은 기준으로 묶지 않는 이유는,
+    AI 하나가 전체 p95 를 끌어올려서 조회 성능이 나빠져도 안 보이게 되기 때문이다.
+  </div>
+</div>
+
+<!-- ===================================================== 점검 -->
+<h2><span class="n">7</span>점검</h2>
+<div class="msgs" id="checks"></div>
+
+<!-- ===================================================== 명령 -->
+<h2><span class="n">8</span>실행 명령 — 복사해서 터미널에 붙여넣는다</h2>
+<div class="cmdbox">
+  <div class="note" style="margin:0 0 12px">
+    <b>PowerShell</b> 을 열고 아래 순서로 한다. 첫 줄은 폴더 이동, 둘째 줄이 복사한 명령이다.
+    <pre style="margin-top:8px; font-size:12px">cd C:\Users\user\Desktop\final-module\Pairing-backend
+(여기에 붙여넣기)</pre>
+    처음이라면 <b>프로파일을 smoke</b> 로 두고 한 번 돌려 본다. 30초 만에 끝나고
+    설정이 맞는지 확인할 수 있다.
+  </div>
+  <div class="tabs">
+    <button id="tab-ps" class="on" onclick="setShell('ps')">PowerShell</button>
+    <button id="tab-sh" onclick="setShell('sh')">bash</button>
+  </div>
+  <pre id="cmd">…</pre>
+  <div class="toolbar">
+    <button onclick="copyCmd()">명령 복사</button>
+    <button class="ghost" onclick="saveCfg()">설정 저장</button>
+    <button class="ghost" onclick="loadCfg()">설정 불러오기</button>
+    <span class="hint" id="copyMsg"></span>
+  </div>
+</div>
+
+<div class="note" style="margin-top:24px">
+  실행이 끝나면 <code>k6/reports/&lt;실행이름&gt;.html</code> 이 만들어진다. 개선 전/후를 나란히
+  보려면 <code>k6/compare.html</code> 에 두 실행의 <code>.json</code> 을 넣는다.<br>
+  서버 쪽 지표(JVM·톰캣 스레드·DB 풀)는 Grafana 의 스프링부트 성능 대시보드를 같은 시간대로
+  맞춰 본다. k6 숫자와의 차이가 네트워크·큐 대기 시간이다.
+</div>
+
+</div>
+
+<script>
+/* =========================================================================
+ * 상태
+ * ======================================================================= */
+const CATALOG = window.K6_CATALOG || [];
+const GROUP_LABELS = window.K6_GROUP_LABELS || {};
+const GROUP_ORDER = ['public', 'read', 'write', 'ai'];
+const STORAGE_KEY = 'pairing-k6-builder';
+
+let shell = 'ps';
+const selected = new Set();
+
+/* =========================================================================
+ * 계정
+ * ======================================================================= */
+function addAcct(email, password, role) {
+  const row = document.createElement('div');
+  row.className = 'acct';
+  row.innerHTML =
+    '<input type="text" class="a-email" placeholder="이메일" value="' + (email || '') + '"/>' +
+    '<input type="text" class="a-pw" placeholder="비밀번호" value="' + (password || '') + '"/>' +
+    '<select class="a-role">' +
+      '<option value="FREELANCER">FREELANCER</option>' +
+      '<option value="CLIENT">CLIENT</option>' +
+    '</select>' +
+    '<button class="ghost" title="삭제">×</button>';
+  row.querySelector('.a-role').value = role || 'FREELANCER';
+  row.querySelector('button').onclick = () => { row.remove(); render(); };
+  row.querySelectorAll('input,select').forEach((el) => el.addEventListener('input', render));
+  document.getElementById('accts').appendChild(row);
+  render();
+}
+
+function accounts() {
+  return Array.from(document.querySelectorAll('.acct'))
+    .map((row) => ({
+      email: row.querySelector('.a-email').value.trim(),
+      password: row.querySelector('.a-pw').value,
+      role: row.querySelector('.a-role').value,
+    }))
+    .filter((a) => a.email && a.password);
+}
+
+/* =========================================================================
+ * API 목록
+ * ======================================================================= */
+function buildGroups() {
+  const host = document.getElementById('groups');
+  host.innerHTML = '';
+
+  for (const group of GROUP_ORDER) {
+    const items = CATALOG.filter((e) => e.group === group);
+    if (!items.length) continue;
+
+    const box = document.createElement('div');
+    box.className = 'group';
+
+    const head = document.createElement('div');
+    head.className = 'ghead';
+    head.innerHTML =
+      '<input type="checkbox" class="g-all"/>' +
+      '<span class="t">' + (GROUP_LABELS[group] || group) + '</span>' +
+      '<span class="c">' + items.length + '개</span>';
+    box.appendChild(head);
+
+    const list = document.createElement('div');
+    list.className = 'glist' + (group === 'public' ? ' hidden' : '');
+    for (const item of items) list.appendChild(apiRow(item));
+    box.appendChild(list);
+
+    // 헤더의 체크박스는 그룹 전체 선택, 헤더 본문 클릭은 접기/펼치기.
+    head.querySelector('.g-all').onclick = (event) => {
+      event.stopPropagation();
+      const on = event.target.checked;
+      for (const item of items) {
+        if (on) selected.add(item.key); else selected.delete(item.key);
+      }
+      syncChecks();
+      render();
+    };
+    head.onclick = () => list.classList.toggle('hidden');
+
+    host.appendChild(box);
+  }
+}
+
+function apiRow(item) {
+  const row = document.createElement('div');
+  row.className = 'row';
+
+  const badges = [];
+  badges.push('<span class="badge b-' + item.method.toLowerCase() + '">' + item.method + '</span>');
+  if (item.auth === 'CLIENT' || item.auth === 'FREELANCER') {
+    badges.push('<span class="badge b-role">' + item.auth + ' 전용</span>');
+  } else if (item.auth === 'internal') {
+    badges.push('<span class="badge b-int">내부 키</span>');
+  } else if (item.auth === 'none') {
+    badges.push('<span class="badge">비로그인</span>');
+  } else {
+    badges.push('<span class="badge">로그인</span>');
+  }
+  for (const need of item.needs || []) {
+    badges.push('<span class="badge b-need">' + need + ' 필요</span>');
+  }
+
+  row.innerHTML =
+    '<input type="checkbox" data-key="' + item.key + '"/>' +
+    '<div class="body">' +
+      '<div>' + badges.join('') + '<span class="p">' + item.path + '</span></div>' +
+      '<div class="l">' + esc(item.label || '') + '</div>' +
+      (item.warn ? '<div class="w">' + esc(item.warn) + '</div>' : '') +
+    '</div>';
+
+  const box = row.querySelector('input');
+  box.onchange = () => {
+    if (box.checked) selected.add(item.key); else selected.delete(item.key);
+    render();
+  };
+  return row;
+}
+
+function syncChecks() {
+  document.querySelectorAll('.row input[data-key]').forEach((box) => {
+    box.checked = selected.has(box.dataset.key);
+  });
+  document.querySelectorAll('.group').forEach((box) => {
+    const keys = Array.from(box.querySelectorAll('.row input[data-key]')).map((b) => b.dataset.key);
+    const all = keys.length > 0 && keys.every((k) => selected.has(k));
+    box.querySelector('.g-all').checked = all;
+  });
+}
+
+function preset(kind) {
+  selected.clear();
+  if (kind === 'polling') {
+    // 프론트가 주기적으로 부르는 경로. 실제 트래픽에서 비중이 가장 크다.
+    ['me', 'notifs_unread', 'chat_unread', 'notifs', 'chatrooms', 'negos_waiting'].forEach((k) => {
+      if (CATALOG.some((e) => e.key === k)) selected.add(k);
+    });
+  } else if (kind === 'read') {
+    CATALOG.filter((e) => e.group === 'read').forEach((e) => selected.add(e.key));
+  } else if (kind === 'public') {
+    CATALOG.filter((e) => e.group === 'public').forEach((e) => selected.add(e.key));
+  } else if (kind === 'ai') {
+    CATALOG.filter((e) => e.group === 'ai').forEach((e) => selected.add(e.key));
+  }
+  syncChecks();
+  render();
+}
+
+/* =========================================================================
+ * 설정 모으기 · 점검 · 명령
+ *
+ * 실제 계산은 logic.js 가 한다. 여기서는 화면에서 값을 모아 넘기기만 한다.
+ * (그래야 브라우저 없이 Node 로 검증할 수 있다 — k6/tools/test-builder.mjs)
+ * ======================================================================= */
+function val(id) { return document.getElementById(id).value.trim(); }
+
+function extraKeys() {
+  return String(document.getElementById('extraApis').value || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+function config() {
+  return {
+    baseUrl: val('baseUrl'),
+    aiBaseUrl: val('aiBaseUrl'),
+    internalKey: val('internalKey'),
+    accounts: accounts(),
+    apis: Array.from(selected),
+    extraApis: extraKeys(),
+    profile: val('profile'),
+    vus: val('vus'),
+    duration: val('duration'),
+    ramp: val('ramp'),
+    thinkMs: val('thinkMs'),
+    testid: val('testid'),
+    ws: document.getElementById('wsOn').checked,
+    wsVus: val('wsVus'),
+    wsHold: val('wsHold'),
+    p95Public: val('p95Public'),
+    p95Read: val('p95Read'),
+    p95Write: val('p95Write'),
+    p95Ai: val('p95Ai'),
+    maxFail: val('maxFail'),
+  };
+}
+
+function setShell(kind) {
+  shell = kind;
+  document.getElementById('tab-ps').className = kind === 'ps' ? 'on' : '';
+  document.getElementById('tab-sh').className = kind === 'sh' ? 'on' : '';
+  render();
+}
+
+function copyCmd() {
+  const text = document.getElementById('cmd').textContent;
+  navigator.clipboard.writeText(text).then(
+    () => flash('복사했다. Pairing-backend 폴더에서 실행한다.'),
+    () => flash('복사가 막혔다. 직접 선택해서 복사한다.')
+  );
+}
+
+function flash(text) {
+  const el = document.getElementById('copyMsg');
+  el.textContent = text;
+  setTimeout(() => { el.textContent = ''; }, 3500);
+}
+
+/* =========================================================================
+ * 저장 / 불러오기
+ * ======================================================================= */
+const FIELDS = ['baseUrl','aiBaseUrl','internalKey','profile','vus','duration','ramp',
+                'thinkMs','testid','wsVus','wsHold','p95Public','p95Read','p95Write',
+                'p95Ai','maxFail','extraApis'];
+
+function saveCfg() {
+  const data = { fields: {}, accounts: accounts(), apis: Array.from(selected),
+                 ws: document.getElementById('wsOn').checked };
+  for (const id of FIELDS) data.fields[id] = document.getElementById(id).value;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    flash('이 브라우저에 저장했다.');
+  } catch (e) {
+    flash('저장할 수 없다: ' + e.message);
+  }
+}
+
+function loadCfg() {
+  let data;
+  try {
+    data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+  } catch (e) { data = null; }
+  if (!data) { flash('저장된 설정이 없다.'); return; }
+
+  for (const id of FIELDS) {
+    if (data.fields && data.fields[id] !== undefined) document.getElementById(id).value = data.fields[id];
+  }
+  document.getElementById('wsOn').checked = !!data.ws;
+  document.getElementById('accts').innerHTML = '';
+  (data.accounts || []).forEach((a) => addAcct(a.email, a.password, a.role));
+  if (!(data.accounts || []).length) addAcct();
+  selected.clear();
+  (data.apis || []).forEach((k) => selected.add(k));
+  syncChecks();
+  render();
+  flash('불러왔다.');
+}
+
+/* =========================================================================
+ * 렌더
+ * ======================================================================= */
+function esc(text) {
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+const PROFILE_HINTS = {
+  smoke: '스크립트가 맞는지만 본다. 부하가 아니다.',
+  load: '개선 전/후 숫자를 뽑는 기본 프로파일이다.',
+  stress: '기준이 깨지는 지점을 찾는다. "몇 VU 까지 버티는가"가 개선을 가장 잘 보여준다.',
+  soak: '오래 돌려 커넥션 누수와 힙 증가를 본다.',
+};
+
+function render() {
+  const accts = accounts();
+  const byRole = { CLIENT: 0, FREELANCER: 0 };
+  accts.forEach((a) => { byRole[a.role] += 1; });
+  document.getElementById('acctSummary').textContent =
+    accts.length + '개 (프리랜서 ' + byRole.FREELANCER + ' / 클라이언트 ' + byRole.CLIENT + ')';
+
+  document.getElementById('apiSummary').textContent = selected.size + '개 선택';
+  document.getElementById('profileHint').textContent =
+    PROFILE_HINTS[document.getElementById('profile').value] || '';
+
+  const host = document.getElementById('checks');
+  host.innerHTML = '';
+  for (const [kind, text] of K6Logic.checks(config(), CATALOG)) {
+    const div = document.createElement('div');
+    div.className = 'msg m-' + kind;
+    div.innerHTML = esc(text);
+    host.appendChild(div);
+  }
+
+  document.getElementById('cmd').textContent = K6Logic.buildCommand(config(), CATALOG, shell);
+}
+
+/* =========================================================================
+ * 시작
+ * ======================================================================= */
+(function init() {
+  if (!CATALOG.length) {
+    document.getElementById('groups').innerHTML =
+      '<div class="msg m-bad">catalog.js 를 읽지 못했다. ' +
+      'k6/builder/catalog.js 가 있는지 확인하고, 없으면 ' +
+      '<code>k6 run k6/tools/dump-catalog.js</code> 로 만든다.</div>';
+    return;
+  }
+  buildGroups();
+  addAcct('', '', 'FREELANCER');
+  addAcct('', '', 'CLIENT');
+  preset('polling');
+  document.querySelectorAll('input,select').forEach((el) => {
+    el.addEventListener('input', render);
+    el.addEventListener('change', render);
+  });
+  render();
+})();
+</script>
+</body>
+</html>
