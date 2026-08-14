@@ -50,6 +50,19 @@ AI매칭 전체 파이프라인 (요구사항 R01~R05). 관련 레포 2개:
 - **알림은 `MatchingNotifier` 한곳에서만 보낸다 (2026-08-10)**: 매칭 요청 발송/수락/거절/만료/재추천 완료 5종. 문구·링크 경로가 흩어지면 같은 상황에 화면마다 다른 말이 나가서 모아놨다. 만료 알림은 `MatchingRequestExpirer.expireNow()`에서 발행한다 — 스케줄러 경로와 수락/거절 중 발견되는 경로가 모두 거기를 지나므로 한 번만 나간다.
 - **알림은 커밋 후에 별도 트랜잭션으로 보낸다 (2026-08-13 개정)**: 서비스가 `MatchingNotificationRequested`를 발행하고 `MatchingNotificationListener`(`AFTER_COMMIT`)가 받아 `MatchingNotifier`(각 메서드 `REQUIRES_NEW`)를 부른다. **`MatchingNotifier`를 서비스에서 직접 부르지 말 것.** 이전엔 같은 트랜잭션에서 부르고 예외를 삼켰는데, 그걸로는 롤백을 막을 수 없다 — `NotificationCreateUseCase.create()`가 `@Transactional`(REQUIRED)이라 그 안에서 난 예외가 **잡히기 전에** 공유 트랜잭션을 rollback-only로 찍어버리고, 커밋 시점에 `UnexpectedRollbackException`이 나서 매칭 요청·수락이 통째로 사라진다(알림 도메인 담당자 리포트, 실제 장애는 없었고 실패 경로만 문제였음). 주의할 점 두 가지: ① **리스너에 `@Transactional`을 붙이면 안 된다** — 트랜잭션 경계 안에서 잡으면 같은 문제가 재현된다. 잡는 것은 경계 밖(리스너), 트랜잭션은 안쪽(`MatchingNotifier`)이다. ② **`REQUIRES_NEW`를 빠뜨리면 INSERT가 조용히 버려진다** — `AFTER_COMMIT`은 커밋이 끝나가는 트랜잭션과 같은 스레드에서 돌기 때문이다(협상 도메인이 이걸 빠뜨려 알림이 하나도 저장되지 않았던 사례 있음).
 - **`ProjectDirectoryPort.findClientAccountId`는 못 찾으면 `null`을 돌려준다** — `orElseThrow`로 바꾸지 않았다. `ClientGradeResolver`가 같은 포트를 쓰면서 프로필이 없으면 조용히 SILVER(가중치 0%)로 떨어뜨리는데, 던지게 바꾸면 추천 라운드 생성 자체가 실패한다. 대신 `MatchingNotifier.send()`가 `null`을 걸러 "받을 계정을 찾지 못했다" 로그를 남기고 발송을 건너뛴다.
+- **프리랜서 스냅샷은 "후보 노출 시점"에만 찍는다 (2026-08-14)**: `matching_snapshot`(FREELANCER)에
+  card + condition + resume 을 얼린다(`MatchingRoundCreationService.saveFreelancerSnapshots`).
+  **수락 시점 캡처는 없앴다** — 두 시점이 다 남으면 같은 타입에 모양이 다른 JSON 두 종류가 섞인다.
+  **협상 출발 조건도 이 스냅샷에서 읽는다**(`MatchingRequestService.exposedConditionOf`). 클라이언트가
+  보고 고른 금액에서 협상이 시작돼야 하고, 추천 뒤 프리랜서가 단가를 올렸다고 출발점이 따라 올라가면
+  안 된다. 스냅샷이 없으면 라이브로 대체하고 로그를 남긴다.
+  **캡처 실패는 삼킨다** — 이력서가 없으면 `findResume`이 MT_015를 던지는데, 같은 트랜잭션이라 그게
+  터지면 방금 저장한 후보 전체가 롤백된다(후보 1명 때문에 회차가 통째로 FAILED). 스냅샷은 상세 화면용
+  부가 자료다.
+- **재추천 레이트리밋은 없앴다 (2026-08-14)**: 키가 계정 단위(`ACCOUNT_{id}`)라 프로젝트를 구분하지
+  못해, 여러 프로젝트를 동시에 진행하면 1시간 10회 한도에 정상 사용 중 막혔다(실제로 배포에서 429).
+  총량은 비즈니스 규칙(무료 1회 / 유료 5회, 프로젝트 단위)이 이미 막는다. **연타 방어가 사라졌으므로
+  프론트가 202 응답 후 완료 알림까지 버튼을 잠가야 한다.** `MT_011`은 이제 아무도 던지지 않는다.
 - **회차 레코드는 AI 호출 전에 커밋한다 (2026-08-13)**: `openInitialRound`(스냅샷+회차) 와
   `MatchingRoundFiller.fill`(AI 호출) 은 **별도 트랜잭션**이다. 한 트랜잭션으로 묶으면 (1) AI 호출이
   끝날 때까지 회차 행이 안 보이고 (2) 실패 시 회차 행까지 롤백돼 사라져서 무엇이 실패했는지 알 수
