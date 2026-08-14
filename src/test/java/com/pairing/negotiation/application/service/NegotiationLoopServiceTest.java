@@ -12,6 +12,7 @@ import com.pairing.negotiation.application.port.out.FreelancerConditionReaderPor
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.usecase.NegotiationAgentUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
+import com.pairing.negotiation.application.usecase.NegotiationProjectOutcomeUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.AnswerInput;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase.FloorInput;
 import com.pairing.negotiation.domain.service.NegotiationProposalStub;
@@ -92,6 +93,8 @@ class NegotiationLoopServiceTest {
     private NegotiationLoopUseCase loopUseCase;
     @Autowired
     private NegotiationAgentUseCase agentUseCase;
+    @Autowired
+    private NegotiationProjectOutcomeUseCase projectOutcomeUseCase;
     @Autowired
     private NegotiationRepository negotiationRepository;
     @Autowired
@@ -587,6 +590,63 @@ class NegotiationLoopServiceTest {
         assertThat(afterLateRun.getTotalRound()).isZero();
         assertThat(messageRepository.findByNegotiationId(negotiationId))
                 .noneMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL);
+    }
+
+    // ----- 프로젝트 취소 → 진행 중 협상 결렬 (project → negotiation) -----
+
+    @Test
+    @DisplayName("프로젝트 취소: 진행 중 협상을 결렬시킨다(사유·매칭 종결·화면 갱신)")
+    void projectCanceledFailsInProgressNegotiation() {
+        startBothSides();   // 라운드1, IN_PROGRESS
+
+        projectOutcomeUseCase.failInProgressForCanceledProject(PROJECT_ID);
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.FAILED);
+        assertThat(reloaded.getEndReason()).isEqualTo("프로젝트가 취소되어 협상이 종료되었습니다.");
+        // 종료 사유가 "종료…종료" 중복 없이 문장 그대로 로그에 남는다(giveUp 접두어와 다른 경로).
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .anyMatch(m -> m.getContent().equals("프로젝트가 취소되어 협상이 종료되었습니다."));
+    }
+
+    @Test
+    @DisplayName("프로젝트 취소: 이미 타결(AGREED)된 협상은 건드리지 않는다")
+    void projectCanceledLeavesAgreedUntouched() {
+        agreeOnPropose = true;
+        startBothSides();   // 대리인 합의로 타결(AGREED)
+
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow().getStatus())
+                .isEqualTo(NegotiationStatus.AGREED);
+
+        projectOutcomeUseCase.failInProgressForCanceledProject(PROJECT_ID);
+
+        // 타결은 결렬이 아니라 사실이라 그대로 둔다(계약 도메인이 Contract.terminate 로 정리).
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow().getStatus())
+                .isEqualTo(NegotiationStatus.AGREED);
+    }
+
+    @Test
+    @DisplayName("프로젝트 취소: 대리인이 도는 중이어도 예약을 정리해 뒤늦은 A2A 응답이 버려진다")
+    void projectCanceledClearsAgentReservation() {
+        // 양측 제출로 대리인이 예약된 상태(RUNNING). A2A 응답은 아직 안 왔다.
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4800000")));
+        loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "5200000")));
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow().getAgentState())
+                .isEqualTo(NegotiationAgentState.RUNNING);
+
+        projectOutcomeUseCase.failInProgressForCanceledProject(PROJECT_ID);
+
+        Negotiation afterCancel = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(afterCancel.getStatus()).isEqualTo(NegotiationStatus.FAILED);
+        assertThat(afterCancel.getAgentState()).isEqualTo(NegotiationAgentState.IDLE);
+
+        // 뒤늦게 도착한 A2A 응답: 예약이 없으므로 조용히 빠지고 라운드도 안 오른다.
+        runAgent(NegotiationEventType.STARTED);
+        Negotiation afterLateRun = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(afterLateRun.getStatus()).isEqualTo(NegotiationStatus.FAILED);
+        assertThat(afterLateRun.getTotalRound()).isZero();
     }
 
     // ----- 대리인(A2A) 비동기 실행 -----
