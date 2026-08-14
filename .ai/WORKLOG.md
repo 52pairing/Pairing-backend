@@ -1774,3 +1774,40 @@ findRequest(requestId, 프리랜서_accountId)
 **변이 테스트**: 임계 시각 계산을 뒤집으면 "아직 진행 중일 수 있는 회차는 건드리지 않는다"가
 `expected: RUNNING but was: FAILED`로 실패한다 — 정상 진행 중인 회차를 다시 불러 Gemini 비용을
 두 배로 쓰는 상황이 실제로 잡힌다.
+
+---
+
+## 2026-08-13 (10) — (9)에서 "검증 못 했다"고 적은 두 가지를 실제로 검증
+
+### 1. 트랜잭션 분리가 실제로 됐는지 (실패 경로)
+
+기존 `RecruitingStartedEventListenerTest`가 이미 이벤트 경로를 통째로 타고 있었지만 **성공 경로만**
+있었다. 이번에 바꾼 핵심은 실패했을 때의 동작이라 그게 빠져 있으면 의미가 없다.
+
+`failedInitialRecommendationLeavesAFailedRound` 추가 — AI 호출이 터져도 회차가 `FAILED`로 남고
+스냅샷도 남는지 본다.
+
+**변이 테스트**: 옛 구조(회차 생성 + AI 호출을 한 트랜잭션)로 되돌리면
+`java.util.NoSuchElementException: No value present` — **회차 행 자체가 없다.** 트랜잭션이 실제로
+쪼개졌다는 증명이 이 한 줄이다.
+
+### 2. 행 잠금이 동시 상황에서 실제로 막는지
+
+`concurrentRecoveryFillsTheRoundOnlyOnce` 추가. 스레드 두 개가 같은 멈춘 회차를 동시에 집게 하고,
+AI 호출이 **한 번만** 나가는지 본다.
+
+**변이 테스트**: `findByIdForUpdate` → `findById` 로 되돌리면 `Wanted 1 time` 으로 실패한다
+(두 번 부른다). 잠금이 실제로 동작한다.
+
+**flaky 방지**: 고정 `sleep` 대신 (a) 첫 스레드가 AI 호출 안에 들어간 것을 래치로 확인하고
+(b) 두 번째 스레드가 잠금 대기(BLOCKED/WAITING)에 들어갈 때까지 스레드 상태를 폴링한다.
+그냥 재우면 두 번째가 도착도 안 한 상태에서 풀어줘 **통과하지만 아무것도 검증 못 하는** 테스트가 된다.
+`cleanTest`로 4회 연속 강제 재실행해 안정성을 확인했다(Gradle이 up-to-date로 건너뛰면 반복이
+의미가 없다 — 처음에 그렇게 돌려서 2초 만에 "통과"가 나왔다).
+
+### 아직 검증 못 한 것 (남겨둠)
+
+실서버에서 결제 → 추천 생성 → 후보 표시 전 구간을 실제로 돌려본 적은 없다. Gemini 키와
+Pairing-python이 같이 떠 있어야 한다. 배포 후 수동 확인이 필요하다.
+
+`./gradlew clean build` — **553 tests, 0 failures**.

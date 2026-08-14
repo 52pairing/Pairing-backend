@@ -74,6 +74,8 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.List;
 import java.util.Map;
 
@@ -86,6 +88,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -532,6 +535,58 @@ class MatchingIntegrationTest {
         assertThat(matchingCandidateJpaRepository.count()).isEqualTo(candidateCountAfterFirst);
         assertThat(matchingRoundRepository.findById(stale.getId()).orElseThrow().getStatus())
                 .isEqualTo(MatchingRoundStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("두 인스턴스가 같은 회차를 동시에 집어도 AI는 한 번만 부른다")
+    void concurrentRecoveryFillsTheRoundOnlyOnce() throws Exception {
+        // 복구 스케줄러는 인스턴스마다 같은 크론(0 */5)으로 돌아서 **동시에 뜨는 게 정상**이다.
+        // 상태 확인만으로는 두 트랜잭션이 나란히 RUNNING 을 읽고 둘 다 진행한다 - 그래서 행을 잠근다.
+        // 태스크가 1개여도 롤링 배포 중에는 항상 잠깐 인스턴스가 둘이다.
+        seedRunningRoundCreatedMinutesAgo(30);
+
+        CountDownLatch insideAiCall = new CountDownLatch(1);
+        CountDownLatch releaseAiCall = new CountDownLatch(1);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
+                .willAnswer(invocation -> {
+                    insideAiCall.countDown();
+                    releaseAiCall.await(10, TimeUnit.SECONDS);
+                    return new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
+                            new RankedFreelancer(freelancerAccountId, 91.0, "요구 스킬 일치", 0.8125)));
+                });
+
+        Thread first = new Thread(staleRoundRecoveryService::recoverStaleRounds, "recovery-1");
+        first.start();
+        // 첫 번째가 AI 호출 안에 들어갔다 = 회차 행을 잠근 상태다.
+        assertThat(insideAiCall.await(10, TimeUnit.SECONDS)).isTrue();
+
+        Thread second = new Thread(staleRoundRecoveryService::recoverStaleRounds, "recovery-2");
+        second.start();
+        // 두 번째가 잠금 대기에 실제로 들어갈 때까지 기다린다. 그냥 재우면(sleep) 아직 도착도 안 한
+        // 상태에서 풀어줘 **통과하지만 아무것도 검증하지 못하는** 테스트가 된다.
+        awaitBlocked(second);
+
+        releaseAiCall.countDown();
+        first.join(15_000);
+        second.join(15_000);
+
+        // 잠금이 없으면 두 번 부르고 후보도 두 번 저장된다.
+        verify(matchingPort, times(1)).recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong());
+        assertThat(matchingCandidateJpaRepository.count()).isEqualTo(1);
+    }
+
+    /** 스레드가 잠금 대기(BLOCKED/WAITING)에 들어갈 때까지 기다린다. 고정 sleep 대신 상태를 본다. */
+    private void awaitBlocked(Thread thread) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            Thread.State state = thread.getState();
+            if (state == Thread.State.BLOCKED || state == Thread.State.WAITING
+                    || state == Thread.State.TIMED_WAITING) {
+                return;
+            }
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("두 번째 스레드가 잠금 대기에 들어가지 않았다");
     }
 
     @Test
