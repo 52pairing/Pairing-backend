@@ -26,7 +26,8 @@ public enum MatchingErrorCode implements BaseErrorCode {
     FREELANCER_NOT_FOUND(HttpStatus.NOT_FOUND, "MT_015", "프리랜서를 찾을 수 없습니다."),
     REQUEST_EXPIRED(HttpStatus.BAD_REQUEST, "MT_016", "응답 기한이 지나 요청이 자동 만료되었습니다."),
     CANDIDATE_NOT_SELECTABLE(HttpStatus.BAD_REQUEST, "MT_017", "선택할 수 없는 후보입니다."),
-    POSITION_ALREADY_FILLED(HttpStatus.BAD_REQUEST, "MT_018", "모집 인원이 모두 채워져 재추천할 수 없습니다.");
+    POSITION_ALREADY_FILLED(HttpStatus.BAD_REQUEST, "MT_018", "모집 인원이 모두 채워져 재추천할 수 없습니다."),
+    CANDIDATE_ALREADY_REQUESTED(HttpStatus.BAD_REQUEST, "MT_019", "이미 매칭 요청을 보낸 후보는 거절할 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;
