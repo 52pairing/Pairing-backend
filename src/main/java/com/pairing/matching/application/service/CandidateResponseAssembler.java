@@ -45,8 +45,13 @@ class CandidateResponseAssembler {
             throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
         }
 
+        // **회차가 아니라 포지션 전체**를 읽는다. 재추천은 새 회차를 만드는데 최신 회차만 보여주면
+        // 이전 회차 후보가 화면에서 사라지고, R02 예외조건 5(이미 추천된 프리랜서는 다음 회차에서 제외)
+        // 때문에 다시 나올 방법도 없다 - 유료 재추천으로 후보를 늘리려던 클라이언트가 오히려 잃는다.
+        //
+        // 인자로 받은 round 는 머리말(회차 번호·유형·노출 인원·재추천 가능 여부)에만 쓴다.
         List<MatchingCandidate> exposedCandidates = matchingCandidateRepository
-                .findByRoundIdAndExposedTrueOrderByRankNo(round.getId());
+                .findExposedByPositionId(round.getPositionId());
         boolean budgetWarned = exposedCandidates.stream()
                 .anyMatch(CandidateResponseAssembler::hasGuardReason);
         List<CandidateResponse> candidates = exposedCandidates.stream()

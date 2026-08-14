@@ -1552,3 +1552,56 @@ findRequest(requestId, 프리랜서_accountId)
 클라이언트 계정에 `client_profile` 이 없으면 여전히 AC_002 가 난다. 그건 클라이언트로선 진짜 데이터
 이상이고 account 도메인의 계약이므로 그대로 둔다. 프리랜서에게 `client_profile` 이 없는 것은
 **정상**이고, 그 경우가 이번 버그였다.
+
+---
+
+## 2026-08-13 (5) — 재추천하면 이전 회차 후보가 화면에서 사라지던 버그
+
+### 증상
+
+후보 2명을 받고 선택도 거절도 하지 않은 상태에서 **유료 재추천 1명**을 요청했더니, 화면에
+새 1명만 남고 **기존 2명이 사라졌다.**
+
+### 원인
+
+후보 목록 조회가 **회차(round) 단위**였다.
+
+- `MatchingCandidateService.findCandidates` → `findLatestByPositionId` (최신 회차 하나)
+- `CandidateResponseAssembler.build` → `findByRoundIdAndExposedTrueOrderByRankNo` (그 회차 후보만)
+
+재추천은 새 회차를 만드니 이전 회차 후보가 화면에서 빠진다.
+
+### 왜 단순한 표시 문제가 아닌가
+
+**R02 예외조건 5**: "동일한 프로젝트 안에서는 이미 추천된 프리랜서가 재추천 결과에 다시 노출되지
+않는다"(`findFreelancerIdsByProjectId` → 파이썬 하드필터의 `excluded_ids`).
+
+즉 사라진 후보는 **다시 나올 방법이 없다.** 재추천을 몇 번 더 눌러도 그 사람들은 제외 대상이다.
+후보를 늘리려고 돈을 낸 클라이언트가 오히려 후보를 잃는 구조였다. 유료 재추천은 `quantity > vacancy`
+를 막는다 — **빈 자리만큼 더 받는** 기능이라 애초에 누적이 전제다.
+
+### 고친 것
+
+- `MatchingCandidateRepository.findExposedByPositionId` 신규 — 포지션의 **모든 회차** 노출 후보를
+  `round_no DESC, rank_no ASC` 로. `rank_no` 는 회차 안에서만 유효한 순위라 회차를 먼저 정렬해야 한다.
+  최신 회차가 위로 온다(방금 재추천으로 받은 후보를 스크롤해서 찾게 하면 안 된다).
+- `CandidateResponseAssembler.build` 가 이걸 쓴다. 인자로 받는 `round` 는 이제 **머리말 전용**이다
+  (회차 번호·유형·노출 인원·무료/유료 재추천 가능 여부).
+- `MatchingCandidateService.rejectCandidate` 가 거절한 후보의 회차가 아니라 **포지션의 최신 회차**로
+  조립한다. 안 그러면 옛 회차 후보를 거절했을 때 머리말이 과거 회차로 되돌아가고 재추천 버튼 상태까지
+  어긋난다.
+
+### 건드리지 않은 것
+
+- **선택(요청 발송) 경로는 원래부터 정상이었다.** `MatchingRequestService` 가 후보의 `roundId` 를
+  직접 따라가므로(`findById(candidate.getRoundId())`) 옛 회차 후보도 그대로 선택할 수 있다.
+  최신 회차를 강제하는 곳이 없어서 조회만 고치면 됐다.
+- 거절한 후보는 목록에서 빼지 않는다. 회차 단위로 볼 때의 기존 규칙(`rejected` 플래그만 붙음)과
+  같게 뒀다.
+
+### 검증
+
+`./gradlew clean build` — **524 tests, 0 failures**. 회귀 테스트 2건 추가.
+
+**변이 테스트로 확인함**: 조회를 회차 단위로 되돌리면 `candidates.length()` 가 **3 대신 1** 이 되어
+실패한다. 신고된 증상("2명이 사라지고 1명만 나옴")과 정확히 같은 수치다.

@@ -53,6 +53,13 @@ public class MatchingCandidateRepositoryAdapter implements MatchingCandidateRepo
     }
 
     @Override
+    public List<MatchingCandidate> findExposedByPositionId(Long positionId) {
+        return springDataRepository.findExposedByPositionId(positionId).stream()
+                .map(matchingCandidateMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public List<Long> findFreelancerIdsByProjectId(Long projectId) {
         return springDataRepository.findDistinctFreelancerIdByProjectId(projectId);
     }

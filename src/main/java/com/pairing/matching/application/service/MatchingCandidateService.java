@@ -39,7 +39,10 @@ public class MatchingCandidateService implements MatchingCandidateQueryUseCase, 
         candidate.reject();
         matchingCandidateRepository.save(candidate);
 
-        MatchingRound round = matchingRoundRepository.findById(candidate.getRoundId())
+        // 거절한 후보가 속한 회차가 아니라 **포지션의 최신 회차**로 조립한다. 목록이 회차를 넘어
+        // 누적되므로, 옛 회차 후보를 거절했다고 머리말(회차 번호·재추천 가능 여부)이 과거로
+        // 되돌아가면 안 된다 - 화면이 "1회차"로 표시되면서 재추천 버튼 상태까지 어긋난다.
+        MatchingRound round = matchingRoundRepository.findLatestByPositionId(candidate.getPositionId())
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.ROUND_NOT_FOUND));
         return candidateResponseAssembler.build(round, accountId);
     }
