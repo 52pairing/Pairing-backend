@@ -212,7 +212,7 @@ class RecruitingStartedEventListenerTest {
         // 추천 후보 카드/협상 초기 조건 조립에서 실제 프리랜서 조건을 조회하므로,
         // 포지션 요구조건(BACKEND, SPRING_BOOT)과 일치하는 조건을 심어둔다.
         freelancerConditionUseCase.upsert(new UpsertConditionCommand(
-                freelancerId, JobCategory.DEVELOPMENT, JobRole.BACKEND, null,
+                freelancerId, JobCategory.DEVELOPMENT, JobRole.BACKEND,
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 6_000_000L, 5_000_000L,
                 LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 5,
                 List.of(new UpsertConditionCommand.Skill(SkillCode.SPRING_BOOT, SkillLevel.ADVANCED))));

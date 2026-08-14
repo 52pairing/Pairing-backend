@@ -198,7 +198,6 @@ class FreelancerMyPageIntegrationTest {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("jobCategory", "DEVELOPMENT");
         body.put("jobRole", "BACKEND");
-        body.put("affiliation", "프리랜서");
         body.put("workStyle", "REMOTE");
         body.put("workForm", "FULL_TIME");
         body.put("payUnit", "MONTHLY");
@@ -325,6 +324,47 @@ class FreelancerMyPageIntegrationTest {
                 "profileCollectionAgreed", true, "profileProvisionAgreed", true,
                 "aiAnalysisAgreed", true, "careerPortfolioUsageAgreed", true));
         return body;
+    }
+
+    @Test
+    @DisplayName("조건을 같이 보내면 이력서와 함께 한 번에 저장된다")
+    void resumeWithConditionSavesBoth() throws Exception {
+        Map<String, Object> body = resumeBody("010-9999-8888");
+        body.put("condition", conditionBody(6));
+
+        mockMvc.perform(put("/api/v1/freelancers/me/resume")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+
+        // 한 화면 한 저장 버튼이므로, 조회하면 조건과 이력서가 둘 다 채워져 있어야 한다.
+        mockMvc.perform(get("/api/v1/freelancers/me/resume").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.condition.jobRole").value("BACKEND"))
+                .andExpect(jsonPath("$.data.condition.skills[0].skillCode").value("JAVA"))
+                .andExpect(jsonPath("$.data.resume.careers[0].companyName").value("주식회사 예시"));
+    }
+
+    @Test
+    @DisplayName("이력서가 잘못되면 같이 보낸 조건도 저장되지 않는다")
+    void resumeFailureRollsBackCondition() throws Exception {
+        Map<String, Object> body = resumeBody("010-9999-8888");
+        body.put("condition", conditionBody(6));
+        // 자기소개는 필수다. 여기서 막히면 앞서 저장한 조건도 같은 트랜잭션이라 함께 롤백돼야 한다.
+        body.put("selfIntroduction", "");
+
+        mockMvc.perform(put("/api/v1/freelancers/me/resume")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest());
+
+        // 절반만 저장된 상태가 남으면 안 된다.
+        mockMvc.perform(get("/api/v1/freelancers/me/condition").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist());
     }
 
     @Test

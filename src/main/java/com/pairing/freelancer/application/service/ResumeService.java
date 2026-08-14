@@ -4,10 +4,12 @@ import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.file.application.usecase.FileQueryUseCase;
+import com.pairing.freelancer.application.command.UpsertConditionCommand;
 import com.pairing.freelancer.application.command.UpsertResumeCommand;
 import com.pairing.freelancer.application.event.ResumeUpdatedEvent;
 import com.pairing.freelancer.application.result.ResumeDraftResult;
 import com.pairing.freelancer.application.result.ResumeResult;
+import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.freelancer.application.usecase.ResumeUseCase;
 import com.pairing.freelancer.domain.model.Career;
 import com.pairing.freelancer.domain.model.Certificate;
@@ -37,6 +39,7 @@ public class ResumeService implements ResumeUseCase {
     private final AccountQueryUseCase accountQueryUseCase;
     private final FileQueryUseCase fileQueryUseCase;
     private final ApplicationEventPublisher eventPublisher;
+    private final FreelancerConditionUseCase freelancerConditionUseCase;
 
     @Override
     @Transactional(readOnly = true)
@@ -48,6 +51,23 @@ public class ResumeService implements ResumeUseCase {
     @Transactional(readOnly = true)
     public List<Long> findAllAccountIdsWithResume() {
         return resumeRepository.findAllAccountIds();
+    }
+
+    /**
+     * 조건과 이력서를 한 번에 저장한다.
+     *
+     * <p>이 메서드가 {@code @Transactional} 이라 두 저장이 같은 트랜잭션에 들어간다.
+     * 이력서에서 예외가 나면 <b>조건 저장도 함께 롤백</b>된다 — 화면에서는 한 번의 저장이므로
+     * 절반만 반영된 상태를 남기지 않는다.
+     *
+     * <p>조건을 먼저 저장한다. 조건 쪽 검증(스킬 중복·급여 단위)이 이력서보다 단순해서,
+     * 걸릴 문제라면 이력서를 건드리기 전에 걸리는 편이 낫다.
+     */
+    @Override
+    public ResumeResult upsertWithCondition(UpsertConditionCommand conditionCommand,
+                                            UpsertResumeCommand resumeCommand) {
+        freelancerConditionUseCase.upsert(conditionCommand);
+        return upsert(resumeCommand);
     }
 
     @Override
