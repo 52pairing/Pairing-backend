@@ -77,6 +77,21 @@ public record NegotiationResponse(
         @Schema(description = "[미사용] 15회 자동 결렬 채택으로 폐기. 항상 false", example = "false")
         boolean finalApprovalRequired,
 
+        @Schema(description = "**최종 절충 단계 여부.** 라운드 상한(15회)까지 합의에 이르지 못하면 true 가 된다. "
+                + "true 면 화면을 '최종 절충안' 상태로 전환하고, "
+                + "라운드 배지 대신 별도 상태를 노출하며, 조건 카드의 compromiseValue(절충값)를 보여준다. "
+                + "이 단계에서는 조건별 응답(/answers)이 아니라 절충안 전체 수락(/final-offer/accept) 또는 "
+                + "포기(/give-up)만 가능하다. status 는 여전히 IN_PROGRESS 다.", example = "true")
+        boolean finalOffer,
+
+        @Schema(description = "최종 절충안을 **내가** 수락했는가. 양측이 모두 수락해야 타결된다. "
+                + "true 면 화면은 '상대 수락 대기' 상태로 둔다(내 수락 버튼 비활성).", example = "false")
+        boolean myFinalAccepted,
+
+        @Schema(description = "최종 절충안을 **상대가** 수락했는가. true 이고 내가 아직이면 "
+                + "'상대는 수락했습니다 — 수락하면 타결됩니다' 안내에 쓴다.", example = "false")
+        boolean counterpartFinalAccepted,
+
         @Schema(description = "협상 조건 목록")
         List<Condition> conditions
 ) {
@@ -96,7 +111,11 @@ public record NegotiationResponse(
             @Schema(description = "마지노선 비교 방식. RANGE=크기 비교(\"480만 원 이상이어야 합니다\"), "
                     + "CHOICE=허용값 집합(\"재택을 허용해야 합니다\"), NONE=비교 기준 없음(안내 불필요). "
                     + "RANGE 의 이상/이하 방향은 viewerRole 로 판단한다 — 클라는 상한, 프리는 하한이다.",
-                    example = "CHOICE") FloorComparison floorComparison
+                    example = "CHOICE") FloorComparison floorComparison,
+            @Schema(description = "**최종 절충값.** finalOffer=true 인 미합의 조건에만 채워진다(양쪽이 마지노선을 넘겨 "
+                    + "만나는 중간 지점: 숫자·기간·날짜는 중간값, 근무 방식/형태는 ANY=모두 가능). 이미 합의된 조건이나 "
+                    + "절충 불가 조건은 null. 화면은 이 값을 '최종 절충안'으로 보여주고, 양측이 수락하면 이 값이 "
+                    + "agreedValue 로 확정된다.", example = "4000000") String compromiseValue
     ) {
     }
 }

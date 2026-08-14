@@ -182,6 +182,23 @@ public class NegotiationController {
                 NegotiationResponseFactory.detail(negotiationQueryUseCase.getDetail(negotiationId, accountId))));
     }
 
+    @PostMapping("/{negotiationId}/final-offer/accept")
+    @Operation(summary = "최종 절충안 수락",
+            description = "15라운드까지 합의에 이르지 못해 최종 절충 단계(finalOffer=true)에 들어간 협상에서, 제시된 절충값을 "
+                    + "받아들입니다. 절충값은 양쪽이 각자 마지노선을 넘겨 만나는 중간 지점이라, 내 마지노선을 "
+                    + "벗어나더라도 이 수락으로 확정됩니다(acceptBelowFloor 와 같은 정책). **양측이 모두 수락해야 "
+                    + "타결**되며, 한쪽만 수락하면 상대 응답을 기다립니다. 최종 절충안을 받지 않으려면 협상 포기"
+                    + "(/give-up)로 결렬시킵니다.")
+    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"ACCESS_DENIED"})
+    public ResponseEntity<ApiResponse<NegotiationResponse>> acceptFinalOffer(
+            @PathVariable Long negotiationId,
+            @CurrentAccountId Long accountId
+    ) {
+        negotiationLoopUseCase.acceptFinalOffer(negotiationId, accountId);
+        return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_FINAL_OFFER_ACCEPTED", "최종 절충안을 수락했습니다.",
+                NegotiationResponseFactory.detail(negotiationQueryUseCase.getDetail(negotiationId, accountId))));
+    }
+
     @PostMapping("/{negotiationId}/give-up")
     @Operation(summary = "협상 포기", description = "즉시 협상 결렬로 종료됩니다. 클라이언트는 유료 재추천으로 다시 찾아야 합니다.")
     public ResponseEntity<ApiResponse<NegotiationResponse>> giveUp(

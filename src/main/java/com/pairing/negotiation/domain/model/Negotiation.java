@@ -45,6 +45,12 @@ public class Negotiation {
     private LocalDateTime freelancerLastReadAt;   // 프리가 마지막으로 협상을 읽은 시각
     private NegotiationAgentState agentState;     // 대리인(A2A) 실행 상태. 비동기라 저장이 필요하다
     private LocalDateTime agentStartedAt;         // RUNNING 이 된 시각. 죽은 실행(stuck) 판정 기준
+    // 최종 절충 단계 진입 여부. 라운드 상한(15회)까지 합의 못 하면 true 가 되고, status 는
+    // IN_PROGRESS 로 남는다(새 status 값을 만들면 RDS CHECK 제약·기존 switch 를 전부 건드려야 해서
+    // 플래그로 표현한다). true 인 동안에는 최종 절충안 수락/포기만 받는다.
+    private boolean finalOffer;
+    private boolean clientFinalAccepted;          // 클라가 최종 절충안을 수락했는가
+    private boolean freelancerFinalAccepted;      // 프리가 최종 절충안을 수락했는가
     private List<NegotiationCondition> conditions;
 
     private Negotiation(Long requestId, Long projectId, Long positionId, Long freelancerId,
@@ -70,6 +76,7 @@ public class Negotiation {
                         LocalDateTime startedAt, LocalDateTime endedAt, String endReason,
                         LocalDateTime clientLastReadAt, LocalDateTime freelancerLastReadAt,
                         NegotiationAgentState agentState, LocalDateTime agentStartedAt,
+                        boolean finalOffer, boolean clientFinalAccepted, boolean freelancerFinalAccepted,
                         List<NegotiationCondition> conditions) {
         this.id = id;
         this.requestId = requestId;
@@ -91,6 +98,9 @@ public class Negotiation {
         // 컬럼을 새로 붙이기 전에 만들어진 협상은 null 이다. 옛 협상은 대리인이 도는 중일 수 없다.
         this.agentState = agentState == null ? NegotiationAgentState.IDLE : agentState;
         this.agentStartedAt = agentStartedAt;
+        this.finalOffer = finalOffer;
+        this.clientFinalAccepted = clientFinalAccepted;
+        this.freelancerFinalAccepted = freelancerFinalAccepted;
         this.conditions = conditions == null ? List.of() : conditions;
     }
 
@@ -114,10 +124,13 @@ public class Negotiation {
                                            LocalDateTime endedAt, String endReason,
                                            LocalDateTime clientLastReadAt, LocalDateTime freelancerLastReadAt,
                                            NegotiationAgentState agentState, LocalDateTime agentStartedAt,
+                                           boolean finalOffer, boolean clientFinalAccepted,
+                                           boolean freelancerFinalAccepted,
                                            List<NegotiationCondition> conditions) {
         return new Negotiation(id, requestId, projectId, positionId, freelancerId, status, totalRound,
                 agreedAmount, budgetCap, freelancerMonthlyPay, floorAmount, aiOutAt, startedAt, endedAt,
-                endReason, clientLastReadAt, freelancerLastReadAt, agentState, agentStartedAt, conditions);
+                endReason, clientLastReadAt, freelancerLastReadAt, agentState, agentStartedAt,
+                finalOffer, clientFinalAccepted, freelancerFinalAccepted, conditions);
     }
 
     /**
@@ -270,6 +283,51 @@ public class Negotiation {
      */
     public boolean awaitingRedirect() {
         return conditions.stream().anyMatch(NegotiationCondition::isRejected);
+    }
+
+    /** 아직 합의되지 않은(락 안 된) 쟁점들. 최종 절충값은 이들에만 계산·수락된다. */
+    public List<NegotiationCondition> pendingConditions() {
+        return conditions.stream().filter(c -> !c.isAgreed()).toList();
+    }
+
+    /**
+     * 최종 절충 단계로 진입한다. status 는 IN_PROGRESS 로 유지하고 {@code finalOffer} 플래그만 세운다.
+     *
+     * <p>진입 후에는 일반 응답/재지시가 아니라 최종 절충안 수락({@link #acceptFinalOffer})/포기만 받는다.
+     * 절충값 계산·부착은 애플리케이션 계층이 {@link NegotiationCondition#proposeCompromise} 로 한다.
+     */
+    public void enterFinalOffer() {
+        ensureInProgress();
+        this.finalOffer = true;
+        // 재진입 시 이전 수락 표시가 남지 않도록 초기화(안전장치).
+        this.clientFinalAccepted = false;
+        this.freelancerFinalAccepted = false;
+    }
+
+    /**
+     * 이 당사자가 최종 절충안을 수락한다. 양측이 모두 수락해야 타결되므로 여기서는 표시만 한다.
+     * 실제 락·타결은 {@link #bothAcceptedFinalOffer} 를 확인한 애플리케이션 계층이 한다.
+     */
+    public void acceptFinalOffer(PartyRole role) {
+        ensureInProgress();
+        if (!finalOffer) {
+            throw new BusinessException(NegotiationErrorCode.NOT_FINAL_OFFER);
+        }
+        if (role == PartyRole.CLIENT) {
+            this.clientFinalAccepted = true;
+        } else {
+            this.freelancerFinalAccepted = true;
+        }
+    }
+
+    /** 최종 절충안을 양측이 모두 수락했는가. 참이면 절충값을 락하고 타결한다. */
+    public boolean bothAcceptedFinalOffer() {
+        return finalOffer && clientFinalAccepted && freelancerFinalAccepted;
+    }
+
+    /** 이 당사자가 최종 절충안을 이미 수락했는가(응답 노출용). */
+    public boolean hasAcceptedFinalOffer(PartyRole role) {
+        return role == PartyRole.CLIENT ? clientFinalAccepted : freelancerFinalAccepted;
     }
 
     /** 이 당사자가 모든 쟁점에 마지노선을 냈는가. */

@@ -24,6 +24,9 @@ public enum NegotiationErrorCode implements BaseErrorCode {
             "내가 정한 마지노선을 벗어난 제안입니다. 수락하려면 마지노선을 먼저 조정하세요."),
     FLOOR_BELOW_MIN_ACCEPT(HttpStatus.BAD_REQUEST, "NG_012",
             "등록해두신 최소 수용 금액보다 낮게 설정할 수 없습니다. 마이페이지에서 희망 조건을 먼저 수정해 주세요."),
+    FINAL_OFFER_IN_PROGRESS(HttpStatus.CONFLICT, "NG_013",
+            "최종 절충 단계입니다. 최종 절충안을 수락하거나 협상을 포기할 수 있습니다."),
+    NOT_FINAL_OFFER(HttpStatus.CONFLICT, "NG_014", "최종 절충 단계가 아닙니다."),
     CHAT_INPUT_DISABLED(HttpStatus.FORBIDDEN, "NG_020", "아직 채팅 입력이 활성화되지 않았습니다.");
 
     private final HttpStatus status;

@@ -51,6 +51,7 @@ public final class NegotiationAdminResponseFactory {
                 item.freelancerName(),
                 item.status(),
                 item.totalRound(),
+                false,                      // finalOffer: 관리자 목록엔 미사용(당사자 카드 배지용)
                 false,                      // waitingForMe: 관리자 목록엔 해당 없음
                 null,                       // agentState: 관리자 목록엔 미사용(상세에서 본다)
                 null,                       // lastProposalBy

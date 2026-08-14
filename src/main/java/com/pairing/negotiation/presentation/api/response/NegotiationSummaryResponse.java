@@ -20,6 +20,8 @@ public record NegotiationSummaryResponse(
         @Schema(description = "프리랜서명. 관리자 목록에서 쓴다", example = "김프리") String freelancerName,
         @Schema(description = "상태") NegotiationStatus status,
         @Schema(description = "진행 라운드 수", example = "3") int totalRound,
+        @Schema(description = "최종 절충 단계 여부. true 면 카드의 '라운드 n/15' 배지 대신 '최종 절충' 상태를 "
+                + "노출한다. 상세는 GET /negotiations/{id} 의 finalOffer 참고", example = "false") boolean finalOffer,
         @Schema(description = "내 응답 대기 여부", example = "true") boolean waitingForMe,
         @Schema(description = "대리인(AI) 실행 상태. RUNNING 이면 카드에 진행 표시를 띄운다. "
                 + "자세한 판정은 상세 응답의 같은 필드 설명 참고", example = "IDLE")

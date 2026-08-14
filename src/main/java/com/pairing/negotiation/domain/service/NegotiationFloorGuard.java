@@ -104,7 +104,14 @@ public final class NegotiationFloorGuard {
         return normalized.equals(anyToken) || normalized.equals(agreedValue.trim().toUpperCase(Locale.ROOT));
     }
 
-    private static Optional<Long> parseAmount(String value) {
+    /**
+     * 금액 마지노선 파싱. 콤마만 걷어낸 순수 숫자만 인정한다.
+     *
+     * <p>패키지 공개(package-private)인 이유: 최종 절충값 계산({@link NegotiationCompromiseCalculator})이
+     * 같은 규칙으로 두 마지노선을 읽어야 한다. 파싱 규칙이 두 곳에 갈라지면 가드가 통과시킨 값을
+     * 절충기가 못 읽는 어긋남이 생긴다 — 한 곳에 둔다.
+     */
+    static Optional<Long> parseAmount(String value) {
         if (value == null || value.isBlank()) {
             return Optional.empty();
         }
@@ -112,7 +119,8 @@ public final class NegotiationFloorGuard {
         return cleaned.matches("\\d+") ? Optional.of(Long.parseLong(cleaned)) : Optional.empty();
     }
 
-    private static Optional<Long> parsePeriodDays(String value) {
+    /** 기간 마지노선을 일 단위로 파싱. {@link #parseAmount} 와 같은 이유로 패키지 공개. */
+    static Optional<Long> parsePeriodDays(String value) {
         if (value == null || value.isBlank()) {
             return Optional.empty();
         }
@@ -125,7 +133,8 @@ public final class NegotiationFloorGuard {
         return Optional.of(amount * (unit == PeriodUnit.WEEK ? DAYS_PER_WEEK : DAYS_PER_MONTH));
     }
 
-    private static Optional<Long> parseEpochDay(String value) {
+    /** 시작일 마지노선을 epoch day 로 파싱. {@link #parseAmount} 와 같은 이유로 패키지 공개. */
+    static Optional<Long> parseEpochDay(String value) {
         if (value == null || value.isBlank()) {
             return Optional.empty();
         }
