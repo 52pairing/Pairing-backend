@@ -19,7 +19,15 @@ import java.time.Duration;
 @Configuration
 public class PythonMatchingClientConfig {
 
-    @Bean
+    /**
+     * {@code defaultCandidate = false}: <b>타입만 보고 주입되지 않게 막는다.</b>
+     *
+     * <p>이 레포의 다른 어댑터들(OAuth·계약·협상·챗봇)은 각자 {@code RestClient}를 내부에서 만든다.
+     * 그래서 이게 컨텍스트의 유일한 {@code RestClient} 빈인데, 누가 나중에 생성자에
+     * {@code RestClient}만 적으면 <b>AI 서버를 가리키는 이 클라이언트가 딸려간다</b>
+     * (baseUrl이 AI 서버, 읽기 타임아웃 60초). 이름을 명시한 곳에만 주입되게 한다.
+     */
+    @Bean(defaultCandidate = false)
     public RestClient pythonMatchingRestClient(RestClient.Builder builder,
                                                @Value("${ai.pairing-python.base-url}") String baseUrl) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();

@@ -11,7 +11,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
@@ -39,7 +38,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
  * {@code BusinessException}으로 바뀐 뒤 재시도 조건과 대조됐다. 그러면 {@code retry-exceptions}에
  * 무엇을 적든 <b>재시도가 한 번도 안 걸린다</b>. 그래서 fallback을 {@code @Retry} 쪽으로 옮겼다.
  */
-@SpringBootTest
+// 실제 빈과 **같은 이름**으로 덮어써야 한다. 어댑터가 @Qualifier 로 이름을 못박고 있고, 그 빈은
+// defaultCandidate = false 라 이름을 안 맞추면 목이 아니라 진짜 클라이언트가 주입된다.
+@SpringBootTest(properties = "spring.main.allow-bean-definition-overriding=true")
 @Import(PythonMatchingAdapterRetryTest.MockPythonServerConfig.class)
 class PythonMatchingAdapterRetryTest {
 
@@ -51,11 +52,8 @@ class PythonMatchingAdapterRetryTest {
     @TestConfiguration
     static class MockPythonServerConfig {
 
-        // 빈 이름을 실제와 다르게 둔다. 같은 이름이면 오버라이드가 막혀 있어 컨텍스트가 안 뜬다.
-        // 타입이 같으므로 @Primary 로 이쪽이 주입된다.
         @Bean
-        @Primary
-        RestClient mockPythonMatchingRestClient() {
+        RestClient pythonMatchingRestClient() {
             RestClient.Builder builder = RestClient.builder().baseUrl("http://ai.test");
             mockServer = MockRestServiceServer.bindTo(builder).build();
             return builder.build();

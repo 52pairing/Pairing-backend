@@ -12,6 +12,7 @@ import com.pairing.matching.exception.MatchingErrorCode;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -39,8 +40,13 @@ public class PythonMatchingAdapter implements MatchingPort {
     private final RestClient restClient;
     private final String internalApiKey;
 
-    /** {@link PythonMatchingClientConfig}가 만든 클라이언트를 받는다(테스트에서 갈아끼우기 위해). */
-    public PythonMatchingAdapter(RestClient pythonMatchingRestClient,
+    /**
+     * {@link PythonMatchingClientConfig}가 만든 클라이언트를 받는다(테스트에서 갈아끼우기 위해).
+     *
+     * <p>{@code @Qualifier}로 이름을 못박는다. 그 빈은 {@code defaultCandidate = false}라 타입만으로는
+     * 주입되지 않고, 이름을 적은 곳에만 들어온다.
+     */
+    public PythonMatchingAdapter(@Qualifier("pythonMatchingRestClient") RestClient pythonMatchingRestClient,
                                  @Value("${ai.pairing-python.internal-api-key}") String internalApiKey) {
         this.restClient = pythonMatchingRestClient;
         this.internalApiKey = internalApiKey;
