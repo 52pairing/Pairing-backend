@@ -24,6 +24,7 @@ import com.pairing.negotiation.domain.model.SenderType;
 import com.pairing.negotiation.domain.repository.NegotiationMessageRepository;
 import com.pairing.negotiation.domain.repository.NegotiationRepository;
 import com.pairing.negotiation.domain.service.NegotiationAgreedValueNormalizer;
+import com.pairing.negotiation.domain.service.NegotiationCompromiseCalculator;
 import com.pairing.negotiation.domain.service.NegotiationFloorGuard;
 import com.pairing.negotiation.exception.NegotiationErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -37,6 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -114,6 +116,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         Negotiation negotiation = load(negotiationId);
         PartyRole role = resolveRole(negotiation, accountId);
         ensureInProgress(negotiation);
+        // 최종 절충 단계에서는 조건별 수락/거절이 아니라 절충안 전체 수락(acceptFinalOffer)/포기만 받는다.
+        ensureNotFinalOffer(negotiation);
 
         SenderType sender = role == PartyRole.CLIENT ? SenderType.CLIENT : SenderType.FREELANCER;
         List<NegotiationMessage> messages = new ArrayList<>();
@@ -127,10 +131,17 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
                         .findLatestProposalExcluding(negotiationId, condition.getId(), role.ownSenders())
                         .map(NegotiationMessage::getProposedValue)
                         .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NO_PROPOSAL_TO_RESPOND));
-                // 사람도 클릭 한 번으로 자기가 그은 선을 넘지 못한다. 대리인에게 적용하는 기준과 같다.
-                // 양보하려면 [거절] → 재지시로 마지노선을 다시 그어야 한다(그 경로가 이미 있다).
+                // 기본: 양측 마지노선을 모두 지켜야 수락된다(NG_011).
+                // 예외: 사람이 "내 선을 넘겨서라도 이 제안을 받겠다"고 명시하면(acceptBelowFloor=true)
+                // 내 쪽 하한 검증만 건너뛴다. 등록 최소가/마지노선은 대리인의 하한이지 사람의 명시적
+                // 수락까지 막는 천장은 아니라는 정책이다. 단 상대 마지노선은 항상 지킨다 — 수락값은
+                // 상대가 낸 제안이라 원래 상대 선은 지켜지지만, 방어적으로 유지한다.
+                String clientFloor = answer.acceptBelowFloor() && role == PartyRole.CLIENT
+                        ? null : condition.getClientFloor();
+                String freelancerFloor = answer.acceptBelowFloor() && role == PartyRole.FREELANCER
+                        ? null : condition.getFreelancerFloor();
                 if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), lockValue,
-                        condition.getClientFloor(), condition.getFreelancerFloor())) {
+                        clientFloor, freelancerFloor)) {
                     throw new BusinessException(NegotiationErrorCode.ACCEPT_BREAKS_FLOOR);
                 }
                 condition.lock(lockValue);
@@ -241,7 +252,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         publish(negotiation, switch (negotiation.getStatus()) {
             case AGREED -> NegotiationEventType.AGREED;
             case FAILED -> NegotiationEventType.FAILED;
-            default -> fallbackType;
+            // 진행 중이지만 최종 절충안이 제시됐으면 화면을 "최종 절충" 상태로 전환시킨다.
+            default -> negotiation.isFinalOffer() ? NegotiationEventType.FINAL_OFFER : fallbackType;
         });
         notifyAgentRound(negotiation, messages);
     }
@@ -261,9 +273,17 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
             eventPublisher.publishEvent(NegotiationNotificationRequested.failed(negotiation));
             return;
         }
+        if (negotiation.getStatus() != NegotiationStatus.IN_PROGRESS) {
+            return;
+        }
+        // 최종 절충안 진입도 "응답이 필요한 새 제안"이라 제안 알림을 재사용한다(양측이 확인해야 함).
+        if (negotiation.isFinalOffer()) {
+            eventPublisher.publishEvent(NegotiationNotificationRequested.proposed(negotiation));
+            return;
+        }
         boolean proposed = messages.stream()
                 .anyMatch(m -> m.getMessageType() == NegotiationMessageType.PROPOSAL);
-        if (negotiation.getStatus() == NegotiationStatus.IN_PROGRESS && proposed) {
+        if (proposed) {
             eventPublisher.publishEvent(NegotiationNotificationRequested.proposed(negotiation));
         }
     }
@@ -288,6 +308,8 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         Negotiation negotiation = load(negotiationId);
         PartyRole role = resolveRole(negotiation, accountId);
         ensureInProgress(negotiation);
+        // 최종 절충 단계에서는 마지노선을 더 조정할 수 없다 — 이미 절충값이 확정돼 제시된 상태다.
+        ensureNotFinalOffer(negotiation);
 
         for (FloorInput floor : floors) {
             NegotiationCondition condition = findByType(negotiation, floor.conditionType());
@@ -328,6 +350,46 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         eventPublisher.publishEvent(NegotiationNotificationRequested.failed(negotiation));
     }
 
+    /**
+     * 최종 절충안 수락. 양측이 모두 수락해야 타결된다 — 한쪽만 수락하면 상대 응답을 기다린다.
+     *
+     * <p>수락은 {@code acceptBelowFloor}(PR #223)와 같은 정책이다: 절충값은 사람이 자기 마지노선을
+     * 넘겨 받아들인 값이라 하한 검증을 거치지 않는다. 대신 <b>양측이 모두 명시적으로 수락</b>해야
+     * 락된다. 거절은 별도 API 가 아니라 {@link #giveUp}(협상 포기)으로 처리한다 — 최종 절충안을
+     * 안 받으면 곧 결렬이라 의미가 같다.
+     */
+    @Override
+    public void acceptFinalOffer(Long negotiationId, Long accountId) {
+        Negotiation negotiation = load(negotiationId);
+        PartyRole role = resolveRole(negotiation, accountId);
+        ensureInProgress(negotiation);
+        if (!negotiation.isFinalOffer()) {
+            throw new BusinessException(NegotiationErrorCode.NOT_FINAL_OFFER);
+        }
+
+        negotiation.acceptFinalOffer(role);
+        SenderType sender = role == PartyRole.CLIENT ? SenderType.CLIENT : SenderType.FREELANCER;
+        List<NegotiationMessage> messages = new ArrayList<>();
+        // 조건 단위가 아니라 절충안 전체에 대한 수락이라 conditionId 는 null 이다.
+        messages.add(NegotiationMessage.response(negotiationId, null, negotiation.getTotalRound(),
+                sender, "최종 절충안을 수락했습니다.", "YES", accountId));
+
+        if (negotiation.bothAcceptedFinalOffer()) {
+            // 양측 수락 → 미합의 조건의 절충값을 모두 락하고 타결한다.
+            negotiation.pendingConditions().forEach(NegotiationCondition::lockCompromise);
+            settleIfAllAgreed(negotiation, messages);
+        }
+
+        persist(negotiation, messages);
+        createContractIfAgreed(negotiation);
+
+        publish(negotiation, switch (negotiation.getStatus()) {
+            case AGREED -> NegotiationEventType.AGREED;
+            // 한쪽만 수락 — 상대 응답 대기. 화면은 계속 "최종 절충" 상태다.
+            default -> NegotiationEventType.FINAL_OFFER;
+        });
+    }
+
     @Override
     public void markRead(Long negotiationId, Long accountId) {
         Negotiation negotiation = load(negotiationId);
@@ -343,17 +405,18 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
                 negotiation.getId(), type, negotiation.getStatus(), negotiation.getTotalRound()));
     }
 
-    /** 다음 라운드로 넘기며 미합의 조건 제안 생성. 라운드 상한 소진 시 자동 결렬(설계 #5). */
+    /**
+     * 다음 라운드로 넘기며 미합의 조건 제안 생성. <b>라운드 상한(15회)까지는 무엇을 하든 협상 기회를
+     * 준다</b> — 15라운드를 다 쓰고도 합의에 이르지 못했을 때만 최종 절충안으로 넘긴다.
+     */
     private void advanceOrFail(Negotiation negotiation, List<NegotiationMessage> messages) {
         try {
             negotiation.incrementRound();
         } catch (BusinessException e) {
             if (e.getErrorCode() == NegotiationErrorCode.ROUND_LIMIT_REACHED) {
-                negotiation.fail("라운드 상한(15회) 소진으로 자동 결렬");
-                // 자동 결렬 → 매칭 요청을 협상 결렬(NEGOTIATION_FAILED)로 종결(같은 트랜잭션).
-                matchingOutcomeUseCase.markNegotiationFailed(negotiation.getRequestId());
-                messages.add(NegotiationMessage.system(negotiation.getId(), negotiation.getTotalRound(),
-                        "라운드 상한(15회) 소진으로 협상이 자동 결렬되었습니다."));
+                // 15라운드까지 합의 못 함 → 그냥 결렬시키지 않고 최종 절충안으로 중재한다.
+                // (예전엔 여기서 바로 자동 결렬 → 중재 한 번 없이 죽었다)
+                enterFinalOfferOrFail(negotiation, messages);
                 return;
             }
             throw e;
@@ -361,6 +424,58 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         messages.addAll(proposeForPending(negotiation));
         // 이 라운드에서 대리인끼리 남은 조건을 전부 합의했을 수 있다. 그러면 여기서 타결이다.
         settleIfAllAgreed(negotiation, messages);
+    }
+
+    /**
+     * 최종 절충 단계로 넘긴다. 미합의 조건마다 절충값(양쪽이 마지노선을 넘겨 만나는 중간 지점)을
+     * 계산해 붙이고, 양측 수락을 기다리는 상태로 만든다.
+     *
+     * <p><b>절충 불가 조건이 하나라도 남으면 즉시 결렬한다</b>(PO 결정). 자유 텍스트(SCOPE/OTHER)처럼
+     * 중간 지점을 정의할 기준이 없는 조건이 있으면, 나머지를 절충해도 전 조건 합의가 원천 불가하기
+     * 때문이다.
+     */
+    private void enterFinalOfferOrFail(Negotiation negotiation, List<NegotiationMessage> messages) {
+        List<NegotiationCondition> pending = negotiation.pendingConditions();
+        if (pending.isEmpty()) {
+            // 남은 미합의 조건이 없다 → 이미 다 합의된 것이니 타결로 마무리한다(라운드 소진 경로 방어).
+            settleIfAllAgreed(negotiation, messages);
+            return;
+        }
+
+        // 절충값을 먼저 전부 계산한다. 하나라도 절충 불가면 최종 절충안을 만들 수 없어 즉시 결렬.
+        List<String> values = new ArrayList<>(pending.size());
+        for (NegotiationCondition c : pending) {
+            Optional<String> compromise = NegotiationCompromiseCalculator.compromise(
+                    c.getConditionType(), c.getClientFloor(), c.getFreelancerFloor());
+            if (compromise.isEmpty()) {
+                failNoCompromise(negotiation, messages, c);
+                return;
+            }
+            values.add(compromise.get());
+        }
+
+        negotiation.enterFinalOffer();
+        for (int i = 0; i < pending.size(); i++) {
+            pending.get(i).proposeCompromise(values.get(i));
+        }
+        messages.add(NegotiationMessage.system(negotiation.getId(), negotiation.getTotalRound(),
+                "15라운드 동안 합의에 이르지 못해 최종 절충안을 제시합니다. 양측이 모두 수락하면 타결되고, "
+                        + "수락하지 않으면 협상이 성립되지 않습니다."));
+        log.info("최종 절충안 진입(라운드 상한 소진): negotiationId={}, 미합의 조건 수={}",
+                negotiation.getId(), pending.size());
+    }
+
+    /** 절충 불가 조건이 남아 최종 절충안을 만들 수 없을 때의 결렬 처리. */
+    private void failNoCompromise(Negotiation negotiation, List<NegotiationMessage> messages,
+                                  NegotiationCondition blocker) {
+        negotiation.fail("절충 불가 조건('" + blocker.getConditionType().getLabel() + "')이 남아 협상 결렬");
+        // 결렬 → 매칭 요청을 협상 결렬(NEGOTIATION_FAILED)로 종결(같은 트랜잭션).
+        matchingOutcomeUseCase.markNegotiationFailed(negotiation.getRequestId());
+        messages.add(NegotiationMessage.system(negotiation.getId(), negotiation.getTotalRound(),
+                "절충할 수 없는 조건('" + blocker.getConditionType().getLabel()
+                        + "')이 남아 협상이 성립되지 않았습니다."));
+        log.info("절충 불가로 결렬: negotiationId={}, conditionId={}, type={}",
+                negotiation.getId(), blocker.getId(), blocker.getConditionType());
     }
 
     /**
@@ -547,6 +662,13 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
     private void ensureInProgress(Negotiation negotiation) {
         if (negotiation.getStatus() != com.pairing.negotiation.domain.model.NegotiationStatus.IN_PROGRESS) {
             throw new BusinessException(NegotiationErrorCode.NOT_IN_PROGRESS);
+        }
+    }
+
+    /** 최종 절충 단계에서는 절충안 수락(acceptFinalOffer)/포기(giveUp)만 허용한다. */
+    private void ensureNotFinalOffer(Negotiation negotiation) {
+        if (negotiation.isFinalOffer()) {
+            throw new BusinessException(NegotiationErrorCode.FINAL_OFFER_IN_PROGRESS);
         }
     }
 

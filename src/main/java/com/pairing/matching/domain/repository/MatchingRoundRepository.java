@@ -3,6 +3,7 @@ package com.pairing.matching.domain.repository;
 import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.domain.model.RecommendationType;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,4 +31,26 @@ public interface MatchingRoundRepository {
      * 영영 사라진다.
      */
     long countByProjectIdAndRoundType(Long projectId, RecommendationType roundType);
+
+    /**
+     * {@code threshold} 이전에 만들어졌는데 아직 {@code RUNNING}인 회차.
+     *
+     * <p>AI 호출 중에 컨테이너가 교체되면 그 스레드는 아무 흔적 없이 사라지고 회차가 영원히
+     * {@code RUNNING}으로 남는다. 화면은 "추천 준비중"에서 멈춘다. 실제로 하루에 태스크 정의가
+     * 네 번 바뀐 날이 있었다(2026-08-13).
+     *
+     * <p><b>이렇게 남은 회차에는 후보가 없다.</b> 후보 저장과 회차 완료가 한 트랜잭션이라
+     * ({@code MatchingRoundFiller.fill}) 중간에 죽으면 통째로 롤백된다. 그래서 다시 채워도
+     * 중복이 생기지 않는다.
+     */
+    List<MatchingRound> findStaleRunning(LocalDateTime threshold);
+
+    /**
+     * 회차를 <b>잠그고</b> 읽는다. 후보 채우기를 두 곳에서 동시에 시작하는 것을 막는 데 쓴다.
+     *
+     * <p>상태 확인만으로는 부족하다 — 두 트랜잭션이 나란히 {@code RUNNING}을 읽고 둘 다 진행하면
+     * Gemini를 두 번 부르고 후보가 중복 저장된다. <b>롤링 배포 중에는 항상 잠깐 인스턴스가 둘</b>이라
+     * 이론적인 상황이 아니다.
+     */
+    Optional<MatchingRound> findByIdForUpdate(Long id);
 }

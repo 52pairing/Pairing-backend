@@ -49,4 +49,13 @@ public interface ProjectDirectoryPort {
      * 이미 그 매핑을 갖고 있어 넘기는 쪽이 더 자연스럽다.
      */
     ProjectPositionSummary findPositionSummary(Long projectId, Long positionId);
+
+    /**
+     * projectId를 모를 때 쓰는 조회. 반환값의 {@code projectId}로 소유자를 검증한다.
+     *
+     * <p><b>추천 라운드가 아직 없을 때 필요하다.</b> 후보 조회는 보통 라운드에서 projectId를 얻는데,
+     * 결제 직후에는 라운드를 만드는 비동기 작업이 아직 안 끝나 라운드가 없다. 그 상태에서도 소유자
+     * 확인은 해야 하므로 포지션에서 프로젝트를 거슬러 올라간다.
+     */
+    ProjectPositionSummary findPositionSummary(Long positionId);
 }

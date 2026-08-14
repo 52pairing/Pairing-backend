@@ -104,6 +104,7 @@ class NegotiationLoopServiceTest {
 
     private Long negotiationId;
     private Long amountConditionId;
+    private Long freelancerProfileId;
 
     @BeforeEach
     void setUp() {
@@ -111,7 +112,7 @@ class NegotiationLoopServiceTest {
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 CLIENT_ACCOUNT_ID, "삼성전자", "1234567890",
                 BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
-        Long freelancerProfileId = freelancerProfileRepository.save(
+        freelancerProfileId = freelancerProfileRepository.save(
                 FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1))).getId();
 
         // start_negotiable 은 NOT NULL(primitive 매핑)이라 반드시 채운다.
@@ -339,6 +340,40 @@ class NegotiationLoopServiceTest {
         // 사람이 눌렀다고 자기가 그은 선이 무너지면 마지노선을 받은 의미가 없다.
         assertThatThrownBy(() -> loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
                 List.of(new AnswerInput(amountConditionId, true, null))))
+                .isInstanceOf(BusinessException.class);
+
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
+                .getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("answer 수락: acceptBelowFloor=true 면 내 마지노선 아래 제안도 직접 수락된다")
+    void acceptBelowOwnFloorWhenExplicitlyConfirmed() {
+        startBothSides();   // 프리 하한 4,800,000 / 클라 상한 5,200,000
+
+        // 프리 하한(480만) 아래인 클라 대리인 제안(400만)이 마지막 제안인 상태.
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 1,
+                SenderType.CLIENT_AGENT, "400만원을 제안합니다.", "예산 상한", "4000000")));
+
+        // 사람이 "내 선을 넘겨서라도 받겠다"고 명시(acceptBelowFloor=true) → 내 하한 검증만 건너뛰고 수락된다.
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, true, null, true)));
+
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
+                .getConditions().get(0).getAgreedValue()).isEqualTo("4000000");
+    }
+
+    @Test
+    @DisplayName("answer 수락: acceptBelowFloor 여도 상대 마지노선은 못 넘는다")
+    void acceptBelowFloorStillRespectsOpponentFloor() {
+        startBothSides();   // 클라 상한 5,200,000
+
+        // 클라 상한(520만)을 넘는 값이 마지막 제안인 (비정상) 상태. acceptBelowFloor 여도 상대 선은 지켜야 한다.
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 1,
+                SenderType.CLIENT_AGENT, "600만원을 제안합니다.", "테스트", "6000000")));
+
+        assertThatThrownBy(() -> loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, true, null, true))))
                 .isInstanceOf(BusinessException.class);
 
         assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
@@ -604,5 +639,149 @@ class NegotiationLoopServiceTest {
         Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
         assertThat(reloaded.lastReadAt(PartyRole.FREELANCER)).isNotNull();
         assertThat(reloaded.lastReadAt(PartyRole.CLIENT)).isNull();
+    }
+
+    // ----- 최종 절충안(Final Compromise Offer) -----
+
+    /**
+     * 라운드 상한(15회)까지 몰아 최종 절충 단계로 진입시킨다.
+     *
+     * <p>정책상 <b>15라운드까지는 무엇을 하든 협상 기회를 준다</b> — 조기 트리거는 없다. 그래서
+     * 사람이 계속 재지시(거절+새 마지노선)하며 15라운드를 소진하고, 그 시점에 최종 절충안이 제시된다.
+     * 프리 하한 600만 · 클라 상한 300만(끝내 안 겹침)이라 절충값 = (300만+600만)/2 = 450만.
+     */
+    private void startAndReachFinalOffer() {
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "6000000")));
+        loopUseCase.start(negotiationId, CLIENT_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "3000000")));
+        runAgent(NegotiationEventType.STARTED);   // 라운드 1
+        driveRedirectsUntilFinalOfferOrFail(negotiationId, amountConditionId);
+    }
+
+    /** 사람이 계속 재지시하며 라운드를 태워, 최종 절충 단계(또는 결렬)에 도달할 때까지 대리인을 돌린다. */
+    private void driveRedirectsUntilFinalOfferOrFail(Long negId, Long conditionId) {
+        for (int i = 0; i < Negotiation.MAX_ROUND + 2; i++) {
+            Negotiation n = negotiationRepository.findById(negId).orElseThrow();
+            if (n.isFinalOffer() || n.getStatus() != NegotiationStatus.IN_PROGRESS) {
+                return;
+            }
+            // 거절+새 마지노선(같은 값) → 다음 라운드로. 대리인은 끝내 합의 못 한다(스텁 agreed=false).
+            loopUseCase.answer(negId, FREELANCER_ACCOUNT_ID, n.getTotalRound(),
+                    List.of(new AnswerInput(conditionId, false, "6000000")));
+            agentUseCase.runAgent(negId, NegotiationEventType.ANSWERED);
+        }
+    }
+
+    @Test
+    @DisplayName("15라운드까지 합의 못 하면 그때 최종 절충안 제시(결렬시키지 않고 중재)")
+    void roundLimitEntersFinalOffer() {
+        startAndReachFinalOffer();
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.isFinalOffer()).isTrue();
+        assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.IN_PROGRESS);   // 결렬이 아니다
+        // 15라운드를 다 쓰고 나서야 넘어간다 — 그 전까지는 협상 기회를 준다.
+        assertThat(reloaded.getTotalRound()).isEqualTo(Negotiation.MAX_ROUND);
+        // 절충값이 미합의 조건에 붙지만 아직 락되진 않는다(양측 수락 대기).
+        NegotiationCondition amount = reloaded.getConditions().get(0);
+        assertThat(amount.getCompromiseValue()).isEqualTo("4500000");
+        assertThat(amount.getStatus()).isEqualTo(ConditionStatus.PENDING);
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .anyMatch(m -> m.getContent().contains("최종 절충안을 제시"));
+    }
+
+    @Test
+    @DisplayName("최종 절충안: 한쪽만 수락하면 상대 응답을 기다린다(아직 타결 아님)")
+    void finalOfferOneSideAcceptWaits() {
+        startAndReachFinalOffer();
+
+        loopUseCase.acceptFinalOffer(negotiationId, FREELANCER_ACCOUNT_ID);
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.IN_PROGRESS);
+        assertThat(reloaded.isFinalOffer()).isTrue();
+        assertThat(reloaded.hasAcceptedFinalOffer(PartyRole.FREELANCER)).isTrue();
+        assertThat(reloaded.hasAcceptedFinalOffer(PartyRole.CLIENT)).isFalse();
+        assertThat(reloaded.getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("최종 절충안: 양측이 모두 수락하면 절충값으로 락되고 타결(AGREED)")
+    void finalOfferBothAcceptSettles() {
+        startAndReachFinalOffer();
+
+        loopUseCase.acceptFinalOffer(negotiationId, FREELANCER_ACCOUNT_ID);
+        loopUseCase.acceptFinalOffer(negotiationId, CLIENT_ACCOUNT_ID);
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.AGREED);
+        // 절충값(450만)이 합의값·합의금액으로 확정된다 — 각자 마지노선을 넘겨 만난 값이다.
+        assertThat(reloaded.getConditions().get(0).getAgreedValue()).isEqualTo("4500000");
+        assertThat(reloaded.getAgreedAmount()).isEqualTo(4_500_000L);
+        assertThat(messageRepository.findByNegotiationId(negotiationId))
+                .anyMatch(m -> m.getContent().contains("최종 조건 봉인") && m.getContent().contains("AMOUNT=4500000"));
+    }
+
+    @Test
+    @DisplayName("최종 절충안: 상대가 포기하면 결렬된다(한쪽 수락 후 상대 거절 = 즉시 결렬)")
+    void finalOfferGiveUpFails() {
+        startAndReachFinalOffer();
+        loopUseCase.acceptFinalOffer(negotiationId, FREELANCER_ACCOUNT_ID);   // 한쪽 수락
+
+        loopUseCase.giveUp(negotiationId, CLIENT_ACCOUNT_ID, "절충안을 받아들일 수 없습니다.");
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.FAILED);
+    }
+
+    @Test
+    @DisplayName("최종 절충 단계에서는 조건별 응답(/answers)이 막힌다 — 절충안 수락/포기만 가능(NG_013)")
+    void answerBlockedDuringFinalOffer() {
+        startAndReachFinalOffer();
+
+        assertThatThrownBy(() -> loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID,
+                Negotiation.MAX_ROUND, List.of(new AnswerInput(amountConditionId, true, null))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("최종 절충");
+    }
+
+    @Test
+    @DisplayName("최종 절충 단계가 아닌데 수락하면 NG_014")
+    void acceptFinalOfferRejectedWhenNotInFinalOffer() {
+        startBothSides();   // 라운드1 정상 협상 — 최종 절충 단계가 아니다
+
+        assertThatThrownBy(() -> loopUseCase.acceptFinalOffer(negotiationId, FREELANCER_ACCOUNT_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("최종 절충 단계가 아닙니다");
+    }
+
+    @Test
+    @DisplayName("절충 불가 조건(자유 텍스트)이 남으면 최종 절충안을 내지 않고 즉시 결렬")
+    void uncompromisableConditionFailsAtRoundLimit() {
+        // AMOUNT(라운드 소진까지 미합의) + OTHER(자유 텍스트 → 절충 불가)를 가진 협상.
+        Long id = negotiationRepository.save(Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
+                5_000_000L, 5_000_000L, List.of(
+                        NegotiationCondition.create(ConditionType.AMOUNT, "4000000", "6000000", 0),
+                        NegotiationCondition.create(ConditionType.OTHER, "A 안", "B 안", 1)))).getId();
+        Long amountId = negotiationRepository.findById(id).orElseThrow().getConditions().stream()
+                .filter(c -> c.getConditionType() == ConditionType.AMOUNT).findFirst().orElseThrow().getId();
+
+        // 양측 마지노선 제출: AMOUNT 는 끝내 안 겹치게, OTHER 는 자유 텍스트로.
+        loopUseCase.start(id, FREELANCER_ACCOUNT_ID, List.of(
+                new FloorInput(ConditionType.AMOUNT, "6000000"),
+                new FloorInput(ConditionType.OTHER, "B 안")));
+        loopUseCase.start(id, CLIENT_ACCOUNT_ID, List.of(
+                new FloorInput(ConditionType.AMOUNT, "3000000"),
+                new FloorInput(ConditionType.OTHER, "A 안")));
+        agentUseCase.runAgent(id, NegotiationEventType.STARTED);   // 라운드 1
+        driveRedirectsUntilFinalOfferOrFail(id, amountId);         // 라운드 15까지 소진
+
+        Negotiation reloaded = negotiationRepository.findById(id).orElseThrow();
+        // 라운드 상한에서 절충 불가 조건(OTHER)이 남아 최종 절충안을 만들지 못하고 결렬한다.
+        assertThat(reloaded.getStatus()).isEqualTo(NegotiationStatus.FAILED);
+        assertThat(reloaded.isFinalOffer()).isFalse();   // 최종 절충안 자체를 만들지 않았다
+        assertThat(messageRepository.findByNegotiationId(id))
+                .anyMatch(m -> m.getContent().contains("절충할 수 없는 조건"));
     }
 }

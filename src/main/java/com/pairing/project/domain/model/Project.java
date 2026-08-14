@@ -420,14 +420,14 @@ public class Project {
      * <p>요구사항의 상태 정의에서 [취소됨] 의 예시가 "클라이언트가 모집을 종료했습니다" 다.
      * 모집을 닫는다는 것은 더 이상 모집·협상·계약을 진행하지 않겠다는 뜻으로 본다.
      *
-     * <p>진행 중인 협상이 있는 채로 닫으면 그 협상이 갈 곳이 없어진다. 그 판정은 협상 도메인만
-     * 할 수 있어 여기서는 막지 못한다. 호출부가 먼저 확인해야 한다.
+     * <p><b>모집중일 때만 닫을 수 있는 게 아니다.</b> 프리랜서가 한 명이라도 수락하면 프로젝트가
+     * 협상중으로 넘어가는데, 상태로 막으면 그 뒤로는 클라이언트가 접을 방법이 없어진다.
+     * 3명 중 1명만 구해진 채로 마감을 기다릴 수밖에 없게 된다.
+     *
+     * <p>진행 중이던 요청·협상·계약 정리는 {@code ProjectCanceledEvent} 를 받는 쪽이 한다.
      */
     public void closeRecruit(LocalDate retentionUntil) {
-        // 범용 PJ_006 대신 전용 코드를 쓴다. 화면에서 왜 안 되는지 그대로 보여줄 수 있어야 한다.
-        if (status != ProjectStatus.RECRUITING) {
-            throw new BusinessException(ProjectErrorCode.RECRUIT_CLOSE_NOT_ALLOWED);
-        }
+        assertCancelable();
         positions.stream().filter(p -> !p.isFilled()).forEach(Position::close);
         this.recruitDeadline = LocalDateTime.now();
         this.status = ProjectStatus.CANCELED;
@@ -438,21 +438,51 @@ public class Project {
     /**
      * 모집 기간 만료로 인한 취소. (정책 P46)
      *
-     * <p>마감이 지났는데 아직 모집 중이면 필요한 인원이 확정되지 않은 것이다.
-     * 인원이 다 찼다면 계약 도메인이 이미 진행중으로 넘겼을 것이기 때문이다. (P47)
+     * <p>마감이 지났는데 인원이 확정되지 않았으면 취소한다. 연장 여부는 보지 않는다 —
+     * 연장하지 않고 기본 2주가 지난 경우도 대상이다. 연장 소진 여부는 파기 판정에만 쓴다.
      *
-     * <p>클라이언트가 누른 모집 종료와 결과는 같지만 원인이 다르다. 연장을 다 쓰고도 만료된 경우는
-     * 파기 판정이라 위약금 대상이고, 연장하지 않고 기본 2주가 지난 경우는 대상이 아니다.
-     * 그 구분은 {@code extensionCount} 로 나중에 판정한다.
-     *
-     * <p>{@code recruitDeadline} 은 덮어쓰지 않는다. 언제 만료됐는지가 위약금 산정 근거가 된다.
+     * <p>{@code recruitDeadline} 은 덮어쓰지 않는다. 언제 만료됐는지가 파기 판정 근거가 된다.
+     * 클라이언트가 직접 닫은 {@link #closeRecruit} 과 갈리는 지점이기도 하다.
      */
     public void expireRecruit(LocalDate retentionUntil) {
-        requireStatus(ProjectStatus.RECRUITING);
+        assertCancelable();
         positions.stream().filter(p -> !p.isFilled()).forEach(Position::close);
         this.status = ProjectStatus.CANCELED;
         this.canceledAt = LocalDateTime.now();
         this.retentionUntil = retentionUntil;
+    }
+
+    /**
+     * 취소할 수 있는 상태인가. 모집 종료와 기간 만료가 같은 기준을 쓴다.
+     *
+     * <p><b>상태가 아니라 인원으로 판정한다.</b> 정책이 말하는 기준이 "필요한 인원이 확정되지
+     * 않은 경우" 라서다(P46). 상태로 거르면 수락 한 건에 협상중으로 넘어간 프로젝트가
+     * 대상에서 빠져 마감이 지나도 방치된다.
+     *
+     * <p>인원이 다 찼으면 취소하지 않는다. 착수금이 남았을 뿐 구할 사람은 다 구한 것이고,
+     * 그 상태는 P47 이 다룬다.
+     *
+     * <p>진행중 이후는 되돌리지 않는다. 이미 일이 시작됐고, 중단은 중도 파기(P32)라서
+     * 위약금 산정이 따라붙는 다른 절차다.
+     */
+    private void assertCancelable() {
+        // 범용 PJ_006 대신 전용 코드를 쓴다. 화면에서 왜 안 되는지 그대로 보여줄 수 있어야 한다.
+        if (isFullyStaffed() || !status.isBefore(ProjectStatus.IN_PROGRESS)) {
+            throw new BusinessException(ProjectErrorCode.RECRUIT_CLOSE_NOT_ALLOWED);
+        }
+    }
+
+    /**
+     * 저장된 확정 인원이 포지션 합계와 맞는가. 만료 판정 직전에 확인한다.
+     *
+     * <p>{@code confirmedHeadcount} 는 파생값이라 저장 경로가 빠뜨리면 조용히 어긋난다.
+     * 실제로 {@code updateStateWithPositions} 가 {@code confirmedCount} 를 안 옮겨
+     * 프로젝트가 진행중으로 못 넘어간 적이 있다. 그때는 멈추는 정도였지만, 만료 판정이
+     * 이 값을 믿으면 <b>인원이 다 찬 프로젝트가 취소된다.</b> 방치는 되돌릴 수 있어도
+     * 취소는 되돌릴 수 없어서, 어긋나면 아무것도 하지 않는 쪽으로 떨어뜨린다.
+     */
+    public boolean hasConsistentHeadcount() {
+        return this.confirmedHeadcount == positions.stream().mapToInt(Position::getConfirmedCount).sum();
     }
 
     /** 연장 기회를 다 쓰고도 만료됐는가. 파기 판정과 위약금 대상 여부를 가른다. (P46) */

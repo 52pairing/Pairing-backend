@@ -34,6 +34,16 @@ public interface NegotiationLoopUseCase {
     void giveUp(Long negotiationId, Long accountId, String reason);
 
     /**
+     * 최종 절충안을 수락한다. 라운드 상한(15회)까지 합의에 이르지 못해 최종 절충 단계에 들어간
+     * 협상에서, 이 당사자가 제시된 절충값(양쪽이 마지노선을 넘겨 만나는 중간 지점)을 받아들인다.
+     *
+     * <p><b>양측이 모두 수락해야 타결된다.</b> 한쪽만 수락하면 상대 응답을 기다리는 상태로 남고,
+     * 상대가 {@link #giveUp} 으로 포기하면 결렬된다. 수락은 {@code acceptBelowFloor} 와 같은 정책 —
+     * 사람이 자기 마지노선을 넘겨서라도 받아들이겠다는 명시적 확인이다.
+     */
+    void acceptFinalOffer(Long negotiationId, Long accountId);
+
+    /**
      * 협상 읽음 처리. 요청자 본인 쪽의 "마지막 읽은 시각"을 현재로 갱신한다.
      * "확인하지 않은 새 제안 수" 배지의 기준선이 된다(채팅 읽음 처리와 같은 패턴).
      */
@@ -43,7 +53,18 @@ public interface NegotiationLoopUseCase {
     record FloorInput(ConditionType conditionType, String value) {
     }
 
-    /** 조건 1건 응답. accepted=false 면 proposedValue(새 마지노선/역제안) 필요. */
-    record AnswerInput(Long conditionId, boolean accepted, String proposedValue) {
+    /**
+     * 조건 1건 응답. accepted=false 면 proposedValue(새 마지노선/역제안) 필요.
+     *
+     * <p>{@code acceptBelowFloor} 는 사람이 <b>자기 마지노선을 넘겨서라도 이 제안을 직접 수락</b>하겠다는
+     * 명시적 신호다(accepted=true 일 때만 의미). 등록 최소가/마지노선은 대리인의 하한이지 사람의
+     * 명시적 수락까지 막는 천장은 아니라는 정책. 상대 마지노선은 이 플래그와 무관하게 항상 지킨다.
+     */
+    record AnswerInput(Long conditionId, boolean accepted, String proposedValue, boolean acceptBelowFloor) {
+
+        /** 하위호환: {@code acceptBelowFloor} 는 기본 false. */
+        public AnswerInput(Long conditionId, boolean accepted, String proposedValue) {
+            this(conditionId, accepted, proposedValue, false);
+        }
     }
 }

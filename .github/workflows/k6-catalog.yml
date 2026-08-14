@@ -1,0 +1,55 @@
+name: k6 카탈로그 검사
+
+# 부하 테스트를 CI 에서 돌리는 게 아니다. k6 스크립트가 실제 컨트롤러와 맞는지만 본다.
+# k6 도 설치하지 않는다 — Node 만으로 도는 검사다.
+#
+# ci.yml 과 분리해 둔 이유는 경로 필터 때문이다. on.pull_request.paths 는 워크플로 단위라
+# ci.yml 안에 두면 빌드·테스트까지 같이 걸러진다. 이 검사만 조건부로 돌리려면 파일이 따로여야 한다.
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'k6/**'
+      # 컨트롤러도 넣는다. 이게 없으면 이 검사가 존재하는 이유가 사라진다 —
+      # 카탈로그를 안 건드리고 컨트롤러 경로만 바꾸는 PR 이 정확히 이 검사가 잡아야 할 경우인데,
+      # k6/** 만 걸면 그 PR 에서는 아예 돌지 않는다.
+      - 'src/main/java/**/*Controller.java'
+      - '.github/workflows/k6-catalog.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: k6-catalog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  catalog:
+    name: 카탈로그 · 빌더 로직
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 1) 카탈로그 경로가 실제 컨트롤러에 존재하는지.
+      #
+      #    이게 중요한 이유: 경로에 오타가 있거나 컨트롤러가 경로를 바꾸면 그 API 는 404 를
+      #    받는다. 404 는 DB 를 타지 않아서 아주 빠르므로 "p95 3ms" 같은 좋아 보이는 숫자가
+      #    나온다. 부하 테스트 결과를 근거로 성능이 개선됐다고 말하는 자리에서 이건 치명적이다.
+      #
+      #    함께 builder/catalog.js(자동 생성 파일)가 endpoints.js 와 맞는지도 본다.
+      #    재생성을 잊으면 빌더 GUI 가 옛 목록을 보여준다.
+      #
+      #    파이썬(Pairing-python)은 별도 저장소라 CI 체크아웃에 없다. 검사 스크립트가
+      #    없으면 그 부분만 건너뛴다.
+      - name: 카탈로그 정합성
+        run: node k6/tools/check-catalog.mjs
+
+      # 2) 빌더가 만드는 실행 명령과 설정 점검 로직.
+      #    빌더의 산출물은 "복사해서 실행할 명령 한 줄"이라 따옴표 처리가 틀리면
+      #    엉뚱한 설정으로 조용히 실행된다.
+      - name: 빌더 로직
+        run: node k6/tools/test-builder.mjs

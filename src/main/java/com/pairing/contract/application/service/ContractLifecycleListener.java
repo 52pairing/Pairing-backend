@@ -7,6 +7,7 @@ import com.pairing.contract.domain.repository.ContractRepository;
 import com.pairing.meta.domain.model.PartyRole;
 import com.pairing.settlement.application.command.CreateFreelancerSuccessFeeCommand;
 import com.pairing.settlement.application.usecase.SuccessFeeSettlementUseCase;
+import com.pairing.project.application.event.ProjectCanceledEvent;
 import com.pairing.project.application.event.ProjectClosedEvent;
 import com.pairing.project.application.event.ProjectCompletionRequestedEvent;
 import com.pairing.settlement.application.event.ProjectProgressStartedEvent;
@@ -14,7 +15,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+
+import java.time.LocalDate;
 
 import java.util.List;
 import java.util.function.Predicate;
@@ -36,6 +42,9 @@ import java.util.function.Predicate;
 @Component
 @RequiredArgsConstructor
 public class ContractLifecycleListener {
+
+    /** 파기된 계약을 보관하는 기간. (정책 P52) */
+    private static final int RETENTION_YEARS = 5;
 
     private final ContractRepository contractRepository;
     private final FreelancerGradeReaderPort freelancerGradeReaderPort;
@@ -88,6 +97,26 @@ public class ContractLifecycleListener {
     @Transactional
     public void on(ProjectClosedEvent event) {
         advance(event.projectId(), "종료", Contract::complete);
+    }
+
+    /**
+     * 프로젝트가 취소됐다. 걸려 있던 계약을 중도 파기로 옮긴다. (P46)
+     *
+     * <p>{@link ProjectClosedEvent}(정상 종료)와 반대 방향이다. 그쪽은 완료로 올리고 이쪽은
+     * 되돌린다. 둘을 한 이벤트로 묶으면 취소된 프로젝트의 계약이 완료 처리된다.
+     *
+     * <p>체결 전 계약도 대상이다. 서명 대기로 남겨두면 프리랜서가 서명을 눌렀을 때
+     * 프로젝트 쪽에서 {@code PJ_012} 가 올라와 계약 화면에 남의 도메인 에러가 뜬다.
+     *
+     * <p>독립 트랜잭션으로 돈다. 다른 리스너와 달리 <b>여기서 실패해도 프로젝트 취소는
+     * 유지돼야 한다.</b> 취소를 되돌리면 스케줄러 로그에는 처리됐다고 남는데 실제로는
+     * 아무것도 안 바뀐 상태가 되어 원인을 찾기 어렵다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void on(ProjectCanceledEvent event) {
+        LocalDate retentionUntil = LocalDate.now().plusYears(RETENTION_YEARS);
+        advance(event.projectId(), "중도 파기", contract -> contract.cancelByProject(retentionUntil));
     }
 
     /**

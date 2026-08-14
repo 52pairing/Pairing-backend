@@ -3,7 +3,6 @@ package com.pairing.matching.application.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.global.exception.BusinessException;
-import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.matching.domain.model.MatchingSnapshot;
@@ -22,7 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * 포지션 1건의 "모집 시작" 처리(스냅샷 동결 -&gt; 임베딩 upsert -&gt; 최초 추천 라운드 생성).
+ * 포지션 1건의 "모집 시작" 처리. 스냅샷 동결 + 회차 레코드 생성까지만 하고 <b>AI 호출은 하지 않는다</b>.
  * {@link RecruitingStartedEventListener}가 프로젝트의 포지션마다 이 빈을 통해(자기 자신 호출이
  * 아니라 진짜 다른 빈 호출로) 부른다 — REQUIRES_NEW가 실제로 적용되려면 스프링 프록시를
  * 거쳐야 하기 때문이다.
@@ -33,24 +32,41 @@ import java.util.Map;
 class RecruitingStartedPositionHandler {
 
     private final ProjectDirectoryPort projectDirectoryPort;
-    private final MatchingPort matchingPort;
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingSnapshotRepository matchingSnapshotRepository;
     private final MatchingRoundCreationService matchingRoundCreationService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 스냅샷 동결 + <b>회차 레코드까지만</b>. AI 호출(포지션 임베딩·추천)은 전부 2단계로 미룬다.
+     *
+     * <p><b>후보 채우기(AI 호출)를 여기에 같이 두면 안 된다.</b> 한 트랜잭션이면 회차 행이 AI 호출이
+     * 끝날 때까지 커밋되지 않는다. 그 수 초~수십 초 동안 클라이언트가 추천 후보 탭을 열면 회차가
+     * 아예 없고, 호출이 실패하거나 컨테이너가 교체되면 회차 행이 <b>흔적도 없이 사라진다</b> —
+     * 그러면 "무엇이 실패했는지"를 알 방법이 없다(2026-08-13).
+     *
+     * <p>재추천 경로({@code MatchingRerecommendService} → {@link RerecommendRequestedEventListener})는
+     * 원래부터 이렇게 쪼개져 있었다. 최초 추천만 안 그랬다.
+     *
+     * @return 만든 회차 ID. 이미 회차가 있으면(멱등 스킵) null
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void startInitialRecommendation(Long projectId, Long positionId) {
+    Long openInitialRound(Long projectId, Long positionId) {
         if (matchingRoundRepository.countByPositionId(positionId) > 0) {
             log.info("[모집 시작 - 멱등 스킵] 이미 회차가 있어 건너뜀. positionId={}", positionId);
-            return;
+            return null;
         }
 
         ProjectPositionSummary summary = projectDirectoryPort.findPositionSummary(projectId, positionId);
         freezeSnapshot(projectId, positionId, summary);
-        matchingPort.upsertPositionEmbedding(positionId, PositionEmbeddingTextBuilder.buildText(summary));
-        matchingRoundCreationService.createRound(projectId, positionId, RecommendationType.INITIAL,
-                summary.headcount(), 0L);
+        // **여기서 AI 서버를 부르지 않는다.** 포지션 임베딩 생성은 2단계(fillCandidates)로 옮겼다
+        // (2026-08-14). 예전에는 이 자리에서 upsertPositionEmbedding 을 불렀는데, 그러면 결제 순간
+        // AI 서버가 내려가 있을 때 이 트랜잭션이 통째로 롤백돼 **회차도 스냅샷도 안 남는다.**
+        // 회차가 없으면 화면은 "준비중"으로 보이고 복구 스케줄러는 RUNNING 회차만 찾으므로
+        // **영원히 멈춘다.** AI 호출은 전부 회차가 커밋된 뒤로 미룬다.
+        return matchingRoundCreationService
+                .openRound(projectId, positionId, RecommendationType.INITIAL, summary.headcount(), 0L)
+                .getId();
     }
 
     private void freezeSnapshot(Long projectId, Long positionId, ProjectPositionSummary summary) {

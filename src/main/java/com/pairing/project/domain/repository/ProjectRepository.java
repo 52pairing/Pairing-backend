@@ -53,11 +53,14 @@ public interface ProjectRepository {
     Optional<Project> findById(Long projectId);
 
     /**
-     * 모집 마감이 지났는데 아직 모집 중인 프로젝트. (정책 P46 만료 처리)
+     * 모집 마감이 지났는데 인원이 확정되지 않은 프로젝트. (정책 P46 만료 처리)
      *
      * <p>연장 여부는 보지 않는다. 연장하지 않아도 기본 2주가 지나면 만료 대상이다.
+     *
+     * <p>모집중뿐 아니라 <b>협상중·계약 대기</b>도 대상이다. 수락 한 건에 상태가 넘어가므로
+     * 상태로 거르면 대부분의 프로젝트가 만료 대상에서 빠진다. 판정 기준은 인원이다.
      */
-    List<Project> findExpiredRecruiting(LocalDateTime now);
+    List<Project> findExpiredUnderstaffed(LocalDateTime now);
 
     /**
      * 소유 확인과 등급 조회에 쓰는 경량 조회.
