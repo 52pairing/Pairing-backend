@@ -43,7 +43,18 @@ public interface NegotiationLoopUseCase {
     record FloorInput(ConditionType conditionType, String value) {
     }
 
-    /** 조건 1건 응답. accepted=false 면 proposedValue(새 마지노선/역제안) 필요. */
-    record AnswerInput(Long conditionId, boolean accepted, String proposedValue) {
+    /**
+     * 조건 1건 응답. accepted=false 면 proposedValue(새 마지노선/역제안) 필요.
+     *
+     * <p>{@code acceptBelowFloor} 는 사람이 <b>자기 마지노선을 넘겨서라도 이 제안을 직접 수락</b>하겠다는
+     * 명시적 신호다(accepted=true 일 때만 의미). 등록 최소가/마지노선은 대리인의 하한이지 사람의
+     * 명시적 수락까지 막는 천장은 아니라는 정책. 상대 마지노선은 이 플래그와 무관하게 항상 지킨다.
+     */
+    record AnswerInput(Long conditionId, boolean accepted, String proposedValue, boolean acceptBelowFloor) {
+
+        /** 하위호환: {@code acceptBelowFloor} 는 기본 false. */
+        public AnswerInput(Long conditionId, boolean accepted, String proposedValue) {
+            this(conditionId, accepted, proposedValue, false);
+        }
     }
 }

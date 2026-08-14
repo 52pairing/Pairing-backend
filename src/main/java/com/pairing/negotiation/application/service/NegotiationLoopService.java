@@ -127,10 +127,17 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
                         .findLatestProposalExcluding(negotiationId, condition.getId(), role.ownSenders())
                         .map(NegotiationMessage::getProposedValue)
                         .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NO_PROPOSAL_TO_RESPOND));
-                // 사람도 클릭 한 번으로 자기가 그은 선을 넘지 못한다. 대리인에게 적용하는 기준과 같다.
-                // 양보하려면 [거절] → 재지시로 마지노선을 다시 그어야 한다(그 경로가 이미 있다).
+                // 기본: 양측 마지노선을 모두 지켜야 수락된다(NG_011).
+                // 예외: 사람이 "내 선을 넘겨서라도 이 제안을 받겠다"고 명시하면(acceptBelowFloor=true)
+                // 내 쪽 하한 검증만 건너뛴다. 등록 최소가/마지노선은 대리인의 하한이지 사람의 명시적
+                // 수락까지 막는 천장은 아니라는 정책이다. 단 상대 마지노선은 항상 지킨다 — 수락값은
+                // 상대가 낸 제안이라 원래 상대 선은 지켜지지만, 방어적으로 유지한다.
+                String clientFloor = answer.acceptBelowFloor() && role == PartyRole.CLIENT
+                        ? null : condition.getClientFloor();
+                String freelancerFloor = answer.acceptBelowFloor() && role == PartyRole.FREELANCER
+                        ? null : condition.getFreelancerFloor();
                 if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), lockValue,
-                        condition.getClientFloor(), condition.getFreelancerFloor())) {
+                        clientFloor, freelancerFloor)) {
                     throw new BusinessException(NegotiationErrorCode.ACCEPT_BREAKS_FLOOR);
                 }
                 condition.lock(lockValue);
