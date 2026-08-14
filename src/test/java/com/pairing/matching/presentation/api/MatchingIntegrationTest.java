@@ -421,6 +421,84 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("추천 라운드가 아직 없으면 에러가 아니라 준비중으로 내려간다")
+    void candidateListIsPreparingWhileTheFirstRoundIsStillBeingBuilt() throws Exception {
+        // 최초 추천은 착수금 결제 이벤트를 받아 비동기로 돌고 LLM 호출까지 수 초~수십 초가 걸린다.
+        // 결제 직후 추천 후보 탭을 열면 라운드가 없는 게 정상인데, 예전엔 MT_001 을 404로 던져서
+        // 화면에 빨간 에러가 뜨고 "다시 시도"를 눌러야 후보가 보였다.
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(true))
+                .andExpect(jsonPath("$.data.candidates").isEmpty())
+                .andExpect(jsonPath("$.data.roundId").doesNotExist())
+                // 대기 중에도 "0/4명" 같은 표기를 그릴 수 있어야 한다.
+                .andExpect(jsonPath("$.data.headcount").value(2));
+
+        // 라운드가 생기면 preparing 이 꺼지고 평소대로 내려간다.
+        MatchingRound round = seedRound(2);
+        seedExposedCandidate(round.getId(), 1);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(false))
+                .andExpect(jsonPath("$.data.candidates.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("라운드가 없어도 남의 포지션은 볼 수 없다")
+    void preparingResponseStillChecksOwnership() throws Exception {
+        // 평소엔 라운드에서 projectId 를 얻어 소유자를 확인하는데, 라운드가 없으면 그 경로가 없다.
+        // 확인을 건너뛰면 남의 프로젝트 모집 인원을 들여다볼 수 있다.
+        //
+        // **다른 클라이언트로 검증해야 한다.** 프리랜서로 부르면 컨트롤러의 hasRole('CLIENT')에서
+        // 먼저 막혀서, 이 검사를 지워도 테스트가 통과한다(실제로 그렇게 짰다가 변이 테스트로 걸렀다).
+        Cookie otherClientToken = signUpAndLoginOtherClient();
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(otherClientToken))
+                .andExpect(status().isForbidden());
+    }
+
+    /** 프로젝트를 소유하지 않은 두 번째 클라이언트. 소유자 검증 테스트에만 쓴다. */
+    private Cookie signUpAndLoginOtherClient() throws Exception {
+        String email = "other-client@pairing.com";
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("companyName", "주식회사 남의회사");
+        body.put("businessNo", "9876543210");
+        body.put("businessField", "IT_CONTENTS_AI");
+        body.put("employeeCount", "SIZE_10_49");
+        body.put("address", "서울 마포구 월드컵북로 1");
+        body.put("email", email);
+        body.put("name", "박클라");
+        body.put("phone", "010-3333-4444");
+        body.put("password", PASSWORD);
+        body.put("passwordConfirm", PASSWORD);
+        body.put("card", Map.of("cardNumber", "9999-8888-7777-6666", "cardBrand", "국민카드"));
+        body.put("bankAccount", Map.of("bankCode", "004", "accountNo", "110-999-888777", "accountHolder", "박클라"));
+        body.put("agreements", List.of(
+                Map.of("termsId", clientTermsId, "agreed", true),
+                Map.of("termsId", privacyTermsId, "agreed", true),
+                Map.of("termsId", marketingTermsId, "agreed", false)));
+
+        mockMvc.perform(post("/api/v1/auth/signup/client")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated());
+
+        return mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"%s","password":"%s","role":"CLIENT"}"""
+                                .formatted(email, PASSWORD)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getCookie("accessToken");
+    }
+
+    @Test
     @DisplayName("재추천으로 회차가 늘어도 이전 회차 후보가 목록에서 사라지지 않는다")
     void candidateListAccumulatesAcrossRounds() throws Exception {
         // 클라이언트가 후보 2명을 받은 뒤, 선택도 거절도 하지 않고 유료 재추천으로 1명을 더 받은 상황.

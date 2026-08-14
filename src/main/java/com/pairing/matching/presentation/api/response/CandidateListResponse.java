@@ -42,6 +42,31 @@ public record CandidateListResponse(
         boolean budgetWarned,
 
         @Schema(description = "후보 목록. 조건에 맞는 후보가 부족하면 모집 인원보다 적을 수 있다.")
-        List<CandidateResponse> candidates
+        List<CandidateResponse> candidates,
+
+        @Schema(description = "AI가 아직 후보를 고르는 중인지. true면 잠시 뒤 다시 조회하면 된다.",
+                example = "false")
+        boolean preparing
 ) {
+
+    /** 마지막 회차의 남은 유료 재추천 계산과 같은 상한. 라운드가 없으면 한 번도 안 썼다는 뜻이다. */
+    private static final int MAX_PAID_RERECOMMEND = 5;
+
+    /**
+     * 추천 라운드가 아직 만들어지지 않은 상태.
+     *
+     * <p><b>이건 에러가 아니다.</b> 최초 추천은 착수금 결제(모집 시작) 이벤트를 받아 비동기로 돌고
+     * LLM 호출까지 포함해 수 초~수십 초가 걸린다. 그 사이 클라이언트가 추천 후보 탭을 열면 라운드가
+     * 없는 게 정상이다. 예전에는 이때 {@code MT_001}(추천 라운드를 찾을 수 없습니다)을 404로 내보내서,
+     * 화면에 빨간 에러가 뜨고 "다시 시도"를 눌러야 후보가 보였다.
+     *
+     * <p>정상적인 대기 상태이므로 200으로 내리고 {@code preparing}으로 구분한다. 프론트는 로딩 안내를
+     * 띄우고, 완료 알림({@code MATCHING_RECOMMENDED})을 받거나 잠시 뒤 다시 조회하면 된다.
+     *
+     * <p>{@code headcount}는 채워서 보낸다 — "0/4명" 같은 표기를 대기 중에도 그릴 수 있어야 한다.
+     */
+    public static CandidateListResponse preparing(Long positionId, int headcount) {
+        return new CandidateListResponse(positionId, null, 0, null, headcount,
+                false, MAX_PAID_RERECOMMEND, false, false, List.of(), true);
+    }
 }

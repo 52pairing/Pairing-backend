@@ -69,7 +69,7 @@ class CandidateResponseAssembler {
 
         return new CandidateListResponse(round.getPositionId(), round.getId(), round.getRoundNo(),
                 round.getRoundType(), round.getExposeCount(), freeAvailable, paidRemaining,
-                round.isLowScoreWarned(), budgetWarned, candidates);
+                round.isLowScoreWarned(), budgetWarned, candidates, false);
     }
 
     private CandidateResponse toCandidateResponse(MatchingCandidate candidate) {
