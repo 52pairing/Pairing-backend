@@ -329,6 +329,34 @@ public class Contract {
         this.retentionUntil = retentionUntil;
     }
 
+    /**
+     * 프로젝트가 취소돼 이 계약도 끝난다. (정책 P46)
+     *
+     * <p>{@link #terminate} 와 나눠 둔다. 그쪽은 당사자가 누른 중도 파기라 체결된 계약만 대상이고
+     * 아니면 예외를 던진다. 여기는 프로젝트가 통째로 사라지는 경우라 <b>체결 전 계약도 대상</b>이다.
+     * 서명 대기로 남겨두면 프리랜서가 서명을 눌렀을 때 프로젝트 쪽에서 {@code PJ_012} 가 나서,
+     * 계약 화면에 프로젝트 도메인 에러가 튀어나온다.
+     *
+     * <p>파기 주체는 클라이언트다. 모집 기간을 넘겼든 직접 모집을 닫았든 프로젝트를 접은 쪽이다.
+     * 위약금은 산정 기준(P28 제12조)이 미정이라 사실만 기록한다.
+     *
+     * <p>계약서는 지우지 않는다. 5년 보관 대상이라 상태만 옮긴다.
+     *
+     * @return 이번 호출로 실제 옮겼으면 true. 이미 끝난 계약은 false
+     */
+    public boolean cancelByProject(LocalDate retentionUntil) {
+        if (this.status == ContractStatus.TERMINATED
+                || this.status == ContractStatus.COMPLETED
+                || this.status == ContractStatus.REJECTED) {
+            return false;
+        }
+        this.status = ContractStatus.TERMINATED;
+        this.terminatedAt = LocalDateTime.now();
+        this.terminatedBy = PartyRole.CLIENT;
+        this.retentionUntil = retentionUntil;
+        return true;
+    }
+
     /** 생성된 계약서 PDF 를 연결한다. 재생성하면 덮어쓴다. */
     public void attachPdf(Long pdfFileId) {
         this.pdfFileId = pdfFileId;

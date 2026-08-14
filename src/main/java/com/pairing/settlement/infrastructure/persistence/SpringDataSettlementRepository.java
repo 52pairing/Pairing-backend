@@ -71,6 +71,9 @@ public interface SpringDataSettlementRepository extends JpaRepository<Settlement
     /** 계약 1건에 착수금·성공보수가 각각 붙는다. phase 를 함께 걸어야 단건이 된다. */
     Optional<SettlementJpaEntity> findByContractIdAndPhase(Long contractId, SettlementPhase phase);
 
+    /** 프로젝트에 걸린 정산 중 주어진 상태들. 프로젝트 취소 시 미결제 건을 전부 접는 데 쓴다. (P46) */
+    List<SettlementJpaEntity> findByProjectIdAndStatusIn(Long projectId, List<SettlementStatus> statuses);
+
     /**
      * 프리랜서 착수금을 이미 낸 계약 ID 들.
      *
