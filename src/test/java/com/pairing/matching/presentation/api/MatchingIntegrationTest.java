@@ -345,13 +345,13 @@ class MatchingIntegrationTest {
         body.put("businessNo", "1234567890");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
-        body.put("address", "서울 강남구 테헤란로 1");
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
         body.put("email", CLIENT_EMAIL);
         body.put("name", "김클라");
         body.put("phone", "010-1111-2222");
         body.put("password", PASSWORD);
         body.put("passwordConfirm", PASSWORD);
-        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "신한카드"));
+        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "SHINHAN"));
         body.put("bankAccount", Map.of("bankCode", "088", "accountNo", "110-123-456789", "accountHolder", "김클라"));
         body.put("agreements", List.of(
                 Map.of("termsId", clientTermsId, "agreed", true),
@@ -384,7 +384,8 @@ class MatchingIntegrationTest {
         body.put("password", PASSWORD);
         body.put("passwordConfirm", PASSWORD);
         body.put("birthDate", "1995-03-01");
-        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "신한카드"));
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
+        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "SHINHAN"));
         body.put("bankAccount", Map.of("bankCode", "088", "accountNo", "110-123-456789", "accountHolder", "이프리"));
         body.put("agreements", List.of(
                 Map.of("termsId", freelancerTermsId, "agreed", true),
@@ -687,13 +688,13 @@ class MatchingIntegrationTest {
         body.put("businessNo", "9876543210");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
-        body.put("address", "서울 마포구 월드컵북로 1");
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
         body.put("email", email);
         body.put("name", "박클라");
         body.put("phone", "010-3333-4444");
         body.put("password", PASSWORD);
         body.put("passwordConfirm", PASSWORD);
-        body.put("card", Map.of("cardNumber", "9999-8888-7777-6666", "cardBrand", "국민카드"));
+        body.put("card", Map.of("cardNumber", "9999-8888-7777-6666", "cardBrand", "KB"));
         body.put("bankAccount", Map.of("bankCode", "004", "accountNo", "110-999-888777", "accountHolder", "박클라"));
         body.put("agreements", List.of(
                 Map.of("termsId", clientTermsId, "agreed", true),

@@ -1,5 +1,6 @@
 package com.pairing.freelancer.application.result;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.freelancer.domain.model.FreelancerGrade;
 
 import java.time.LocalDate;
@@ -11,7 +12,10 @@ public record FreelancerMyPageResult(
         String email,
         String phone,
         LocalDate birthDate,
+        /** 한 줄로 합친 주소. 화면에 한 줄만 찍는 곳이 쓴다. */
         String address,
+        /** 나눠 담긴 주소. 수정 폼이 쓴다. 나눠 담기 전 가입한 계정은 null. */
+        Address addressParts,
         String profileImageUrl,
         boolean aiMatchingAgreed,
         FreelancerGrade grade,

@@ -1,5 +1,6 @@
 package com.pairing.account.infrastructure.persistence;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.FreelancerProfile;
 import com.pairing.account.domain.model.Role;
@@ -35,7 +36,8 @@ class FreelancerProfileRepositoryTest {
     private Long createFreelancer(String email, String phone, boolean aiMatchingAgreed, boolean matchingPaused) {
         Long accountId = accountRepository.save(Account.createByEmail(
                 email, "$2a$10$hash", Role.FREELANCER, "홍길동", phone)).getId();
-        FreelancerProfile profile = FreelancerProfile.create(accountId, LocalDate.of(1995, 3, 1));
+        FreelancerProfile profile = FreelancerProfile.create(accountId, LocalDate.of(1995, 3, 1),
+                Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"));
         profile.updateMatchingSettings(aiMatchingAgreed, matchingPaused);
         freelancerProfileRepository.save(profile);
         return accountId;

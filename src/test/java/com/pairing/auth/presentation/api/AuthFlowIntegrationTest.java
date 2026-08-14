@@ -1,6 +1,7 @@
 package com.pairing.auth.presentation.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pairing.global.security.GlobalJwtProvider;
 import com.pairing.account.infrastructure.persistence.SpringDataAccountRepository;
 import com.pairing.account.infrastructure.persistence.SpringDataClientProfileRepository;
 import com.pairing.account.infrastructure.persistence.SpringDataFreelancerProfileRepository;
@@ -26,6 +27,8 @@ import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -110,6 +113,11 @@ class AuthFlowIntegrationTest {
     private Long privacyTermsId;
     private Long marketingTermsId;
 
+    @Autowired
+    private GlobalJwtProvider globalJwtProvider;
+    @Value("${jwt.secret-key}")
+    private String jwtSecretKey;
+
     @BeforeEach
     void setUp() {
         termsAgreementRepository.deleteAll();
@@ -139,7 +147,13 @@ class AuthFlowIntegrationTest {
     }
 
     private Map<String, Object> card() {
-        return Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "신한카드");
+        return Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "SHINHAN");
+    }
+
+    private Map<String, Object> address() {
+        // 위젯이 주는 모양 그대로다. roadAddress 에 시·도·시·군·구가 이미 들어 있다.
+        return Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1",
+                "addressDetail", "10층", "zipCode", "06234");
     }
 
     private Map<String, Object> bankAccount() {
@@ -153,7 +167,7 @@ class AuthFlowIntegrationTest {
         body.put("businessNo", "1234567890");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
-        body.put("address", "서울 강남구 테헤란로 1");
+        body.put("address", address());
         body.put("email", EMAIL);
         body.put("name", "홍길동");
         body.put("phone", "010-1234-5678");
@@ -182,6 +196,80 @@ class AuthFlowIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(clientSignUpJson(clientAgreements())))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    @DisplayName("만료가 가까운 액세스 토큰은 요청 처리 중에 갱신되고, 여유가 있으면 그대로 둔다")
+    void slidingSessionRenewsAccessTokenNearExpiry() throws Exception {
+        signUpClient();
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"owner@pairing.com","password":"Passw0rd!","role":"CLIENT"}"""))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie issued = loginResult.getResponse().getCookie("accessToken");
+
+        // 방금 발급받아 수명이 넉넉하면(1시간 중 1시간 남음) 새 쿠키를 내려보내지 않는다.
+        // 매 요청마다 발급하면 응답마다 Set-Cookie 가 붙고 병렬 요청이 서로를 덮어쓴다.
+        MvcResult fresh = mockMvc.perform(get("/api/v1/auth/me").cookie(issued))
+                .andExpect(status().isOk())
+                .andReturn();
+        assertThat(fresh.getResponse().getCookie("accessToken")).isNull();
+
+        // 남은 수명이 임계값(30분) 아래로 내려가면 만료를 미룬 토큰을 새로 내려준다.
+        Cookie nearExpiry = new Cookie("accessToken", shortLivedCopyOf(issued.getValue()));
+        MvcResult renewed = mockMvc.perform(get("/api/v1/auth/me").cookie(nearExpiry))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Cookie renewedCookie = renewed.getResponse().getCookie("accessToken");
+        assertThat(renewedCookie).isNotNull();
+        assertThat(renewedCookie.getValue()).isNotEqualTo(nearExpiry.getValue());
+        assertThat(globalJwtProvider.getExpiration(renewedCookie.getValue()))
+                .isAfter(globalJwtProvider.getExpiration(nearExpiry.getValue()));
+        // 세션 ID 는 그대로 물려받아야 한다. 새로 만들면 진행 중이던 다른 요청이
+        // "다른 기기 로그인"으로 오인되어 끊긴다.
+        assertThat(globalJwtProvider.getSessionId(renewedCookie.getValue()))
+                .isEqualTo(globalJwtProvider.getSessionId(nearExpiry.getValue()));
+    }
+
+    @Test
+    @DisplayName("Authorization 헤더로 인증하면 쿠키를 심지 않는다")
+    void slidingSessionDoesNotTouchCookiesForBearerToken() throws Exception {
+        signUpClient();
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"owner@pairing.com","password":"Passw0rd!","role":"CLIENT"}"""))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String nearExpiry = shortLivedCopyOf(loginResult.getResponse().getCookie("accessToken").getValue());
+
+        // 쿠키를 쓰지 않는 호출(Swagger·스크립트)에 쿠키를 심으면 같은 브라우저의 다른 로그인이 덮어써진다.
+        MvcResult result = mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer " + nearExpiry))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(result.getResponse().getCookie("accessToken")).isNull();
+    }
+
+    /** 같은 subject·role·sid 를 담되 수명만 10분인 액세스 토큰. 만료 임박 상황을 만든다. */
+    private String shortLivedCopyOf(String accessToken) {
+        GlobalJwtProvider shortLived = new GlobalJwtProvider();
+        ReflectionTestUtils.setField(shortLived, "secretKey", jwtSecretKey);
+        ReflectionTestUtils.setField(shortLived, "accessTokenExpiration", 600_000L);
+        ReflectionTestUtils.setField(shortLived, "refreshTokenExpiration", 600_000L);
+        ReflectionTestUtils.setField(shortLived, "cookieDomain", "");
+        ReflectionTestUtils.setField(shortLived, "cookieSecure", false);
+        ReflectionTestUtils.invokeMethod(shortLived, "init");
+
+        var claims = globalJwtProvider.parseClaims(accessToken);
+        return shortLived.createAccessToken(claims.getSubject(), claims.get("role", String.class),
+                claims.get(GlobalJwtProvider.SESSION_ID_CLAIM, String.class));
     }
 
     @Test
@@ -229,10 +317,50 @@ class AuthFlowIntegrationTest {
         // 토큰은 본문에 실리지 않는다.
         assertThat(loginResult.getResponse().getContentAsString()).doesNotContain(accessToken.getValue());
 
+        // 클라이언트는 메인·프로필에 기업명이 나가야 해서 담당자명과 기업명을 따로 내린다.
+        // 하나로 합치면 프로필의 "담당자" 줄까지 기업명이 된다.
         mockMvc.perform(get("/api/v1/auth/me").cookie(accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.email").value(EMAIL))
-                .andExpect(jsonPath("$.data.role").value("CLIENT"));
+                .andExpect(jsonPath("$.data.role").value("CLIENT"))
+                .andExpect(jsonPath("$.data.name").value("홍길동"))
+                .andExpect(jsonPath("$.data.companyName").value("주식회사 페어링"));
+    }
+
+    @Test
+    @DisplayName("프리랜서는 기업명 없이 담당자명만 내려온다")
+    void freelancerMeHasNoCompanyName() throws Exception {
+        Map<String, Object> freelancer = new java.util.HashMap<>(Map.of(
+                "name", "김프리",
+                "phone", "010-2222-3333",
+                "email", EMAIL,
+                "password", PASSWORD,
+                "passwordConfirm", PASSWORD,
+                "birthDate", "1995-03-01",
+                "card", card(),
+                "bankAccount", bankAccount()));
+        freelancer.put("address", address());
+        freelancer.put("agreements", List.of(
+                Map.of("termsId", freelancerTermsId, "agreed", true),
+                Map.of("termsId", privacyTermsId, "agreed", true),
+                Map.of("termsId", marketingTermsId, "agreed", true)));
+
+        mockMvc.perform(post("/api/v1/auth/signup/freelancer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(freelancer)))
+                .andExpect(status().isCreated());
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"owner@pairing.com","password":"Passw0rd!","role":"FREELANCER"}"""))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        mockMvc.perform(get("/api/v1/auth/me").cookie(loginResult.getResponse().getCookie("accessToken")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("김프리"))
+                .andExpect(jsonPath("$.data.companyName").isEmpty());
     }
 
     @Test
@@ -252,7 +380,7 @@ class AuthFlowIntegrationTest {
         // 하이픈은 제거되고, 평문은 저장되지 않으며, 카드 끝 4자리만 따로 남는다.
         assertThat(dataEncryptionPort.decrypt(card.getCardNumberEnc())).isEqualTo("1234567812345678");
         assertThat(card.getCardLast4()).isEqualTo("5678");
-        assertThat(card.getCardBrand()).isEqualTo("신한카드");
+        assertThat(card.getCardBrand()).isEqualTo("SHINHAN");
 
         assertThat(bank.getBankCode()).isEqualTo("088");
         assertThat(dataEncryptionPort.decrypt(bank.getAccountNoEnc())).isEqualTo("110123456789");
@@ -277,6 +405,36 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
+    @DisplayName("휴대폰번호·사업자등록번호·은행코드가 빠지면 500이 아니라 400으로 막는다")
+    void signUpRejectsMissingRequiredFieldsWithFieldError() throws Exception {
+        // @Pattern 은 null 을 통과시킨다(Bean Validation 명세). @NotBlank 가 없으면 도메인이나
+        // DB(NOT NULL)까지 내려가서, 휴대폰번호의 경우 500 이 나갔다.
+        for (String missing : List.of("phone", "businessNo")) {
+            Map<String, Object> body = new java.util.HashMap<>(clientSignUpBody());
+            body.remove(missing);
+            body.put("agreements", clientAgreements());
+
+            mockMvc.perform(post("/api/v1/auth/signup/client")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(body)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
+        }
+
+        Map<String, Object> noBankCode = new java.util.HashMap<>(clientSignUpBody());
+        noBankCode.put("bankAccount", Map.of("accountNo", "110-123-456789", "accountHolder", "홍길동"));
+        noBankCode.put("agreements", clientAgreements());
+
+        mockMvc.perform(post("/api/v1/auth/signup/client")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(noBankCode)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
+
+        assertThat(accountRepository.count()).isZero();
+    }
+
+    @Test
     @DisplayName("기업 주소가 빠지면 400으로 막는다")
     void signUpWithoutAddress() throws Exception {
         Map<String, Object> body = new java.util.HashMap<>(clientSignUpBody());
@@ -288,6 +446,72 @@ class AuthFlowIntegrationTest {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
+    }
+
+    @Test
+    @DisplayName("프리랜서도 주소 없이는 가입할 수 없고, 시·도와 도로명이 각각 필수다")
+    void freelancerSignUpRequiresAddress() throws Exception {
+        // 주소 자체가 없는 경우
+        mockMvc.perform(post("/api/v1/auth/signup/freelancer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(freelancerSignUpBody(null))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
+
+        // 시·도만 빠진 경우
+        mockMvc.perform(post("/api/v1/auth/signup/freelancer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(freelancerSignUpBody(
+                                Map.of("sigungu", "강남구", "roadAddress", "테헤란로 1")))))
+                .andExpect(status().isBadRequest());
+
+        // 도로명만 빠진 경우
+        mockMvc.perform(post("/api/v1/auth/signup/freelancer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(freelancerSignUpBody(
+                                Map.of("sido", "서울", "sigungu", "강남구")))))
+                .andExpect(status().isBadRequest());
+
+        assertThat(accountRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("시·군·구가 없는 세종시도 가입되고, 주소는 빈 칸 없이 한 줄로 합쳐진다")
+    void freelancerSignUpAllowsMissingSigungu() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/signup/freelancer")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(freelancerSignUpBody(Map.of(
+                                "sido", "세종특별자치시",
+                                "sigungu", "",
+                                "roadAddress", "세종특별자치시 한누리대로 2130",
+                                "addressDetail", "3층",
+                                "zipCode", "30151")))))
+                .andExpect(status().isCreated());
+
+        var profile = freelancerProfileRepository.findAll().get(0);
+        assertThat(profile.getAddress()).isEqualTo("세종특별자치시 한누리대로 2130 3층");
+        assertThat(profile.getAddressParts().getSigungu()).isNull();
+        assertThat(profile.getAddressParts().getZipCode()).isEqualTo("30151");
+    }
+
+    /** {@code address} 가 null 이면 주소 항목 자체를 뺀 바디를 만든다. */
+    private Map<String, Object> freelancerSignUpBody(Map<String, Object> address) {
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("name", "김프리");
+        body.put("phone", "010-2222-3333");
+        body.put("email", EMAIL);
+        body.put("password", PASSWORD);
+        body.put("passwordConfirm", PASSWORD);
+        body.put("birthDate", "1995-03-01");
+        if (address != null) {
+            body.put("address", address);
+        }
+        body.put("card", card());
+        body.put("bankAccount", bankAccount());
+        body.put("agreements", List.of(
+                Map.of("termsId", freelancerTermsId, "agreed", true),
+                Map.of("termsId", privacyTermsId, "agreed", true)));
+        return body;
     }
 
     @Test
@@ -326,6 +550,7 @@ class AuthFlowIntegrationTest {
                 "birthDate", "1995-03-01",
                 "card", card(),
                 "bankAccount", bankAccount()));
+        freelancer.put("address", address());
         freelancer.put("agreements", List.of(
                 Map.of("termsId", freelancerTermsId, "agreed", true),
                 Map.of("termsId", privacyTermsId, "agreed", true),

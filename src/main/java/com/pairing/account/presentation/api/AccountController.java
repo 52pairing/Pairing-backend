@@ -1,6 +1,7 @@
 package com.pairing.account.presentation.api;
 
 import com.pairing.account.application.command.WithdrawAccountCommand;
+import com.pairing.account.application.service.PaymentMethodAccessGuard;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.application.usecase.WithdrawalEligibilityUseCase;
@@ -18,6 +19,7 @@ import com.pairing.account.presentation.api.response.AdminAccountResponse;
 import com.pairing.account.presentation.api.response.AdminAccountSummaryResponse;
 import com.pairing.account.presentation.api.response.PaymentMethodResponse;
 import com.pairing.account.presentation.api.response.WithdrawalEligibilityResponse;
+import com.pairing.auth.exception.AuthErrorCode;
 import com.pairing.global.annotation.swagger.ApiErrorCodeExample;
 import com.pairing.global.common.api.response.ApiResponse;
 import com.pairing.global.common.api.response.PageResponse;
@@ -59,9 +61,16 @@ public class AccountController {
     private final AccountQueryUseCase accountQueryUseCase;
     private final AccountCommandUseCase accountCommandUseCase;
     private final WithdrawalEligibilityUseCase withdrawalEligibilityUseCase;
+    private final PaymentMethodAccessGuard paymentMethodAccessGuard;
 
     // ==========================================
     // 결제수단 (마이페이지 > 결제수단)
+    //
+    // 세 엔드포인트 모두 이메일 인증(purpose=PAYMENT_METHOD)을 요구한다. 수정만이 아니라
+    // 조회부터 막는다 - 마스킹해도 은행명·예금주·끝 4자리가 단서가 되기 때문이다.
+    //
+    // 관문을 서비스가 아니라 여기에 두는 이유는 PaymentMethodAccessGuard 의 javadoc 에 있다.
+    // 요약하면 findMyPaymentMethods 를 계약서와 정산도 쓰고 있어서, 서비스에 걸면 그 둘이 함께 막힌다.
     // ==========================================
 
     @GetMapping("/me/payment-methods")
@@ -69,9 +78,12 @@ public class AccountController {
             description = "수수료 결제 카드 1건 + 용역비 수령 계좌 1건을 반환합니다. 둘 다 가입 시 만들어집니다. "
                     + "수수료 결제 화면은 methodType 이 CARD 인 건만 사용하세요.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED"})
+    @ApiErrorCodeExample(domain = AuthErrorCode.class, value = {"EMAIL_NOT_VERIFIED"})
     public ResponseEntity<ApiResponse<List<PaymentMethodResponse>>> findMyPaymentMethods(
             @CurrentAccountId Long accountId
     ) {
+        paymentMethodAccessGuard.requireVerified(accountId);
+
         List<PaymentMethodResponse> data = accountQueryUseCase.findMyPaymentMethods(accountId).stream()
                 .map(PaymentMethodResponse::from)
                 .toList();
@@ -84,10 +96,13 @@ public class AccountController {
             description = "가입 시 등록된 카드를 수정합니다. 신규 등록·삭제 API는 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "UNAUTHORIZED"})
     @ApiErrorCodeExample(domain = AccountErrorCode.class, value = {"PAYMENT_METHOD_NOT_FOUND"})
+    @ApiErrorCodeExample(domain = AuthErrorCode.class, value = {"EMAIL_NOT_VERIFIED"})
     public ResponseEntity<ApiResponse<PaymentMethodResponse>> updateCard(
             @Valid @RequestBody CardUpdateRequest request,
             @CurrentAccountId Long accountId
     ) {
+        paymentMethodAccessGuard.requireVerified(accountId);
+
         PaymentMethodResponse data = PaymentMethodResponse.from(
                 accountCommandUseCase.updateCard(accountId, request.toCommand()));
         return ResponseEntity.ok(ApiResponse.success("CARD_UPDATED", "카드 정보를 수정했습니다.", data));
@@ -99,10 +114,13 @@ public class AccountController {
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST", "UNAUTHORIZED"})
     @ApiErrorCodeExample(domain = AccountErrorCode.class,
             value = {"UNKNOWN_BANK_CODE", "PAYMENT_METHOD_NOT_FOUND"})
+    @ApiErrorCodeExample(domain = AuthErrorCode.class, value = {"EMAIL_NOT_VERIFIED"})
     public ResponseEntity<ApiResponse<PaymentMethodResponse>> updateBankAccount(
             @Valid @RequestBody BankAccountUpdateRequest request,
             @CurrentAccountId Long accountId
     ) {
+        paymentMethodAccessGuard.requireVerified(accountId);
+
         PaymentMethodResponse data = PaymentMethodResponse.from(
                 accountCommandUseCase.updateBankAccount(accountId, request.toCommand()));
         return ResponseEntity.ok(ApiResponse.success("BANK_ACCOUNT_UPDATED", "계좌 정보를 수정했습니다.", data));

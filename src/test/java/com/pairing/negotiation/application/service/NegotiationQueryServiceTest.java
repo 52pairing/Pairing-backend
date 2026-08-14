@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.ClientProfile;
@@ -85,9 +86,11 @@ class NegotiationQueryServiceTest {
 
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 CLIENT_ACCOUNT_ID, "삼성전자", "1234567890",
-                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
+                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, 
+                    Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"))).getId();
         freelancerProfileId = freelancerProfileRepository.save(
-                FreelancerProfile.create(freelancerAccountId, LocalDate.of(1990, 1, 1))).getId();
+                FreelancerProfile.create(freelancerAccountId, LocalDate.of(1990, 1, 1),
+                    Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"))).getId();
 
         // project 는 project 도메인 소유다. 여기선 그 조회 포트를 목킹해 협상 조회 로직만 검증한다
         // (project 테이블 스키마 변화에 협상 테스트가 흔들리지 않게).

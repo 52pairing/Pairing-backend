@@ -1,6 +1,9 @@
 package com.pairing.auth.presentation.api;
 
 import com.pairing.account.application.usecase.AccountQueryUseCase;
+import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.ClientProfile;
+import com.pairing.account.domain.model.Role;
 import com.pairing.auth.application.command.LoginCommand;
 import com.pairing.auth.application.result.LoginResult;
 import com.pairing.auth.application.usecase.LoginUseCase;
@@ -129,8 +132,25 @@ public class AuthController {
     @Operation(summary = "현재 로그인 사용자 조회")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED", "TOKEN_EXPIRED"})
     public ResponseEntity<ApiResponse<MeResponse>> me(@CurrentAccountId Long accountId) {
+        Account account = accountQueryUseCase.getById(accountId);
+
         return ResponseEntity.ok(ApiResponse.success("ME_FOUND", "조회에 성공했습니다.",
-                MeResponse.from(accountQueryUseCase.getById(accountId))));
+                MeResponse.from(account, resolveCompanyName(account))));
+    }
+
+    /**
+     * 클라이언트일 때만 기업명을 함께 내린다. 메인·프로필이 담당자명 대신 기업명을 찍어야 해서다.
+     *
+     * <p>프로필이 없어도 예외로 올리지 않는다. 이 API 는 로그인 상태 확인이 본업이고 가드가 매 경로마다
+     * 부르는 자리라, 기업명 한 칸이 비었다고 401/404 가 나가면 화면 진입 자체가 막힌다.
+     */
+    private String resolveCompanyName(Account account) {
+        if (account.getRole() != Role.CLIENT) {
+            return null;
+        }
+        return accountQueryUseCase.findClientProfileByAccountId(account.getId())
+                .map(ClientProfile::getCompanyName)
+                .orElse(null);
     }
 
     /** 프록시 뒤에서는 remoteAddr이 프록시 IP라 X-Forwarded-For의 첫 값을 우선한다. */

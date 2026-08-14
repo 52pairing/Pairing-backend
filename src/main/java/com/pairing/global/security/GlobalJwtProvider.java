@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.Optional;
 
 /**
  * JWT 발급 / 검증 / 클레임 추출을 담당한다.
@@ -34,6 +35,14 @@ public class GlobalJwtProvider {
 
     @Value("${jwt.access-token-expiration}")
     private long accessTokenExpiration;
+
+    /**
+     * 슬라이딩 갱신 임계값. 액세스 토큰의 남은 수명이 이 값 아래면 요청 처리 중에 새로 발급한다.
+     *
+     * <p>0 이면 슬라이딩이 꺼진다. 기본값을 둔 이유는 이 값을 모르는 옛 설정 파일로도 기동돼야 해서다.
+     */
+    @Value("${jwt.access-token-renew-threshold:0}")
+    private long accessTokenRenewThreshold;
 
     @Value("${jwt.refresh-token-expiration}")
     private long refreshTokenExpiration;
@@ -167,6 +176,40 @@ public class GlobalJwtProvider {
         }
 
         return builder.build();
+    }
+
+    /**
+     * 남은 수명이 임계값 아래면 만료 시각을 미룬 새 액세스 토큰 쿠키를 만든다. 아니면 empty.
+     *
+     * <p><b>슬라이딩 세션.</b> 사용자가 계속 쓰고 있는데 발급 시점 기준으로 딱 끊기면, 작업 중에
+     * 갑자기 로그인 화면으로 튕긴다. 요청이 들어올 때마다 만료를 미뤄 "활동 중에는 안 끊긴다"를 만든다.
+     *
+     * <p><b>매 요청마다 발급하지는 않는다.</b> 그러면 응답마다 Set-Cookie 가 붙고, 병렬 요청이
+     * 서로 다른 토큰을 덮어써 쿠키가 계속 튄다. 남은 수명이 임계값 아래일 때만 새로 발급하므로
+     * "임계값(기본 30분) 안에 아무 API나 한 번 부르면 세션이 유지된다"가 된다.
+     *
+     * <p>세션 ID(sid)는 그대로 물려준다. 새로 만들면 진행 중이던 다른 요청이 "다른 기기 로그인"으로
+     * 오인되어 끊긴다.
+     *
+     * <p><b>리프레시 토큰 수명은 늘리지 않는다.</b> 그쪽이 절대 상한이라 계속 활동해도 7일 뒤에는
+     * 재로그인이 필요하다. 슬라이딩으로 무한정 늘리면 탈취된 세션도 영원히 살아 있게 된다.
+     */
+    public Optional<ResponseCookie> renewAccessTokenCookie(Claims claims) {
+        if (accessTokenRenewThreshold <= 0 || claims.getExpiration() == null) {
+            return Optional.empty();
+        }
+
+        long remaining = claims.getExpiration().getTime() - System.currentTimeMillis();
+        if (remaining > accessTokenRenewThreshold) {
+            return Optional.empty();
+        }
+
+        String renewed = createAccessToken(
+                claims.getSubject(),
+                claims.get("role", String.class),
+                claims.get(SESSION_ID_CLAIM, String.class));
+
+        return Optional.of(createCookie(ACCESS_TOKEN_COOKIE, renewed));
     }
 
     /**

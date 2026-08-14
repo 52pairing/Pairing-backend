@@ -1,6 +1,8 @@
 package com.pairing.account.infrastructure.mapper;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.FreelancerProfile;
+import com.pairing.account.infrastructure.persistence.AddressEmbeddable;
 import com.pairing.account.infrastructure.persistence.FreelancerProfileJpaEntity;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingConstants;
@@ -19,6 +21,7 @@ public interface FreelancerProfileMapper {
                 entity.getAccountId(),
                 entity.getBirthDate(),
                 entity.getAddress(),
+                AddressMapping.toDomain(entity.getAddressParts()),
                 entity.getProfileFileId(),
                 entity.isAiMatchingAgreed(),
                 entity.isMatchingPaused(),
@@ -26,5 +29,9 @@ public interface FreelancerProfileMapper {
                 entity.getGradeCheckedAt(),
                 entity.getDeletedAt()
         );
+    }
+
+    default AddressEmbeddable toEmbeddable(Address address) {
+        return AddressMapping.toEmbeddable(address);
     }
 }

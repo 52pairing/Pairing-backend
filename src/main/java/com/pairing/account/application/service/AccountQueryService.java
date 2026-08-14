@@ -95,6 +95,11 @@ public class AccountQueryService implements AccountQueryUseCase {
     }
 
     @Override
+    public Optional<ClientProfile> findClientProfileByAccountId(Long accountId) {
+        return clientProfileRepository.findByAccountId(accountId);
+    }
+
+    @Override
     public Optional<FreelancerProfile> findFreelancerProfileById(Long freelancerProfileId) {
         return freelancerProfileRepository.findById(freelancerProfileId);
     }

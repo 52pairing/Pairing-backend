@@ -1,6 +1,7 @@
 package com.pairing.account.infrastructure.persistence;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -30,8 +31,12 @@ public class FreelancerProfileJpaEntity {
     @Column(name = "birth_date", nullable = false)
     private LocalDate birthDate;
 
+    // 한 줄로 합친 주소. 나눠 담기 전 가입한 행에는 이 값만 있다.
     @Column(name = "address", length = 255)
     private String address;
+
+    @Embedded
+    private AddressEmbeddable addressParts;
 
     @Column(name = "profile_file_id")
     private Long profileFileId;
@@ -55,12 +60,14 @@ public class FreelancerProfileJpaEntity {
     private LocalDateTime deletedAt;
 
     public FreelancerProfileJpaEntity(Long id, Long accountId, LocalDate birthDate, String address,
-                                      Long profileFileId, boolean aiMatchingAgreed, boolean matchingPaused,
-                                      String grade, LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
+                                      AddressEmbeddable addressParts, Long profileFileId,
+                                      boolean aiMatchingAgreed, boolean matchingPaused, String grade,
+                                      LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
         this.id = id;
         this.accountId = accountId;
         this.birthDate = birthDate;
         this.address = address;
+        this.addressParts = addressParts;
         this.profileFileId = profileFileId;
         this.aiMatchingAgreed = aiMatchingAgreed;
         this.matchingPaused = matchingPaused;

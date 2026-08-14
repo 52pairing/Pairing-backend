@@ -1,10 +1,12 @@
 package com.pairing.auth.application.service;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.application.command.BankAccountCommand;
 import com.pairing.account.application.command.CardCommand;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.BusinessField;
+import com.pairing.account.domain.model.CardCompany;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.Role;
 import com.pairing.auth.application.command.ClientSignUpCommand;
@@ -53,7 +55,8 @@ class SignUpServiceTest {
     private static final String PHONE_STORED = "01012345678";
     private static final String PASSWORD = "Passw0rd!";
     private static final String BUSINESS_NO = "1234567890";
-    private static final String ADDRESS = "서울 강남구 테헤란로 1";
+    private static final Address ADDRESS =
+            Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234");
 
     @Mock
     private AccountCommandUseCase accountCommandUseCase;
@@ -80,7 +83,7 @@ class SignUpServiceTest {
     }
 
     private CardCommand card() {
-        return new CardCommand("1234-5678-1234-5678", "신한카드", null);
+        return new CardCommand("1234-5678-1234-5678", CardCompany.SHINHAN, null);
     }
 
     private BankAccountCommand bankAccount() {
@@ -99,7 +102,7 @@ class SignUpServiceTest {
 
     private FreelancerSignUpCommand freelancerCommand(LocalDate birthDate) {
         return new FreelancerSignUpCommand(EMAIL, PASSWORD, PASSWORD, "홍길동", PHONE_INPUT, birthDate,
-                card(), bankAccount(), agreements(), "JUnit");
+                ADDRESS, card(), bankAccount(), agreements(), "JUnit");
     }
 
     @Test
@@ -224,7 +227,7 @@ class SignUpServiceTest {
         assertThatThrownBy(() -> signUpService.signUpFreelancerBySocial(
                 new com.pairing.auth.application.command.SocialSignUpCommand(
                         "expired-ticket", "홍길동", PHONE_INPUT, LocalDate.of(1995, 3, 1),
-                        card(), bankAccount(), agreements(), "JUnit")))
+                        ADDRESS, card(), bankAccount(), agreements(), "JUnit")))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(AuthErrorCode.SIGNUP_TICKET_EXPIRED);

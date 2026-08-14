@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.account.domain.model.EmployeeCount;
@@ -57,9 +58,11 @@ class NegotiationChatRoomLinkTest {
     void setUp() {
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 CLIENT_ACCOUNT_ID, "삼성전자", "1234567890",
-                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
+                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299,
+                Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"))).getId();
         Long freelancerProfileId = freelancerProfileRepository.save(
-                FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1))).getId();
+                FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1),
+                        Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"))).getId();
         // project 는 project 도메인 소유다. 그쪽 엔티티의 NOT NULL 컬럼이 늘면 여기도 채워야 한다.
         jdbcTemplate.update("INSERT INTO project "
                         + "(id, client_id, title, start_negotiable, "

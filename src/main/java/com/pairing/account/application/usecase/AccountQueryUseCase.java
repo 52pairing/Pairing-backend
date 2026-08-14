@@ -53,6 +53,15 @@ public interface AccountQueryUseCase {
     /** 클라이언트 마이페이지(기업정보) 조회용. 없으면 {@code AC_002}. */
     ClientProfile getClientProfile(Long accountId);
 
+    /**
+     * 로그인 계정(accountId)으로 클라이언트 프로필을 찾는다. 없으면 empty.
+     *
+     * <p>{@link #getClientProfile} 과 달리 없는 것을 예외로 보지 않는다. 프로필이 빠져도 화면은
+     * 열려야 하는 쪽이 쓴다 — 예를 들어 {@code GET /auth/me} 는 로그인 상태 확인이 본업이라
+     * 기업명 한 칸 때문에 로그인 직후 진입이 통째로 막히면 안 된다.
+     */
+    Optional<ClientProfile> findClientProfileByAccountId(Long accountId);
+
     /** 매칭/협상 도메인이 freelancer_profile.id 로 프리랜서를 다시 찾을 때 쓴다. 없으면 empty. */
     Optional<FreelancerProfile> findFreelancerProfileById(Long freelancerProfileId);
 

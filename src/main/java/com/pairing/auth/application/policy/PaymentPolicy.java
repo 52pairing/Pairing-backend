@@ -19,7 +19,8 @@ public final class PaymentPolicy {
         if (card == null) {
             return null;
         }
-        return new CardCommand(digitsOnly(card.cardNumber()), trim(card.cardBrand()), trim(card.cardHolder()));
+        // cardBrand 는 enum 이라 다듬을 게 없다. 정규화 대상은 사용자가 자유롭게 입력하는 문자열뿐이다.
+        return new CardCommand(digitsOnly(card.cardNumber()), card.cardBrand(), trim(card.cardHolder()));
     }
 
     public static BankAccountCommand normalize(BankAccountCommand bankAccount) {
