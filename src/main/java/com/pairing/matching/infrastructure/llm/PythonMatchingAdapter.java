@@ -10,15 +10,14 @@ import com.pairing.matching.application.result.RankedFreelancer;
 import com.pairing.matching.application.result.ScoredFreelancer;
 import com.pairing.matching.exception.MatchingErrorCode;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -40,23 +39,16 @@ public class PythonMatchingAdapter implements MatchingPort {
     private final RestClient restClient;
     private final String internalApiKey;
 
-    public PythonMatchingAdapter(@Value("${ai.pairing-python.base-url}") String baseUrl,
+    /** {@link PythonMatchingClientConfig}가 만든 클라이언트를 받는다(테스트에서 갈아끼우기 위해). */
+    public PythonMatchingAdapter(RestClient pythonMatchingRestClient,
                                  @Value("${ai.pairing-python.internal-api-key}") String internalApiKey) {
+        this.restClient = pythonMatchingRestClient;
         this.internalApiKey = internalApiKey;
-
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(Duration.ofSeconds(3));
-        // 벡터 검색 + LLM 생성까지 걸리므로 읽기 타임아웃을 넉넉히 둔다(계약서 기준 60s).
-        requestFactory.setReadTimeout(Duration.ofSeconds(60));
-
-        this.restClient = RestClient.builder()
-                .requestFactory(requestFactory)
-                .baseUrl(baseUrl)
-                .build();
     }
 
     @Override
-    @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "searchCandidatesFallback")
+    @Retry(name = "pythonMatchingApi", fallbackMethod = "searchCandidatesFallback")
+    @CircuitBreaker(name = "pythonMatchingApi")
     public CandidatePool searchCandidates(Long positionId, int limit) {
         PythonApiResponse<CandidatePoolData> response = restClient.get()
                 .uri("/api/v1/embeddings/positions/{positionId}/candidates?limit={limit}", positionId, limit)
@@ -73,7 +65,8 @@ public class PythonMatchingAdapter implements MatchingPort {
     }
 
     @Override
-    @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "recommendFallback")
+    @Retry(name = "pythonMatchingApi", fallbackMethod = "recommendFallback")
+    @CircuitBreaker(name = "pythonMatchingApi")
     public MatchingRecommendation recommend(Long positionId, int recruitCount, int poolMultiplier,
                                             List<Long> excludedFreelancerIds, long budgetCap) {
         Map<String, Object> requestBody = Map.of(
@@ -115,7 +108,8 @@ public class PythonMatchingAdapter implements MatchingPort {
     }
 
     @Override
-    @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "upsertPositionEmbeddingFallback")
+    @Retry(name = "pythonMatchingApi", fallbackMethod = "upsertPositionEmbeddingFallback")
+    @CircuitBreaker(name = "pythonMatchingApi")
     public void upsertPositionEmbedding(Long positionId, String text) {
         Map<String, Object> requestBody = Map.of("position_id", positionId, "text", text);
 
@@ -130,7 +124,8 @@ public class PythonMatchingAdapter implements MatchingPort {
     }
 
     @Override
-    @CircuitBreaker(name = "pythonMatchingApi", fallbackMethod = "upsertFreelancerEmbeddingFallback")
+    @Retry(name = "pythonMatchingApi", fallbackMethod = "upsertFreelancerEmbeddingFallback")
+    @CircuitBreaker(name = "pythonMatchingApi")
     public void upsertFreelancerEmbedding(Long freelancerId, String text) {
         Map<String, Object> requestBody = Map.of("freelancer_id", freelancerId, "text", text);
 

@@ -1840,3 +1840,62 @@ Pairing-python이 같이 떠 있어야 한다. 배포 후 수동 확인이 필�
 - 앞선 커밋 3개(후보 누적·카드 상태·MT_019)는 이미 develop 에 머지됨
 
 `./gradlew clean build` — **555 tests, 0 failures**.
+
+---
+
+## 2026-08-14 — 스프링 → 파이썬 호출 재시도 추가, 차단기 설정 채움
+
+### 차단기가 붙어만 있고 동작하지 않고 있었다
+
+`PythonMatchingAdapter`의 4개 메서드에 `@CircuitBreaker`가 달려 있는데 resilience4j 설정이 레포
+어디에도 없어서 기본값으로 돌고 있었다. `minimum-number-of-calls=100` 이라 이 호출량(프로젝트
+착수금 결제 시 한 번씩)에서는 **100번이 쌓일 일이 없어 절대 열리지 않았다.**
+
+### 재시도는 아예 없었다
+
+파이썬 재배포·재시작 중에는 연결 자체가 안 되는데, 그게 곧바로 MT_010 으로 이어졌다. 최초
+추천이면 회차가 FAILED 로 닫히고 클라이언트는 5분 주기 복구를 기다려야 했다.
+
+### fallback 위치를 옮겼다 (이걸 안 하면 재시도가 아예 안 걸린다)
+
+`@CircuitBreaker(fallbackMethod=...)`가 원래 예외를 `BusinessException(MT_010)`으로 바꿔 던지고
+있었다. resilience4j 기본 순서상 `@Retry`가 바깥이라, 재시도 조건을 무엇으로 적든 **이미 바뀐
+예외**와 대조된다. fallback 을 `@Retry` 쪽으로 옮겼다.
+
+### 5xx 는 일부러 재시도하지 않는다
+
+파이썬은 Gemini 실패를 502(AI_012/AI_014), 504(AI_013)로 내려준다. 그 시점엔 파이썬이 **이미
+Gemini 를 재시도한 뒤**다(같은 키 2회 + 키 회전). 여기서 또 부르면 한 번의 추천에 Gemini 호출이
+3배로 불어나는데 성공 확률은 거의 안 오른다. **연결 단계 실패(`ResourceAccessException`)만**
+재시도한다 — Gemini 를 부르기 전이라 추가 비용이 없다.
+
+### 설정 파일을 하나로 모았다
+
+`src/test/resources/application.yaml`이 `src/main/resources/application.yaml`을 **통째로 가린다**
+(같은 이름이라 하나만 읽힌다). 처음엔 같은 블록을 양쪽에 복사했는데, 그 상태에서 값이 갈리면
+테스트가 "실제와 다른 설정"을 검증하게 된다 — 실제로 테스트 설정이 없어서 "502도 재시도함"이
+통과할 뻔했고 정책 테스트가 잡아냈다.
+
+`src/main/resources/matching-resilience.yaml` 한 곳에 값을 두고 양쪽 application.yaml 이
+`spring.config.import` 한 줄로 불러온다. 공용 파일에 남는 흔적도 25줄 × 2 에서 2줄 × 2 로 줄었다.
+
+### 테스트를 위해 RestClient 를 빈으로 뺐다
+
+어댑터가 직접 `RestClient.builder()`를 부르고 `requestFactory`를 지정하면 `MockRestServiceServer`
+가 심은 팩토리를 덮어써서 HTTP 를 가로챌 수 없다. 그러면 재시도가 실제로 도는지 확인할 방법이
+없다 — 애노테이션과 설정의 조합은 조용히 안 먹는 일이 흔하고, 위 차단기가 그 예다.
+`PythonMatchingClientConfig`로 분리했다.
+
+### 검증
+
+`./gradlew clean build` — **572 tests, 0 failures**. 정책 테스트 4건.
+
+**변이 테스트 2건으로 확인했다.**
+- `spring.config.import` 를 다른 파일로 돌리면 "502는 재시도 안 함"이 실패한다 → 그 한 줄이
+  실제로 설정을 가져오고 있다
+- fallback 을 `@CircuitBreaker` 에 두면(원래 구조) 재시도가 한 번도 안 걸린다
+
+### 남은 것
+
+`@Retry` 는 매칭 어댑터에만 붙였다. 협상(5번)도 같은 파이썬 서버를 부르는데 폴백만 있고 재시도가
+없다 — 그쪽 담당자에게 전달할 것. `instances` 아래에 이름만 추가하면 된다.
