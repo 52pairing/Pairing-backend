@@ -45,3 +45,34 @@ jobs:
           path: build/reports/tests/test
           retention-days: 7
           if-no-files-found: ignore
+
+  k6-catalog:
+    name: k6 부하 테스트 카탈로그 검사
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    # 부하 테스트를 CI 에서 돌리는 게 아니다. 스크립트가 실제 컨트롤러와 맞는지만 본다.
+    # k6 도 설치하지 않는다 — Node 만으로 도는 검사다.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 1) 카탈로그 경로가 실제 컨트롤러에 존재하는지.
+      #
+      #    이게 중요한 이유: 경로에 오타가 있거나 컨트롤러가 경로를 바꾸면 그 API 는 404 를
+      #    받는다. 404 는 DB 를 타지 않아서 아주 빠르므로 "p95 3ms" 같은 좋아 보이는 숫자가
+      #    나온다. 부하 테스트 결과를 근거로 성능이 개선됐다고 말하는 자리에서 이건 치명적이다.
+      #
+      #    함께 builder/catalog.js(자동 생성 파일)가 endpoints.js 와 맞는지도 본다.
+      #    재생성을 잊으면 빌더 GUI 가 옛 목록을 보여준다.
+      - name: 카탈로그 정합성
+        run: node k6/tools/check-catalog.mjs
+
+      # 2) 빌더가 만드는 실행 명령과 설정 점검 로직.
+      #    빌더의 산출물은 "복사해서 실행할 명령 한 줄"이라 따옴표 처리가 틀리면
+      #    엉뚱한 설정으로 조용히 실행된다.
+      - name: 빌더 로직
+        run: node k6/tools/test-builder.mjs
