@@ -602,6 +602,44 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("재추천이 도는 동안에도 기존 후보는 계속 내려간다 — preparing 이라고 목록을 비우면 안 된다")
+    void rerecommendInProgressKeepsShowingExistingCandidates() throws Exception {
+        // 재추천을 누르면 새 회차가 RUNNING 으로 먼저 생긴다. 그때 최신 회차만 보면 preparing=true 인데,
+        // 후보 목록은 포지션 전체 누적이라 **기존 후보가 그대로 들어있다.**
+        // 프론트가 preparing 을 보고 목록을 통째로 로딩 화면으로 덮으면, 재추천 도는 동안 기존 후보가
+        // 화면에서 사라진다 - 처음에 고친 버그가 그대로 재현된다.
+        MatchingRound first = seedRound(2);
+        seedExposedCandidate(first.getId(), 1);
+
+        MatchingRound rerecommending = MatchingRound.create(PROJECT_ID, POSITION_ID, 2,
+                RecommendationType.PAID, 1, 10_000L, 1, 3);
+        matchingRoundRepository.save(rerecommending);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(true))
+                .andExpect(jsonPath("$.data.candidates.length()").value(1));
+    }
+
+    @Test
+    @DisplayName("준비중 응답도 남은 유료 재추천 횟수를 실제로 센다 — 한도는 프로젝트 단위다")
+    void preparingResponseCountsPaidRerecommendPerProject() throws Exception {
+        // 같은 프로젝트의 다른 포지션이 이미 유료 재추천을 썼는데 이 포지션엔 아직 회차가 없는 상황.
+        // 상한(5)을 그대로 내보내면 "5회 남음"이 거짓말이 된다.
+        MatchingRound paidOnAnotherPosition = MatchingRound.create(PROJECT_ID, 9_999L, 1,
+                RecommendationType.PAID, 1, 10_000L, 1, 3);
+        paidOnAnotherPosition.complete();
+        matchingRoundRepository.save(paidOnAnotherPosition);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.preparing").value(true))
+                .andExpect(jsonPath("$.data.paidRerecommendRemaining").value(4));
+    }
+
+    @Test
     @DisplayName("추천 생성이 실패한 회차는 후보 없음이 아니라 실패로 내려간다")
     void failedRoundIsReportedAsFailed() throws Exception {
         MatchingRound failed = MatchingRound.create(PROJECT_ID, POSITION_ID, 1,

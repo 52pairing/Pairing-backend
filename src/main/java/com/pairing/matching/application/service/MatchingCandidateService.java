@@ -49,7 +49,7 @@ public class MatchingCandidateService implements MatchingCandidateQueryUseCase, 
         if (!projectDirectoryPort.isOwnedByAccount(position.projectId(), accountId)) {
             throw new BusinessException(GlobalErrorCode.ACCESS_DENIED);
         }
-        return CandidateListResponse.preparing(positionId, position.headcount());
+        return candidateResponseAssembler.buildPreparing(positionId, position.projectId(), position.headcount());
     }
 
     @Override

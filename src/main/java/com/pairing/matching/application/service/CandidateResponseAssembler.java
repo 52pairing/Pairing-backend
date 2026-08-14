@@ -77,6 +77,18 @@ class CandidateResponseAssembler {
                 round.getStatus() == MatchingRoundStatus.FAILED);
     }
 
+    /**
+     * 회차가 아직 없을 때의 응답. 회차에서 읽을 게 없으니 포지션 정보를 직접 받는다.
+     *
+     * <p><b>남은 유료 재추천은 여기서도 실제로 센다.</b> 한도가 프로젝트 단위라 이 포지션에 회차가
+     * 없어도 같은 프로젝트의 다른 포지션이 이미 썼을 수 있다 — 상한을 그대로 내보내면 거짓말이 된다.
+     */
+    CandidateListResponse buildPreparing(Long positionId, Long projectId, int headcount) {
+        long paidUsed = matchingRoundRepository.countByProjectIdAndRoundType(projectId, RecommendationType.PAID);
+        return CandidateListResponse.preparing(positionId, headcount,
+                (int) Math.max(0, MAX_PAID_RERECOMMEND - paidUsed));
+    }
+
     private CandidateResponse toCandidateResponse(MatchingCandidate candidate) {
         FreelancerCardSummary card = freelancerDirectoryPort.findCardSummary(candidate.getFreelancerId());
         FreelancerConditionResponse condition = freelancerDirectoryPort.findCondition(candidate.getFreelancerId());

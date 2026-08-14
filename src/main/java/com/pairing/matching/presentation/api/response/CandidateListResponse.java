@@ -53,9 +53,6 @@ public record CandidateListResponse(
         boolean failed
 ) {
 
-    /** 마지막 회차의 남은 유료 재추천 계산과 같은 상한. 라운드가 없으면 한 번도 안 썼다는 뜻이다. */
-    private static final int MAX_PAID_RERECOMMEND = 5;
-
     /**
      * 추천 라운드가 아직 만들어지지 않은 상태.
      *
@@ -68,9 +65,13 @@ public record CandidateListResponse(
      * 띄우고, 완료 알림({@code MATCHING_RECOMMENDED})을 받거나 잠시 뒤 다시 조회하면 된다.
      *
      * <p>{@code headcount}는 채워서 보낸다 — "0/4명" 같은 표기를 대기 중에도 그릴 수 있어야 한다.
+     *
+     * <p><b>재추천 횟수는 넘겨받는다.</b> 유료 재추천 한도는 <b>프로젝트 단위</b>라 이 포지션에 회차가
+     * 없어도 같은 프로젝트의 다른 포지션이 이미 썼을 수 있다. 여기서 상한을 그대로 박으면 "5회 남음"이
+     * 거짓이 된다.
      */
-    public static CandidateListResponse preparing(Long positionId, int headcount) {
+    public static CandidateListResponse preparing(Long positionId, int headcount, int paidRerecommendRemaining) {
         return new CandidateListResponse(positionId, null, 0, null, headcount,
-                false, MAX_PAID_RERECOMMEND, false, false, List.of(), true, false);
+                false, paidRerecommendRemaining, false, false, List.of(), true, false);
     }
 }

@@ -1811,3 +1811,32 @@ AI 호출이 **한 번만** 나가는지 본다.
 Pairing-python이 같이 떠 있어야 한다. 배포 후 수동 확인이 필요하다.
 
 `./gradlew clean build` — **553 tests, 0 failures**.
+
+---
+
+## 2026-08-13 (11) — 최종 점검에서 내가 넣은 버그 1건 발견·수정
+
+### 준비중 응답이 남은 유료 재추천을 5로 박아뒀다
+
+`CandidateListResponse.preparing`이 상한(5)을 그대로 내보내고 있었다. **유료 재추천 한도는 프로젝트
+단위**라, 같은 프로젝트의 다른 포지션이 이미 3회를 썼어도 이 포지션은 "5회 남음"으로 나간다.
+
+`CandidateResponseAssembler.buildPreparing`에서 실제로 세도록 고쳤다. 상한 상수도 응답 레코드에서
+없앴다 — 서비스·어셈블러에 이미 두 벌 있는데 세 번째를 만들면 정책이 바뀔 때 한 곳만 고쳐진다.
+
+### 재추천 중 preparing 의 의미를 문서에서 잘못 적고 있었다
+
+재추천을 누르면 새 회차가 RUNNING 으로 먼저 생기므로 `preparing: true` 인데, 후보 목록은 포지션
+전체 누적이라 **기존 후보가 그대로 들어 있다.** 서버 동작은 맞다.
+
+그런데 프론트 전달 문서에 "preparing: true → candidates는 []"라고 적어놨다. 프론트가 그걸 보고
+목록을 로딩 화면으로 덮으면 **재추천이 도는 수십 초 동안 기존 후보가 사라져 보인다** — (5)에서 고친
+바로 그 버그가 화면상으로 재현된다. 문서를 고치고 `rerecommendInProgressKeepsShowingExistingCandidates`
+로 서버 동작을 고정했다.
+
+### 그 밖에 확인한 것
+
+- 변이 테스트 찌꺼기 없음(`MUTATED`, `false &&` 검색 0건), 작업트리 깨끗, 원격과 동일
+- 앞선 커밋 3개(후보 누적·카드 상태·MT_019)는 이미 develop 에 머지됨
+
+`./gradlew clean build` — **555 tests, 0 failures**.
