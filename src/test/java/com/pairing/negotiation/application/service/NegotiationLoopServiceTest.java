@@ -8,6 +8,7 @@ import com.pairing.account.domain.repository.ClientProfileRepository;
 import com.pairing.account.domain.repository.FreelancerProfileRepository;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.negotiation.application.event.NegotiationEvent.NegotiationEventType;
+import com.pairing.negotiation.application.port.out.FreelancerConditionReaderPort;
 import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.usecase.NegotiationAgentUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,9 +41,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /** 협상 루프(stub) 검증: 시작→초기 제안, 수락→락·타결, 거절→다음 라운드 재제안, 포기→결렬. */
 @SpringBootTest
@@ -97,6 +102,11 @@ class NegotiationLoopServiceTest {
     private FreelancerProfileRepository freelancerProfileRepository;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    // 프리 등록 최소 수용가 조회 포트. 실제 어댑터는 freelancer_condition(enum NOT NULL 다수)을 읽으므로
+    // 테스트에선 목으로 값을 주입한다. 스텁 안 하면 기본이 Optional.empty() 라 기존 테스트엔 영향 없다.
+    @MockBean
+    private FreelancerConditionReaderPort freelancerConditionReaderPort;
 
     private static final Long FREELANCER_ACCOUNT_ID = 910_002L;
     private static final Long CLIENT_ACCOUNT_ID = 910_001L;
@@ -395,6 +405,44 @@ class NegotiationLoopServiceTest {
         // 락된 값은 프리 제안(600만)이 아니라 상대(클라) 대리인이 낸 값이어야 한다.
         assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
                 .getConditions().get(0).getAgreedValue()).isNotEqualTo("6000000");
+    }
+
+    @Test
+    @DisplayName("start: 등록 최소가보다 낮은 마지노선은 플래그 없으면 막힌다(NG_012)")
+    void startBelowMinAcceptBlockedWithoutFlag() {
+        // 프리 등록 최소 수용가 = 440만. 그보다 낮은 420만을 처음 마지노선으로 제출.
+        when(freelancerConditionReaderPort.findMinAcceptAmount(any())).thenReturn(Optional.of(4_400_000L));
+
+        assertThatThrownBy(() -> loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4200000"))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("최소 수용");
+    }
+
+    @Test
+    @DisplayName("start: belowMinAccept=true 면 등록 최소가보다 낮아도 허용(경고 후 확인 경로)")
+    void startBelowMinAcceptAllowedWithFlag() {
+        when(freelancerConditionReaderPort.findMinAcceptAmount(any())).thenReturn(Optional.of(4_400_000L));
+
+        // 사람이 "등록 최소가보다 낮지만 그래도 이 선으로 하겠다"고 확인 → 그대로 저장된다.
+        loopUseCase.start(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4200000", true)));
+
+        Negotiation reloaded = negotiationRepository.findById(negotiationId).orElseThrow();
+        assertThat(reloaded.getConditions().get(0).getFreelancerFloor()).isEqualTo("4200000");
+    }
+
+    @Test
+    @DisplayName("updateFloors: 재조정은 belowMinAccept 여부와 무관하게 등록 최소가 하한을 강제한다")
+    void updateFloorsAlwaysEnforcesMinAccept() {
+        startBothSides();   // 최소가 스텁 전이라 통과(기본 empty). 이제 라운드1 상태.
+        when(freelancerConditionReaderPort.findMinAcceptAmount(any())).thenReturn(Optional.of(4_400_000L));
+
+        // 경고-후-허용은 최초 제출(start)에만 열었다. 재조정에선 플래그를 줘도 등록 최소가 아래는 막힌다.
+        assertThatThrownBy(() -> loopUseCase.updateFloors(negotiationId, FREELANCER_ACCOUNT_ID,
+                List.of(new FloorInput(ConditionType.AMOUNT, "4200000", true))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("최소 수용");
     }
 
     @Test

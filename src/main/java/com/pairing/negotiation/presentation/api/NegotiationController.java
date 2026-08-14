@@ -138,7 +138,8 @@ public class NegotiationController {
             @CurrentAccountId Long accountId
     ) {
         List<NegotiationLoopUseCase.FloorInput> floors = request.conditions().stream()
-                .map(c -> new NegotiationLoopUseCase.FloorInput(c.conditionType(), c.value()))
+                .map(c -> new NegotiationLoopUseCase.FloorInput(c.conditionType(), c.value(),
+                        Boolean.TRUE.equals(c.belowMinAccept())))
                 .toList();
         negotiationLoopUseCase.start(negotiationId, accountId, floors);
         return ResponseEntity.ok(ApiResponse.success("NEGOTIATION_STARTED", "협상을 시작했습니다.",

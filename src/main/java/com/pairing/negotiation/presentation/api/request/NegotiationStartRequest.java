@@ -38,7 +38,14 @@ public record NegotiationStartRequest(
                     + "PERIOD 는 \"4 MONTH\", WORK_STYLE/WORK_FORM 은 enum 코드, START_DATE 는 yyyy-MM-dd",
                     example = "3500000")
             @NotBlank(message = "마지노선 값은 필수입니다.")
-            String value
+            String value,
+
+            @Schema(description = "등록해둔 최소 수용가보다 낮게 마지노선을 긋겠다는 명시적 확인. "
+                    + "프리랜서 AMOUNT 에만 의미가 있다. 이 값 없이(또는 false) 등록 최소가 아래로 제출하면 "
+                    + "NG_012 가 반환되고, 화면은 경고 확인을 받은 뒤 이 값을 true 로 재제출한다. "
+                    + "true 면 등록 최소가 하한 검증을 건너뛴다(상대 마지노선·계약 검증과는 무관).",
+                    example = "false")
+            Boolean belowMinAccept
     ) {
     }
 }
