@@ -57,7 +57,10 @@ public class MatchingController {
     @GetMapping("/positions/{positionId}/candidates")
     @PreAuthorize("hasRole('CLIENT')")
     @Operation(summary = "추천 후보 조회",
-            description = "가장 최근 추천 라운드의 후보를 반환합니다. 노출 수는 모집 인원을 넘지 않으며 클라이언트 등급에 따라 달라집니다.")
+            description = "이 포지션에 지금까지 노출된 후보 전부를 반환합니다(재추천으로 회차가 늘어도 이전 후보가 사라지지 않습니다). "
+                    + "정렬은 최신 회차 먼저, 회차 안에서는 순위 순입니다 — 받은 순서 그대로 그리면 됩니다. "
+                    + "선택·거절한 후보도 목록에 남고 status(AVAILABLE/REQUESTED/REJECTED)로 구분됩니다. "
+                    + "추천을 아직 만드는 중이면 preparing=true, 생성이 실패했으면 failed=true 입니다(에러가 아닙니다).")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"ACCESS_DENIED"})
     public ResponseEntity<ApiResponse<CandidateListResponse>> findCandidates(
             @PathVariable Long positionId,

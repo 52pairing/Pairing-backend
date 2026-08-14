@@ -514,6 +514,27 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("이미 끝난 회차는 다시 채우지 않는다 — 인스턴스가 둘이면 같은 회차를 집을 수 있다")
+    void alreadyFinishedRoundIsNotRefilled() throws Exception {
+        // 서버 인스턴스가 둘 이상이면 각자의 스케줄러가 같은 회차를 집을 수 있다. 그대로 두면
+        // Gemini 를 두 번 부르고 후보가 중복 저장된다.
+        MatchingRound stale = seedRunningRoundCreatedMinutesAgo(30);
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong())).willReturn(
+                new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash", List.of(
+                        new RankedFreelancer(freelancerAccountId, 91.0, "요구 스킬 일치", 0.8125))));
+
+        staleRoundRecoveryService.recoverStaleRounds();
+        // 첫 번째로 이미 COMPLETED 가 됐다. 두 번째 주기(또는 다른 인스턴스)가 또 돌아도
+        // 후보가 늘어나면 안 된다.
+        long candidateCountAfterFirst = matchingCandidateJpaRepository.count();
+        staleRoundRecoveryService.recoverStaleRounds();
+
+        assertThat(matchingCandidateJpaRepository.count()).isEqualTo(candidateCountAfterFirst);
+        assertThat(matchingRoundRepository.findById(stale.getId()).orElseThrow().getStatus())
+                .isEqualTo(MatchingRoundStatus.COMPLETED);
+    }
+
+    @Test
     @DisplayName("아직 진행 중일 수 있는 회차는 건드리지 않는다 — 다시 부르면 AI 비용이 두 배다")
     void freshRunningRoundIsNotTouched() throws Exception {
         MatchingRound fresh = seedRunningRoundCreatedMinutesAgo(1);

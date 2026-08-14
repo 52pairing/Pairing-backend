@@ -1,6 +1,7 @@
 package com.pairing.matching.application.service;
 
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingRoundStatus;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -28,9 +29,21 @@ class MatchingRoundFiller {
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingRoundCreationService matchingRoundCreationService;
 
+    /**
+     * <b>이미 끝난 회차는 다시 채우지 않는다.</b> {@code StaleRoundRecoveryService}가 5분마다 멈춘 회차를
+     * 다시 채우는데, 서버 인스턴스가 둘 이상이면 각자의 스케줄러가 같은 회차를 집을 수 있다. 그대로
+     * 두면 Gemini를 두 번 부르고 후보가 중복 저장된다.
+     *
+     * <p>DB 행 잠금까지는 걸지 않았다 — 이 레포에는 스케줄러 중복 실행 방지(ShedLock 등)가 아예 없어서
+     * 스케줄러 5개가 모두 같은 조건이고, 그건 이 변경보다 큰 팀 결정이다. 이 검사는 "먼저 집은 쪽이
+     * 끝난 뒤 늦게 온 쪽"을 막는다.
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     MatchingRound fill(Long roundId) {
         MatchingRound round = matchingRoundRepository.findById(roundId).orElseThrow();
+        if (round.getStatus() != MatchingRoundStatus.RUNNING) {
+            return round;
+        }
         return matchingRoundCreationService.fillCandidates(round);
     }
 
