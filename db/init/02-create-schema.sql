@@ -255,7 +255,6 @@ CREATE TABLE "freelancer_condition" (
     "freelancer_id" BIGINT NOT NULL,
     "job_category" VARCHAR(30) NOT NULL,
     "job_role" VARCHAR(40) NOT NULL,
-    "affiliation" VARCHAR(100),
     "work_style" VARCHAR(20) NOT NULL,
     "work_form" VARCHAR(20) NOT NULL,
     "pay_unit" VARCHAR(20) NOT NULL,
@@ -1324,7 +1323,6 @@ COMMENT ON COLUMN "freelancer_condition"."id" IS 'PK';
 COMMENT ON COLUMN "freelancer_condition"."freelancer_id" IS 'freelancer_profile FK(1:1)';
 COMMENT ON COLUMN "freelancer_condition"."job_category" IS '직군 코드(DEVELOPMENT / DESIGN). Java enum JobCategory';
 COMMENT ON COLUMN "freelancer_condition"."job_role" IS '직무 코드 26종(BACKEND_DEV / UX_UI_DESIGNER ...). Java enum JobRole';
-COMMENT ON COLUMN "freelancer_condition"."affiliation" IS '소속(선택)';
 COMMENT ON COLUMN "freelancer_condition"."work_style" IS 'REMOTE(재택) / ONSITE(상주) / ANY(모두가능)';
 COMMENT ON COLUMN "freelancer_condition"."work_form" IS 'FULL_TIME / PART_TIME / ANY';
 COMMENT ON COLUMN "freelancer_condition"."pay_unit" IS 'HOURLY(시급) / DAILY(일급) / MONTHLY(월급)';

@@ -346,6 +346,40 @@ class NegotiationLoopServiceTest {
     }
 
     @Test
+    @DisplayName("answer 수락: acceptBelowFloor=true 면 내 마지노선 아래 제안도 직접 수락된다")
+    void acceptBelowOwnFloorWhenExplicitlyConfirmed() {
+        startBothSides();   // 프리 하한 4,800,000 / 클라 상한 5,200,000
+
+        // 프리 하한(480만) 아래인 클라 대리인 제안(400만)이 마지막 제안인 상태.
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 1,
+                SenderType.CLIENT_AGENT, "400만원을 제안합니다.", "예산 상한", "4000000")));
+
+        // 사람이 "내 선을 넘겨서라도 받겠다"고 명시(acceptBelowFloor=true) → 내 하한 검증만 건너뛰고 수락된다.
+        loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, true, null, true)));
+
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
+                .getConditions().get(0).getAgreedValue()).isEqualTo("4000000");
+    }
+
+    @Test
+    @DisplayName("answer 수락: acceptBelowFloor 여도 상대 마지노선은 못 넘는다")
+    void acceptBelowFloorStillRespectsOpponentFloor() {
+        startBothSides();   // 클라 상한 5,200,000
+
+        // 클라 상한(520만)을 넘는 값이 마지막 제안인 (비정상) 상태. acceptBelowFloor 여도 상대 선은 지켜야 한다.
+        messageRepository.saveAll(List.of(NegotiationMessage.proposal(negotiationId, amountConditionId, 1,
+                SenderType.CLIENT_AGENT, "600만원을 제안합니다.", "테스트", "6000000")));
+
+        assertThatThrownBy(() -> loopUseCase.answer(negotiationId, FREELANCER_ACCOUNT_ID, 1,
+                List.of(new AnswerInput(amountConditionId, true, null, true))))
+                .isInstanceOf(BusinessException.class);
+
+        assertThat(negotiationRepository.findById(negotiationId).orElseThrow()
+                .getConditions().get(0).getStatus()).isEqualTo(ConditionStatus.PENDING);
+    }
+
+    @Test
     @DisplayName("answer 수락: 내 편 대리인이 낸 제안은 수락 대상이 아니다(상대 미동의 확정 방지)")
     void acceptIgnoresOwnSideProposal() {
         startBothSides();

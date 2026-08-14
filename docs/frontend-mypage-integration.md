@@ -1,7 +1,7 @@
 # 마이페이지 프론트 연동 가이드
 
 > 담당: 리뷰·등급·마이페이지·이력서·결제수단·1:1문의·챗봇
-> 기준일: 2026-08-13 (회원 탈퇴 구현 완료, 리뷰 필수/선택 확정)
+> 기준일: 2026-08-13 (이력서+조건 통합 저장, 등급 자동 산정, 회원 탈퇴 구현 완료)
 > 와이어프레임·요구사항 명세·정책과 대조해 서버를 맞춘 결과입니다.
 > 회원 탈퇴 → `frontend-withdrawal-integration.md` / 알림 → `frontend-notification-integration.md`
 > 고객지원 → `frontend-support-integration.md` / 메인 후기 → `frontend-home-review-integration.md`
@@ -22,6 +22,8 @@
 | 8 | **회원 탈퇴** | 스텁 → **구현 완료.** 비밀번호 대신 동의 체크 + 확인 문구 |
 | 9 | **리뷰 별점/텍스트** | **별점은 둘 다 필수, 텍스트는 둘 다 선택**으로 확정 |
 | 10 | 경력 부서/직급 | `departmentRank` → `department` + `position` 두 필드로 분리 |
+| 11 | **이력서 저장** | `PUT /me/resume` 에 **`condition` 을 같이 보내면 한 번에 저장**됩니다 (2-4 참고) |
+| 12 | **소속** | 항목 **삭제**. 페어링 프리랜서는 개인만 받기로 해서 입력칸을 없앴습니다 |
 
 ---
 
@@ -223,18 +225,53 @@ GET /api/v1/freelancers/me/resume/draft    임시저장 불러오기
 
 `notice` 는 화면 상단 파란 안내 박스 문구입니다. 서버가 내려주니 하드코딩하지 마세요.
 
-#### (A) 기본 희망 조건 — **별도 API**
+---
+
+### ⭐ 저장 버튼이 하나라면 — `condition` 을 같이 보내세요 (2026-08-13 추가)
+
+화면은 **기본 희망 조건 + 보유 스킬 + 경력 + 학력**을 한 페이지에 두고 저장 버튼도 하나입니다.
+이때 `PUT /me/resume` 요청에 **`condition` 블록을 같이 실으면 한 트랜잭션으로 저장**됩니다.
+
+```json
+{
+  "condition": { "jobCategory": "DEVELOPMENT", "jobRole": "BACKEND", "skills": [ ], "payAmount": 5000000 },
+  "profileFileId": 3,
+  "address": "서울특별시 강남구 테헤란로 123",
+  "selfIntroduction": "백엔드 5년차입니다.",
+  "educations": [ ], "careers": [ ], "agreements": { }
+}
+```
+
+`condition` 안에 넣는 값은 **`PUT /me/condition` 의 요청 본문과 완전히 같습니다.**
+
+**두 번 나눠 호출하지 마세요.** 조건이 저장된 뒤 이력서에서 실패하면 **절반만 반영된 상태**가
+남습니다. 사용자에게는 한 번의 저장인데 서버에서는 반만 된 셈이라, 다시 저장해도 어디까지
+반영됐는지 알 수 없습니다.
+
+| 요청 | 동작 |
+|---|---|
+| `condition` 포함 | 조건 + 이력서를 **한 트랜잭션**으로 저장. 하나라도 실패하면 **둘 다 롤백** |
+| `condition` 없음 | 이력서만 저장 (기존과 동일) |
+
+> **응답은 그대로 이력서만 내려갑니다.** 기존 화면이 깨지지 않게 응답 모양은 안 바꿨습니다.
+> 저장 후 조건까지 다시 그려야 하면 `GET /me/resume` 을 부르면 둘 다 옵니다.
+
+---
+
+#### (A) 기본 희망 조건 — 조건만 고치는 화면용
 
 ```
 GET /api/v1/freelancers/me/condition
 PUT /api/v1/freelancers/me/condition
 ```
 
+> **이력서 화면에서는 이 PUT 을 쓰지 마세요.** 위의 통합 저장을 쓰세요.
+> 이건 조건만 따로 고치는 경로입니다.
+
 ```json
 {
   "jobCategory": "DEVELOPMENT",
   "jobRole": "FRONTEND_DEVELOPER",
-  "affiliation": "재직중",
   "workStyle": "ANY",
   "workForm": "FULL_TIME",
   "payUnit": "MONTHLY",
@@ -804,7 +841,39 @@ GET /api/v1/meta/work-conditions   근무 조건 묶음
 }
 ```
 
-**enum 라벨을 하드코딩하지 말고 이 API를 쓰세요.**
+**enum 라벨을 하드코딩하지 말고 이 API를 쓰세요.** 항목이 늘면 배포가 어긋납니다.
+
+전부 **비로그인으로도 호출 가능**합니다. 사용자 데이터가 아니라 **드롭다운을 채우는 선택지 목록**이라
+화면 열 때 한 번 받아 캐싱해도 됩니다.
+
+> 🔴 **`소속` 드롭다운을 화면에서 빼주세요.** (2026-08-13)
+> 서버 요청에서 `affiliation` 을 없앴습니다. 보내도 무시되고, 응답에도 안 내려갑니다.
+> 페어링 프리랜서는 개인만 받기로 해서 항상 같은 값이 되는 입력칸이었습니다.
+
+#### 보유 스킬 (`/meta/skills`) — 63종
+
+```json
+[{ "code": "REACT", "label": "React" }, { "code": "SPRING_BOOT", "label": "Spring Boot" }]
+```
+
+`code` 를 서버로 보내고 `label` 을 화면에 보여주세요. 화면의 **"스킬 검색"** 입력창은
+이 목록을 `label` 로 필터링하면 됩니다.
+
+| 제약 | 내용 |
+|---|---|
+| **1개 이상 필수** | 하나도 안 고르면 `400` |
+| **중복 불가** | 같은 스킬 두 번이면 `400 FR_007`. **이미 고른 항목은 검색 결과에서 빼주세요** |
+| 숙련도 필수 | 스킬마다 `skillLevel` 을 같이 보내야 합니다 (`/meta/work-conditions` 의 `skillLevels`) |
+
+#### 직무 (`/meta/job-roles`) — `parentCode` 로 필터링
+
+```json
+[{ "code": "BACKEND", "label": "백엔드 개발자", "parentCode": "DEVELOPMENT" }]
+```
+
+**직군을 고르면 `parentCode` 가 일치하는 직무만 보여주세요.** 26종이 한꺼번에 나오면 고르기 어렵습니다.
+
+---
 
 `BusinessField`(사업 분야 20종), `EmployeeCount`(직원 수 5구간),
 `GraduationStatus`, `CampusType` 은 아직 코드 API가 없습니다.

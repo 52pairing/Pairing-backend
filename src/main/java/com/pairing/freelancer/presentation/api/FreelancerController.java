@@ -12,6 +12,7 @@ import com.pairing.freelancer.application.usecase.FreelancerCommandUseCase;
 import com.pairing.freelancer.application.usecase.FreelancerConditionUseCase;
 import com.pairing.freelancer.application.usecase.FreelancerQueryUseCase;
 import com.pairing.freelancer.application.result.ResumeDraftResult;
+import com.pairing.freelancer.application.result.ResumeResult;
 import com.pairing.freelancer.application.usecase.ResumeUseCase;
 import com.pairing.freelancer.domain.model.ResumeStatus;
 import com.pairing.freelancer.exception.FreelancerErrorCode;
@@ -47,8 +48,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 프리랜서 마이페이지 · 조건 · 이력서. (요구사항 R17, R21)
  *
- * <p>조건(화면 1)과 이력서(화면 2)를 나눠서 저장한다. 화면을 오갈 때 입력값이 남아야 해서
- * 각각 따로 저장할 수 있어야 하기 때문이다.
+ * <p>조건과 이력서는 따로 저장할 수도 있고({@code PUT /me/condition}, {@code PUT /me/resume}),
+ * 한 번에 저장할 수도 있다({@code PUT /me/resume} 에 {@code condition} 포함). 화면이 둘을 한 페이지에
+ * 두고 저장 버튼이 하나라면 <b>한 번에 저장해야 한다</b> — 나눠 호출하면 앞은 저장되고 뒤가 실패해
+ * 절반만 반영된 상태가 남는다.
  *
  * <p>매칭 중에도 수정할 수 있지만, 진행 중인 매칭에는 매칭 시작 시점의 정보가 적용된다.
  */
@@ -130,7 +133,7 @@ public class FreelancerController {
     @PreAuthorize("hasRole('FREELANCER')")
     @Operation(summary = "내 이력서 조회 (조건 포함)",
             description = "마이페이지 '내 이력서' 화면이 한 번에 그릴 수 있도록 희망 조건과 이력서를 함께 반환합니다. "
-                    + "저장은 조건과 이력서를 따로 호출합니다.")
+                    + "저장도 PUT /me/resume 에 condition 을 같이 실어 한 번에 할 수 있습니다.")
     public ResponseEntity<ApiResponse<FreelancerResumePageResponse>> findMyResume(
             @CurrentAccountId Long accountId
     ) {
@@ -152,15 +155,28 @@ public class FreelancerController {
 
     @PutMapping("/me/resume")
     @PreAuthorize("hasRole('FREELANCER')")
-    @Operation(summary = "내 이력서 등록/수정",
+    @Operation(summary = "내 이력서 등록/수정 (희망 조건 포함)",
             description = "포트폴리오 등록/삭제도 여기서 같이 처리합니다. "
-                    + "필수 항목을 모두 채우면 상태가 COMPLETED 가 되고 매칭 대상에 포함됩니다.")
+                    + "필수 항목을 모두 채우면 상태가 COMPLETED 가 되고 매칭 대상에 포함됩니다. "
+                    + "condition 을 같이 보내면 희망 조건까지 한 트랜잭션으로 저장합니다 — "
+                    + "화면의 저장 버튼이 하나라면 이 방식을 쓰세요. 비우면 이력서만 저장합니다.")
+    @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"INVALID_REQUEST"})
+    @ApiErrorCodeExample(domain = FreelancerErrorCode.class,
+            value = {"INVALID_CONDITION_FIELD", "DUPLICATE_SKILL"})
     public ResponseEntity<ApiResponse<ResumeResponse>> upsertMyResume(
             @Valid @RequestBody ResumeRequest request,
             @CurrentAccountId Long accountId
     ) {
-        ResumeResponse response = ResumeResponse.from(resumeUseCase.upsert(request.toCommand(accountId)));
-        return ResponseEntity.ok(ApiResponse.success("RESUME_SAVED", "저장되었습니다.", response));
+        // 응답은 이력서만 돌려준다. 조건까지 감싸 내리면 응답 모양이 바뀌어 기존 화면이 깨진다.
+        // 조건은 방금 프론트가 보낸 값이고, 저장 후 화면을 다시 그려야 하면 GET /me/resume 이
+        // 조건과 이력서를 함께 준다.
+        ResumeResult saved = request.condition() == null
+                ? resumeUseCase.upsert(request.toCommand(accountId))
+                : resumeUseCase.upsertWithCondition(
+                        request.condition().toCommand(accountId), request.toCommand(accountId));
+
+        return ResponseEntity.ok(
+                ApiResponse.success("RESUME_SAVED", "저장되었습니다.", ResumeResponse.from(saved)));
     }
 
     @PutMapping("/me/resume/draft")

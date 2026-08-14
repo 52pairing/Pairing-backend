@@ -34,7 +34,6 @@ public interface FreelancerConditionMapper {
                 entity.getAccountId(),
                 entity.getJobCategory(),
                 entity.getJobRole(),
-                entity.getAffiliation(),
                 entity.getWorkStyle(),
                 entity.getWorkForm(),
                 entity.getPayUnit(),

@@ -1,6 +1,7 @@
 package com.pairing.settlement.application.service;
 
 import com.pairing.global.exception.BusinessException;
+import com.pairing.settlement.application.result.MySettlementSummary;
 import com.pairing.settlement.application.result.SettlementResult;
 import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import com.pairing.settlement.domain.model.Settlement;
@@ -46,6 +47,13 @@ public class SettlementQueryService implements SettlementQueryUseCase {
                                            SettlementStatus status, Pageable pageable) {
         return settlementRepository.findByPayer(accountId, projectId, phase, status, pageable)
                 .map(SettlementResult::from);
+    }
+
+    /** 집계는 리포지토리가 쿼리 한 번으로 끝낸다. 목록을 받아 더하지 않는다. */
+    @Override
+    @Transactional(readOnly = true)
+    public MySettlementSummary getMySummary(Long accountId) {
+        return settlementRepository.sumPaidByPayer(accountId);
     }
 
     @Override

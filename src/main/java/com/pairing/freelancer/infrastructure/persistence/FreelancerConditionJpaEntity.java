@@ -48,8 +48,6 @@ public class FreelancerConditionJpaEntity {
     @Column(name = "job_role", nullable = false, length = 40)
     private JobRole jobRole;
 
-    @Column(name = "affiliation", length = 100)
-    private String affiliation;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "work_style", nullable = false, length = 20)
@@ -94,7 +92,7 @@ public class FreelancerConditionJpaEntity {
     private List<ConditionSkillEmbeddable> skills = new ArrayList<>();
 
     public FreelancerConditionJpaEntity(Long id, Long accountId, JobCategory jobCategory, JobRole jobRole,
-                                        String affiliation, WorkStyle workStyle, WorkForm workForm,
+                                        WorkStyle workStyle, WorkForm workForm,
                                         PayUnit payUnit, Long payAmount, Long minAcceptAmount,
                                         LocalDate availableFrom, boolean startNegotiable, Integer periodValue,
                                         PeriodUnit periodUnit, boolean hasFreelanceExperience, int careerYears,
@@ -103,7 +101,6 @@ public class FreelancerConditionJpaEntity {
         this.accountId = accountId;
         this.jobCategory = jobCategory;
         this.jobRole = jobRole;
-        this.affiliation = affiliation;
         this.workStyle = workStyle;
         this.workForm = workForm;
         this.payUnit = payUnit;

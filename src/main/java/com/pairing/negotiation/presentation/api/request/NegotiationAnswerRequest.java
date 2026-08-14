@@ -40,7 +40,12 @@ public record NegotiationAnswerRequest(
 
             @Schema(description = "직접 입력값. 금액은 숫자 문자열, 그 외는 enum 값", example = "2200000")
             @Size(max = 255, message = "255자 이하여야 합니다.")
-            String proposedValue
+            String proposedValue,
+
+            @Schema(description = "내 마지노선을 넘겨서라도 이 제안을 직접 수락할지 여부. "
+                    + "accepted=true 일 때만 의미하며, true 면 내 쪽 하한 검증을 건너뛴다(상대 마지노선은 유지). "
+                    + "생략 시 false.", example = "false")
+            Boolean acceptBelowFloor
     ) {
     }
 }

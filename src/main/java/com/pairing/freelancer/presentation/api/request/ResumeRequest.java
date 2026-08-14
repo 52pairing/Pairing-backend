@@ -22,9 +22,21 @@ import java.util.List;
  *
  * <p>성명과 생년월일은 계정 정보에서 가져오며 수정할 수 없어 요청에 없다.
  * 사진과 포트폴리오는 먼저 업로드해 fileId 로 넣는다. (포트폴리오는 PDF only)
+ *
+ * <p><b>{@code condition} 을 같이 보내면 희망 조건까지 한 트랜잭션에서 저장한다.</b>
+ * 화면이 "기본 희망 조건 + 보유 스킬 + 경력 + 학력"을 한 페이지에 두고 저장 버튼도 하나라,
+ * 두 번 나눠 호출하면 앞은 저장되고 뒤가 실패해 <b>절반만 반영된 상태</b>가 남는다.
+ * 사용자에게는 한 번의 저장인데 서버에서 반만 되는 상황을 만들지 않는다.
+ *
+ * <p>비워 보내면 이력서만 저장한다. 조건만 따로 고치는 화면은 {@code PUT /me/condition} 을 쓴다.
  */
 @Schema(description = "이력서 등록/수정 요청")
 public record ResumeRequest(
+
+        @Schema(description = "기본 희망 조건(직군·직무·보유 스킬·근무 조건). "
+                + "같이 보내면 이력서와 한 트랜잭션으로 저장된다. 비우면 이력서만 저장한다.")
+        @Valid
+        FreelancerConditionRequest condition,
 
         @Schema(description = "프로필 사진 fileId", example = "3")
         @NotNull(message = "프로필 사진은 필수입니다.")

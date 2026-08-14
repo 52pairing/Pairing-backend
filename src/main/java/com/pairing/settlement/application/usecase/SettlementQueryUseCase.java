@@ -1,5 +1,6 @@
 package com.pairing.settlement.application.usecase;
 
+import com.pairing.settlement.application.result.MySettlementSummary;
 import com.pairing.settlement.application.result.SettlementResult;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
@@ -22,6 +23,19 @@ public interface SettlementQueryUseCase {
      */
     Page<SettlementResult> findMine(Long accountId, Long projectId, SettlementPhase phase,
                                     SettlementStatus status, Pageable pageable);
+
+    /**
+     * 마이페이지 결제 내역 요약. 화면 상단 카드와 요약 줄에 쓴다.
+     *
+     * <p><b>결제 완료만 센다.</b> 문구가 "총 납부 수수료"라 실제로 낸 것만 세야 한다.
+     *
+     * <p>목록으로는 못 만든다. 페이징이라 한 페이지 몫만 더하게 되어 2페이지부터 틀린다.
+     *
+     * <p>클라이언트와 프리랜서가 같은 값을 받아 필요한 칸만 고른다. 클라이언트는 총액·착수금·
+     * 성공보수 세 칸을, 프리랜서는 성공보수액과 프로젝트 수를 쓴다. 탭을 바꿔도 이 값은
+     * 안 바뀌므로 화면 진입 시 한 번만 부르면 된다.
+     */
+    MySettlementSummary getMySummary(Long accountId);
 
     /**
      * 아직 내지 않은 정산이 하나라도 있는지. 회원 탈퇴 가능 여부 판정에 쓴다.

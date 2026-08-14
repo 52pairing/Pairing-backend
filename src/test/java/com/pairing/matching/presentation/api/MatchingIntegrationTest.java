@@ -264,7 +264,7 @@ class MatchingIntegrationTest {
         // ONSITE라(seedProjectWithPosition) 수락 시 조건이 갈려서 협상이 "조건 불일치"로 정상
         // 생성된다(조건이 하나도 안 갈리면 즉시 타결 경로로 빠져 이 테스트 범위를 벗어난다).
         freelancerConditionUseCase.upsert(new UpsertConditionCommand(
-                freelancerAccountId, JobCategory.DEVELOPMENT, JobRole.BACKEND, null,
+                freelancerAccountId, JobCategory.DEVELOPMENT, JobRole.BACKEND,
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 6_500_000L, 5_500_000L,
                 LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 5,
                 List.of(new UpsertConditionCommand.Skill(SkillCode.JAVA, SkillLevel.ADVANCED),
@@ -1384,7 +1384,7 @@ class MatchingIntegrationTest {
                         + "VALUES (?, ?, ?, true, 'JUNIOR')",
                 freelancerId, freelancerId, LocalDate.of(1998, 5, 5));
         freelancerConditionUseCase.upsert(new UpsertConditionCommand(
-                freelancerId, JobCategory.DEVELOPMENT, JobRole.BACKEND, null,
+                freelancerId, JobCategory.DEVELOPMENT, JobRole.BACKEND,
                 WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, 4_000_000L, 3_500_000L,
                 LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 2,
                 List.of(new UpsertConditionCommand.Skill(SkillCode.PYTHON, SkillLevel.ADVANCED))));

@@ -33,7 +33,7 @@ public class FreelancerConditionService implements FreelancerConditionUseCase {
 
         FreelancerCondition condition = freelancerConditionRepository.findByAccountId(command.accountId())
                 .map(existing -> {
-                    existing.replaceWith(command.jobCategory(), command.jobRole(), command.affiliation(),
+                    existing.replaceWith(command.jobCategory(), command.jobRole(),
                             command.workStyle(), command.workForm(), command.payUnit(), command.payAmount(),
                             command.minAcceptAmount(), command.availableFrom(), command.startNegotiable(),
                             command.periodValue(), command.periodUnit(), command.hasFreelanceExperience(),
@@ -41,7 +41,7 @@ public class FreelancerConditionService implements FreelancerConditionUseCase {
                     return existing;
                 })
                 .orElseGet(() -> FreelancerCondition.create(command.accountId(), command.jobCategory(),
-                        command.jobRole(), command.affiliation(), command.workStyle(), command.workForm(),
+                        command.jobRole(), command.workStyle(), command.workForm(),
                         command.payUnit(), command.payAmount(), command.minAcceptAmount(),
                         command.availableFrom(), command.startNegotiable(), command.periodValue(),
                         command.periodUnit(), command.hasFreelanceExperience(), command.careerYears(), skills));
