@@ -133,7 +133,7 @@ class ChatbotIntegrationTest {
         given(verifiedMarkerPort.isVerified(anyString(), any())).willReturn(true);
         given(sessionRegistryPort.isAlive(any(), anyString())).willReturn(true);
         given(chatbotAiPort.ask(anyString()))
-                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "RESUME_EDIT", false));
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "RESUME_EDIT", true));
 
         writerAccessToken = signUpAndLoginFreelancer(WRITER_EMAIL, "이프리", "010-3333-4444", "110-123-456789");
         otherAccessToken = signUpAndLoginFreelancer(OTHER_EMAIL, "김다른", "010-5555-6666", "110-987-654321");
@@ -222,7 +222,7 @@ class ChatbotIntegrationTest {
     void unknownIntentFallsBackToNoAction() throws Exception {
         // 프롬프트로 목록을 닫아 두지만 모델이 어길 수 있다. 그때 답변까지 막히면 안 된다.
         given(chatbotAiPort.ask(anyString()))
-                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "GO_TO_MARS", false));
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "GO_TO_MARS", true));
 
         mockMvc.perform(post("/api/v1/support/chatbot/questions")
                         .cookie(writerAccessToken)
@@ -238,7 +238,7 @@ class ChatbotIntegrationTest {
     void intentNotAllowedForRoleIsDropped() throws Exception {
         // 프리랜서 계정인데 AI 가 클라이언트 전용 화면을 골랐다. 눌러도 막히는 버튼이라 뺀다.
         given(chatbotAiPort.ask(anyString()))
-                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "PROJECT_CREATE", false));
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, "PROJECT_CREATE", true));
 
         mockMvc.perform(post("/api/v1/support/chatbot/questions")
                         .cookie(writerAccessToken)
@@ -268,7 +268,7 @@ class ChatbotIntegrationTest {
     @DisplayName("버튼이 없던 답변은 이력에서도 버튼 없이 나온다")
     void historyKeepsNoActionAnswerEmpty() throws Exception {
         given(chatbotAiPort.ask(anyString()))
-                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, null, false));
+                .willReturn(new ChatbotAiPort.Answer(FAKE_ANSWER, null, true));
         ask(writerAccessToken, null, "페어링은 어떤 서비스인가요?");
 
         mockMvc.perform(get("/api/v1/support/chatbot/messages").cookie(writerAccessToken))
@@ -282,7 +282,7 @@ class ChatbotIntegrationTest {
         // AI 서버가 임베딩 유사도로 걸러 out_of_scope 로 내려준 상황.
         // 답을 못 받았는데 횟수만 빠지면 오타 한 번에 하루 10회 중 1회가 날아간다.
         given(chatbotAiPort.ask(anyString())).willReturn(
-                new ChatbotAiPort.Answer("페어링 서비스 관련 질문에만 답변드릴 수 있어요.", "NONE", true));
+                new ChatbotAiPort.Answer("페어링 서비스 관련 질문에만 답변드릴 수 있어요.", "NONE", false));
 
         mockMvc.perform(post("/api/v1/support/chatbot/questions")
                         .cookie(writerAccessToken)
@@ -302,6 +302,28 @@ class ChatbotIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].question").value("1+1은?"));
+    }
+
+    @Test
+    @DisplayName("인사에는 답하되 하루 횟수를 차감하지 않는다")
+    void greetingAnswersWithoutConsumingQuota() throws Exception {
+        // 인사를 거절하면 챗봇이 고장난 것처럼 보인다. 답은 하되, 질문이 아니므로 깎지 않는다.
+        String greeting = "안녕하세요! 페어링 FAQ 챗봇입니다. 궁금하신 점을 편하게 물어보세요.";
+        given(chatbotAiPort.ask(anyString()))
+                .willReturn(new ChatbotAiPort.Answer(greeting, "NONE", false));
+
+        mockMvc.perform(post("/api/v1/support/chatbot/questions")
+                        .cookie(writerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(askBody(null, "반가워"))))
+                .andExpect(status().isOk())
+                // 거절 문구가 아니라 인사 답변이 그대로 나가야 한다.
+                .andExpect(jsonPath("$.data.answer").value(greeting))
+                .andExpect(jsonPath("$.data.remainingQuota").value(10));
+
+        mockMvc.perform(get("/api/v1/support/chatbot/quota").cookie(writerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.usedCount").value(0));
     }
 
     @Test

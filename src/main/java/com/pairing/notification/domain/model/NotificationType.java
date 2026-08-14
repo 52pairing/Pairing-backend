@@ -24,7 +24,17 @@ public enum NotificationType {
     CONTRACT_SIGNED("계약서 서명"),
     CONTRACT_REJECTED("계약서 거절"),
     SETTLEMENT_DUE("수수료 결제 안내"),
-    INQUIRY_ANSWERED("1:1 문의 답변");
+    INQUIRY_ANSWERED("1:1 문의 답변"),
+
+    /**
+     * 모집 기간 만료로 프로젝트가 취소됨. (정책 P46) 프로젝트 도메인이 발행한다.
+     *
+     * <p>값을 추가할 때는 {@code notification} 테이블의 {@code notification_type_check} 를
+     * 먼저 열어야 한다. 이 컬럼이 {@code @Enumerated(STRING)} 이라 Hibernate 가 테이블을
+     * 만들 때 CHECK 를 굽는데, {@code ddl-auto: update} 는 제약을 갱신하지 않는다. 그대로
+     * 두면 INSERT 가 거부되고 <b>알림을 발행한 트랜잭션이 통째로 롤백된다.</b>
+     */
+    PROJECT_CANCELED("프로젝트 취소");
 
     private final String label;
 }

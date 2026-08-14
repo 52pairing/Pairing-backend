@@ -3,6 +3,7 @@ package com.pairing.support.application.usecase;
 import com.pairing.support.application.command.AskChatbotCommand;
 import com.pairing.support.application.result.ChatbotAnswerResult;
 import com.pairing.support.application.result.ChatbotQuotaResult;
+import com.pairing.support.application.port.out.ChatbotAiPort;
 
 import java.util.List;
 
@@ -20,4 +21,14 @@ public interface ChatbotUseCase {
      * 마지막 항목에서 꺼내 쓰면 된다.
      */
     List<ChatbotAnswerResult> findTodayMessages(Long accountId);
+
+    /**
+     * [운영] AI 서버의 관련성 판정용 지식을 다시 임베딩한다.
+     *
+     * <p>정책 문구를 고쳤을 때 부른다. 안 부르면 챗봇은 새 문구로 답하는데 관련성 판정은 옛 문구로
+     * 해서, <b>답할 수 있는 질문이 관문에서 막히는</b> 상태가 된다.
+     *
+     * <p>사용량과 무관하다. 사람이 누르는 운영 작업이라 하루 10회 한도를 깎지 않는다.
+     */
+    ChatbotAiPort.KnowledgeReindexResult reindexKnowledge();
 }
