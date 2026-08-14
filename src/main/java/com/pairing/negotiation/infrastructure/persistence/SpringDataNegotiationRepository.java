@@ -35,6 +35,10 @@ public interface SpringDataNegotiationRepository extends JpaRepository<Negotiati
     Page<NegotiationJpaEntity> findByProjectId(@Param("projectId") Long projectId,
                                                @Param("status") NegotiationStatus status, Pageable pageable);
 
+    /** 특정 프로젝트·상태 협상 전체(조건 자식까지 로드). 프로젝트 취소 시 진행 중 협상 일괄 결렬용. */
+    @EntityGraph(attributePaths = "conditions")
+    List<NegotiationJpaEntity> findByProjectIdAndStatus(Long projectId, NegotiationStatus status);
+
     /**
      * 내가 프리랜서인 협상 중 '내 응답 대기'인 건수. 헤더 배지용이라 목록을 다 읽지 않고 DB 에서 센다.
      *

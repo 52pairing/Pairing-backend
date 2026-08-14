@@ -13,6 +13,7 @@ import com.pairing.negotiation.application.port.out.NegotiationProposalPort;
 import com.pairing.negotiation.application.port.out.ProjectReaderPort;
 import com.pairing.negotiation.application.usecase.NegotiationAgentUseCase;
 import com.pairing.negotiation.application.usecase.NegotiationLoopUseCase;
+import com.pairing.negotiation.application.usecase.NegotiationProjectOutcomeUseCase;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.Negotiation;
 import com.pairing.negotiation.domain.model.NegotiationCondition;
@@ -46,7 +47,11 @@ import java.util.stream.Collectors;
 @Service
 @Transactional
 @RequiredArgsConstructor
-public class NegotiationLoopService implements NegotiationLoopUseCase, NegotiationAgentUseCase {
+public class NegotiationLoopService
+        implements NegotiationLoopUseCase, NegotiationAgentUseCase, NegotiationProjectOutcomeUseCase {
+
+    /** 프로젝트 취소로 인한 협상 결렬 사유. 만료·수동 종료 어느 쪽이든 맞는 중립 문구(이벤트도 사유를 안 담는다). */
+    private static final String PROJECT_CANCELED_REASON = "프로젝트가 취소되어 협상이 종료되었습니다.";
 
     /**
      * 이 시간을 넘겨 {@code RUNNING} 인 실행은 죽은 것으로 보고 회수한다.
@@ -338,17 +343,61 @@ public class NegotiationLoopService implements NegotiationLoopUseCase, Negotiati
         resolveRole(negotiation, accountId);   // 당사자 검증(NG_002)
 
         String endReason = (reason == null || reason.isBlank()) ? "협상 포기" : reason;
+        // 사람 포기는 사용자가 쓴 사유를 접두어와 함께 로그에 남긴다("협상이 종료되었습니다: {사유}").
+        failAndNotify(negotiation, endReason, "협상이 종료되었습니다: " + endReason);
+    }
+
+    /**
+     * 취소된 프로젝트의 진행 중 협상을 전부 결렬한다(project → negotiation). 시스템 경로라 당사자
+     * 검증이 없고, 대상은 그 프로젝트의 {@code IN_PROGRESS} 협상 전체다.
+     *
+     * <p><b>전파는 기본(REQUIRED)이다.</b> 리스너가 프로젝트 취소 트랜잭션 커밋 후(AFTER_COMMIT)에
+     * 부르므로 <b>걸려 있는 트랜잭션이 없다</b> — REQUIRED 가 새 트랜잭션을 여는 것과 REQUIRES_NEW 가
+     * 결과가 같다(프로젝트 취소는 이미 커밋됐으니 여기서 터져도 롤백되지 않는다). {@link #runAgent} 와
+     * 같은 이유로 REQUIRED 를 고른다 — REQUIRES_NEW 면 {@code @Transactional} 테스트가 이 메서드를 직접
+     * 부를 때 테스트의 미커밋 데이터를 못 본다. 그 프로젝트의 협상들은 <b>한 트랜잭션으로 묶여</b>
+     * 처리되고(전부 아니면 전무), 리스너가 실패 로그를 남긴 뒤 통째로 재시도할 수 있다.
+     *
+     * <p>이미 타결(AGREED)된 협상은 조회 자체에서 빠진다 — 그건 계약 도메인이 {@code Contract.terminate}
+     * 로 정리하고, 협상은 타결된 사실로 남겨 둔다.
+     */
+    @Override
+    public void failInProgressForCanceledProject(Long projectId) {
+        List<Negotiation> targets = negotiationRepository
+                .findByProjectIdAndStatus(projectId, NegotiationStatus.IN_PROGRESS);
+        if (targets.isEmpty()) {
+            return;
+        }
+        log.info("프로젝트 취소로 진행 중 협상 결렬: projectId={}, 대상 수={}", projectId, targets.size());
+        for (Negotiation negotiation : targets) {
+            // 사유가 이미 완결된 문장이라 접두어 없이 그대로 로그에 남긴다(giveUp 과 달리 "종료" 중복 방지).
+            failAndNotify(negotiation, PROJECT_CANCELED_REASON, PROJECT_CANCELED_REASON);
+        }
+    }
+
+    /**
+     * 협상 종결의 공통 절차. 사람 포기({@link #giveUp})와 프로젝트 취소가 <b>같은 네 가지</b>를 밟아야
+     * 하므로 한곳에 둔다 — 하나라도 빠지면 매칭 카드가 남거나(②③), 뒤늦은 A2A 응답이 끝난 협상을
+     * 건드린다(대리인 예약 미정리).
+     *
+     * <ol>
+     *   <li>{@code fail} — 상태를 결렬로.</li>
+     *   <li>{@code finishAgentRun} — 대리인 예약 정리. 안 지우면 뒤늦게 온 A2A 응답이 {@code runAgent} 의
+     *       {@code isAgentRunning()} 가드를 통과해 라운드를 올리려다 {@code NOT_IN_PROGRESS} 로 터지고,
+     *       리스너가 그걸 대리인 실패로 오해해 끝난 협상에 "다시 시도해 주세요"를 붙인다(실측 확인).</li>
+     *   <li>{@code markNegotiationFailed} — 매칭 요청을 협상 결렬로 종결. 빠지면 매칭 요청이
+     *       {@code NEGOTIATING} 로 남아 프리랜서 "협상 중" 탭에 죽은 카드가 계속 보인다.</li>
+     *   <li>{@code publish FAILED} — 협상방을 열어 둔 화면 갱신.</li>
+     * </ol>
+     * 마지막에 결렬 알림을 보낸다(누가 끝냈는지로 갈리지 않는 종료라 양측이 같은 사실을 받는다).
+     */
+    private void failAndNotify(Negotiation negotiation, String endReason, String systemMessage) {
         negotiation.fail(endReason);
-        // 대리인 예약을 지운다. 안 지우면 뒤늦게 온 A2A 응답이 runAgent 의 isAgentRunning() 가드를
-        // 통과해 라운드를 올리려다 NOT_IN_PROGRESS 로 터지고, 리스너가 그걸 대리인 실패로 오해해
-        // 끝난 협상에 "다시 시도해 주세요" 안내를 붙인다(실측 확인).
         negotiation.finishAgentRun();
-        // 결렬(협상 포기) → 매칭 요청을 협상 결렬(NEGOTIATION_FAILED)로 종결(같은 트랜잭션).
         matchingOutcomeUseCase.markNegotiationFailed(negotiation.getRequestId());
-        persist(negotiation, List.of(NegotiationMessage.system(negotiationId, negotiation.getTotalRound(),
-                "협상이 종료되었습니다: " + endReason)));
+        persist(negotiation, List.of(NegotiationMessage.system(negotiation.getId(),
+                negotiation.getTotalRound(), systemMessage)));
         publish(negotiation, NegotiationEventType.FAILED);
-        // 결렬 알림은 포기한 본인에게도 간다. 누가 눌렀는지로 갈리지 않는 종료라 양측이 같은 사실을 받는다.
         eventPublisher.publishEvent(NegotiationNotificationRequested.failed(negotiation));
     }
 

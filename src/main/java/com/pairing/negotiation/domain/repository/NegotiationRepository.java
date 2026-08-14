@@ -31,6 +31,13 @@ public interface NegotiationRepository {
     Page<Negotiation> findByProjectId(Long projectId, NegotiationStatus status, Pageable pageable);
 
     /**
+     * 특정 프로젝트의 특정 상태 협상 <b>전체</b>(조건 자식까지 로드). 프로젝트 취소 시 진행 중 협상을
+     * 일괄 결렬하는 데 쓴다 — 결렬은 조건을 건드리진 않지만, 요약(조건 미로드)으로 로드해 저장하면
+     * 조건이 orphan 삭제되므로 풀 애그리거트로 읽는다.
+     */
+    List<Negotiation> findByProjectIdAndStatus(Long projectId, NegotiationStatus status);
+
+    /**
      * 내가 프리랜서인 협상 중 '내 응답 대기' 건수(헤더 배지용).
      * 판정 기준은 목록의 waitingForMe 와 같다. 목록을 다 읽지 않고 DB 에서 센다.
      */

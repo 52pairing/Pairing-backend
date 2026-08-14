@@ -52,6 +52,14 @@ public class NegotiationRepositoryAdapter implements NegotiationRepository {
     }
 
     @Override
+    public List<Negotiation> findByProjectIdAndStatus(Long projectId, NegotiationStatus status) {
+        // 조건을 함께 로드했으므로 풀 매핑(toDomain). 저장 시 조건이 orphan 삭제되지 않게 한다.
+        return springDataRepository.findByProjectIdAndStatus(projectId, status).stream()
+                .map(negotiationMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public long countWaitingForFreelancer(Long freelancerProfileId) {
         return springDataRepository.countWaitingForFreelancer(freelancerProfileId);
     }
