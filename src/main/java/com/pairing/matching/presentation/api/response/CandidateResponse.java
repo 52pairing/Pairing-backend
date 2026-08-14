@@ -64,6 +64,53 @@ public record CandidateResponse(
         boolean requested,
 
         @Schema(description = "클라이언트가 거절한 후보인지. true면 카드가 비활성으로 표시된다.", example = "false")
-        boolean rejected
+        boolean rejected,
+
+        @Schema(description = "카드 상태 코드. 버튼 활성/비활성 분기에 쓴다.", example = "AVAILABLE")
+        Status status,
+
+        @Schema(description = "카드 상태 문구. 화면에 그대로 찍는다.", example = "선택 가능")
+        String statusLabel
 ) {
+
+    /**
+     * 후보 카드 상태. {@code requested}/{@code rejected} 두 불리언에서 파생된다.
+     *
+     * <p><b>선택·거절해도 카드는 목록에서 사라지지 않는다</b>(2026-08-13 확정). 숨기면 클라이언트가
+     * 누구에게 요청했는지 볼 수 없고, 거절은 되돌리는 API가 없는 데다 R02 예외조건 5로 다음 회차에도
+     * 안 나오므로 그 후보를 영구히 잃는다. 그래서 상태를 표시하는 쪽을 택했다.
+     *
+     * <p><b>거절이 요청보다 우선이다.</b> 둘 다 참일 수 있는데(요청을 보낸 뒤에도 거절할 수 있다),
+     * 이때 카드로 할 수 있는 일을 정하는 건 거절 쪽이다 —
+     * {@code MatchingCandidate.isSelectable()}이 {@code rejected}면 무조건 false다. 서버가 막는 기준과
+     * 화면 표시가 갈리지 않도록 같은 우선순위를 쓴다.
+     */
+    public enum Status {
+
+        /** 고를 수 있다. */
+        AVAILABLE("선택 가능"),
+
+        /** 매칭 요청을 보냈고 프리랜서 응답을 기다린다. */
+        REQUESTED("요청 보냄"),
+
+        /** 클라이언트가 내렸다. 다시 고를 수 없고 되돌리는 API도 없다. */
+        REJECTED("거절함");
+
+        private final String label;
+
+        Status(String label) {
+            this.label = label;
+        }
+
+        public String getLabel() {
+            return label;
+        }
+
+        public static Status of(boolean requested, boolean rejected) {
+            if (rejected) {
+                return REJECTED;
+            }
+            return requested ? REQUESTED : AVAILABLE;
+        }
+    }
 }

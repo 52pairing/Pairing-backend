@@ -501,7 +501,52 @@ class MatchingIntegrationTest {
                 .andExpect(jsonPath("$.data.candidates[0].skills[0]").value("JAVA"))
                 .andExpect(jsonPath("$.data.candidates[0].requested").value(false))
                 .andExpect(jsonPath("$.data.candidates[0].rejected").value(false))
+                .andExpect(jsonPath("$.data.candidates[0].status").value("AVAILABLE"))
+                .andExpect(jsonPath("$.data.candidates[0].statusLabel").value("선택 가능"))
                 .andExpect(jsonPath("$.data.budgetWarned").value(false));
+    }
+
+    @Test
+    @DisplayName("선택·거절한 후보도 목록에 남고 상태로 구분된다")
+    void selectedAndRejectedCandidatesStayInTheListWithStatus() throws Exception {
+        // 숨기지 않는 이유: 요청한 후보를 숨기면 누구에게 보냈는지 볼 수 없고, 거절은 되돌리는 API가
+        // 없는 데다 R02 예외조건 5로 다음 회차에도 안 나와서 그 후보를 영구히 잃는다.
+        long rejectedFreelancerId = 7_009_104L;
+        seedFreelancerWithoutRequiredSkill(rejectedFreelancerId);
+
+        MatchingRound round = seedRound(2);
+        MatchingCandidate requestedCandidate = seedExposedCandidate(round.getId(), 1);
+        MatchingCandidate rejectedCandidate = seedExposedCandidateFor(round.getId(), 2, rejectedFreelancerId);
+
+        sendRequest(requestedCandidate.getId()).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/matchings/candidates/" + rejectedCandidate.getId() + "/rejection")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates.length()").value(2))
+                .andExpect(jsonPath("$.data.candidates[0].status").value("REQUESTED"))
+                .andExpect(jsonPath("$.data.candidates[0].statusLabel").value("요청 보냄"))
+                .andExpect(jsonPath("$.data.candidates[1].status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.candidates[1].statusLabel").value("거절함"));
+    }
+
+    @Test
+    @DisplayName("요청을 보낸 뒤 거절하면 거절이 앞선다 — 서버가 선택을 막는 기준과 같아야 한다")
+    void rejectedWinsOverRequestedSoTheLabelMatchesWhatTheServerAllows() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+
+        sendRequest(candidate.getId()).andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/matchings/candidates/" + candidate.getId() + "/rejection")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                // "요청 보냄"으로 보이면 프론트가 다시 고를 수 있는 카드로 그리는데, 서버의
+                // isSelectable()은 rejected면 무조건 거부한다. 표시와 판정이 갈리면 안 된다.
+                .andExpect(jsonPath("$.data.candidates[0].status").value("REJECTED"))
+                .andExpect(jsonPath("$.data.candidates[0].requested").value(true));
     }
 
     @Test

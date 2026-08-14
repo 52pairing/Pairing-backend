@@ -218,6 +218,13 @@ startNegotiating`/`.syncStage`가 다 구현돼 있었는데(2026-08-08부터 �
 > `MatchingCandidateRepository.findExposedByPositionId`(회차 전체, `round_no DESC, rank_no ASC`)를 쓰고,
 > `CandidateResponseAssembler`가 받는 `round`는 머리말(회차 번호·유형·재추천 가능 여부) 전용이다.
 > 후보 목록에 회차 필터를 다시 넣지 말 것.
+>
+> **같은 이유로 선택·거절한 후보도 목록에서 빼지 않는다 (2026-08-13 확정).** 요청한 후보를 숨기면
+> 누구에게 요청했는지 볼 수 없고, 거절한 후보는 **거절 취소 API를 만들지 않기로 확정**했으므로
+> 화면에서 지우면 영구히 잃는다. 대신 `CandidateResponse.status`(`AVAILABLE`/`REQUESTED`/`REJECTED`)와
+> `statusLabel`로 상태를 표시한다. **거절이 요청보다 우선**이며, 이는 `MatchingCandidate.isSelectable()`
+> 이 `rejected`면 무조건 false인 것과 같은 우선순위다 — 표시 기준과 서버 판정 기준이 갈리면
+> "선택 가능"으로 보이는 카드가 `MT_017`로 거부된다.
 
 **"전부 보유"가 아니라 "1개 이상"인 이유**: 5개 중 4개 가진 좋은 사람을 놓치지 않기 위해서다.
 느슨해 보이지만 **노출은 모집 인원만큼만** 하므로, 5/5인 사람이 충분하면 3/5는 화면에 안 뜬다.

@@ -76,6 +76,10 @@ class CandidateResponseAssembler {
         FreelancerCardSummary card = freelancerDirectoryPort.findCardSummary(candidate.getFreelancerId());
         FreelancerConditionResponse condition = freelancerDirectoryPort.findCondition(candidate.getFreelancerId());
         boolean requested = matchingRequestRepository.existsByCandidateId(candidate.getId());
+        // 문구를 서버가 정한다. 프론트가 두 불리언을 조합해 문구를 만들면 우선순위(거절 > 요청)가
+        // 서버의 isSelectable() 판정과 갈릴 수 있고, 그러면 "선택 가능"으로 보이는 카드가 눌렀을 때
+        // 거부당한다.
+        CandidateResponse.Status status = CandidateResponse.Status.of(requested, candidate.isRejected());
 
         List<SkillCode> skills = condition.skills().stream()
                 .map(FreelancerConditionResponse.Skill::skillCode)
@@ -97,7 +101,9 @@ class CandidateResponseAssembler {
                 condition.payAmount(),
                 candidate.getRankNo() != null ? candidate.getRankNo() : 0,
                 requested,
-                candidate.isRejected()
+                candidate.isRejected(),
+                status,
+                status.getLabel()
         );
     }
 
