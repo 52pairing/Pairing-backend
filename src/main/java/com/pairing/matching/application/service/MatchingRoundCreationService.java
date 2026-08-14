@@ -1,6 +1,11 @@
 package com.pairing.matching.application.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
+import com.pairing.freelancer.presentation.api.response.ResumeResponse;
 import com.pairing.freelancer.domain.model.FreelancerGrade;
+import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.port.out.FreelancerDirectoryPort;
 import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.port.out.NegotiationPort;
@@ -11,11 +16,15 @@ import com.pairing.matching.application.result.RankedFreelancer;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRequest;
 import com.pairing.matching.domain.model.MatchingRound;
+import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.model.MatchingStatus;
 import com.pairing.matching.domain.model.RecommendationType;
+import com.pairing.matching.domain.model.SnapshotType;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
+import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
+import com.pairing.matching.exception.MatchingErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -28,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.time.LocalDateTime;
 
 /**
  * 회차(라운드) 생성: Stage C~E(AI 서버 호출) -&gt; Stage F(가드) -&gt; 저장까지 한 번에 처리한다.
@@ -78,11 +88,13 @@ class MatchingRoundCreationService {
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingCandidateRepository matchingCandidateRepository;
     private final MatchingRequestRepository matchingRequestRepository;
+    private final MatchingSnapshotRepository matchingSnapshotRepository;
     private final ProjectDirectoryPort projectDirectoryPort;
     private final FreelancerDirectoryPort freelancerDirectoryPort;
     private final NegotiationPort negotiationPort;
     private final ClientGradeResolver clientGradeResolver;
     private final BudgetCapCalculator budgetCapCalculator;
+    private final ObjectMapper objectMapper;
 
     /** 회차 생성 + 후보 채우기를 한 번에. 이미 비동기 문맥에서 도는 최초 추천(모집 시작)이 쓴다. */
     MatchingRound createRound(Long projectId, Long positionId, RecommendationType roundType, int recruitCount,
@@ -125,6 +137,19 @@ class MatchingRoundCreationService {
 
         // 포지션 조회가 추천 호출보다 앞이어야 한다 — budgetCap을 같이 넘겨야 해서다.
         ProjectPositionSummary position = projectDirectoryPort.findPositionSummary(projectId, positionId);
+
+        // **포지션 임베딩 생성을 여기서 한다(2026-08-14 이동).** 예전에는 회차를 만드는 트랜잭션
+        // 안에서 했는데, 결제 순간 AI 서버가 내려가 있으면 그 트랜잭션이 롤백돼 **회차도 안 남고**
+        // 복구 스케줄러는 RUNNING 회차만 찾으므로 화면이 "준비중"에서 영원히 멈췄다.
+        // 회차가 커밋된 뒤에 부르면 실패해도 회차가 RUNNING/FAILED 로 남아 복구가 잡아간다.
+        //
+        // 최초 추천에서만 만든다. 재추천은 이미 있는 벡터를 그대로 쓴다 — 매번 다시 부르면
+        // 같은 값으로 덮어쓰면서 AI 호출만 늘어난다. 복구가 최초 추천 회차를 다시 채울 때는
+        // 여기를 다시 타는데, upsert 라 중복이 생기지 않는다.
+        if (round.getRoundType() == RecommendationType.INITIAL) {
+            matchingPort.upsertPositionEmbedding(positionId, PositionEmbeddingTextBuilder.buildText(position));
+        }
+
         long budgetCap = budgetCapCalculator.calculate(projectId, position.budgetAmount(),
                 position.totalHeadcount(), position.periodValue(), position.periodUnit());
 
@@ -247,9 +272,54 @@ class MatchingRoundCreationService {
         }
 
         matchingCandidateRepository.saveAll(candidates);
+        saveFreelancerSnapshots(round, exposedFreelancerIds);
         log.info("MATCHING_DEBUG java.candidates.saved roundId={} positionId={} totalSaved={} exposedSaved={} lowScoreWarned={}",
                 round.getId(), positionId, candidates.size(), exposedCount, lowScoreWarned);
         return lowScoreWarned;
+    }
+
+    /**
+     * 노출된 후보의 프로필을 <b>그 시점 그대로</b> 얼려둔다. 후보 상세 화면이 이걸 읽는다 —
+     * 추천된 뒤 프리랜서가 이력서를 고쳐도 클라이언트가 본 내용이 바뀌지 않아야 한다.
+     *
+     * <p><b>한 명이 실패해도 추천은 계속한다.</b> {@code findResume}/{@code findCondition}은 자료가
+     * 없으면 예외를 던지는데(MT_015), 그게 여기서 터지면 같은 트랜잭션이라 <b>방금 저장한 후보
+     * 전체가 롤백된다</b> — 후보 4명 중 1명이 이력서를 지웠으면 4명 다 사라지고 회차가 FAILED 된다.
+     * 스냅샷은 상세 화면용 부가 자료이므로 <b>매칭을 막아선 안 된다</b>.
+     *
+     * <p>스냅샷이 없는 후보는 상세 조회에서 현재 프로필로 대체해 보여준다
+     * ({@code MatchingCandidateService.findCandidateProfile}).
+     */
+    private void saveFreelancerSnapshots(MatchingRound round, List<Long> exposedFreelancerIds) {
+        for (Long freelancerId : exposedFreelancerIds) {
+            if (matchingSnapshotRepository.findByFreelancerIdAndPositionIdAndSnapshotType(freelancerId,
+                    round.getPositionId(), SnapshotType.FREELANCER).isPresent()) {
+                continue;
+            }
+            try {
+                FreelancerConditionResponse condition = freelancerDirectoryPort.findCondition(freelancerId);
+                ResumeResponse resume = freelancerDirectoryPort.findResume(freelancerId);
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("card", freelancerDirectoryPort.findCardSummary(freelancerId));
+                payload.put("condition", condition);
+                payload.put("resume", resume);
+                payload.put("capturedAt", LocalDateTime.now());
+                matchingSnapshotRepository.save(MatchingSnapshot.create(round.getProjectId(), round.getPositionId(),
+                        freelancerId, SnapshotType.FREELANCER, writeJson(payload)));
+            } catch (Exception e) {
+                log.warn("MATCHING_DEBUG java.candidate.snapshot.failed roundId={} positionId={} freelancerId={} "
+                                + "cause={} — 추천은 계속한다(상세는 현재 프로필로 대체)",
+                        round.getId(), round.getPositionId(), freelancerId, e.getMessage(), e);
+            }
+        }
+    }
+
+    private String writeJson(Object payload) {
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            throw new BusinessException(MatchingErrorCode.INVALID_MATCHING_STATE);
+        }
     }
 
     /**

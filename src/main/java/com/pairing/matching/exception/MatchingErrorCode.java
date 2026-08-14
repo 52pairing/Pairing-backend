@@ -19,6 +19,12 @@ public enum MatchingErrorCode implements BaseErrorCode {
     RERECOMMEND_NOT_AVAILABLE(HttpStatus.BAD_REQUEST, "MT_008", "재추천을 사용할 수 없습니다."),
     CANDIDATE_POOL_EMPTY(HttpStatus.NOT_FOUND, "MT_009", "추천할 후보가 없습니다."),
     AI_SERVER_CALL_FAILED(HttpStatus.BAD_GATEWAY, "MT_010", "AI 매칭 서버 호출에 실패했습니다."),
+    /**
+     * <b>지금은 아무도 던지지 않는다(2026-08-14).</b> 재추천에 걸려 있던 레이트리밋(계정당 5초 1회 /
+     * 1시간 10회)을 없앴다 — 한도가 프로젝트를 구분하지 않아, 여러 프로젝트를 동시에 진행하는
+     * 클라이언트가 정상 사용 중에 막혔다. 총량은 비즈니스 규칙(무료 1회 / 유료 5회, 프로젝트 단위)이
+     * 이미 제한한다. 열거값은 남겨둔다 — 프론트가 이 코드를 이미 다루고 있고, 다시 필요해질 수 있다.
+     */
     RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "MT_011", "잠시 후 다시 시도해 주세요."),
     QUANTITY_REQUIRED(HttpStatus.BAD_REQUEST, "MT_012", "유료 재추천은 인원 수(quantity)를 입력해야 합니다."),
     INVALID_RERECOMMEND_TYPE(HttpStatus.BAD_REQUEST, "MT_013", "재추천 종류는 FREE 또는 PAID만 가능합니다."),

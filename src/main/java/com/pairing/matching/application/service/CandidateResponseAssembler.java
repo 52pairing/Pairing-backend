@@ -124,7 +124,7 @@ class CandidateResponseAssembler {
         );
     }
 
-    private static List<String> splitFitReasons(String fitReason) {
+    static List<String> splitFitReasons(String fitReason) {
         if (fitReason == null || fitReason.isBlank()) {
             return List.of();
         }

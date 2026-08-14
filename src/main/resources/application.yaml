@@ -2,6 +2,11 @@ spring:
   application:
     name: pairing
 
+  config:
+    # AI 매칭의 재시도 설정. 값은 저 파일 한 곳에만 둔다 — 테스트용 application.yaml 이
+    # 이 파일을 통째로 가리기 때문에, 여기 직접 적으면 운영과 테스트 값이 갈린다.
+    import: classpath:matching-retry.yaml
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}

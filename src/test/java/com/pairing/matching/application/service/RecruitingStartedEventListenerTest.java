@@ -72,6 +72,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -339,6 +340,31 @@ class RecruitingStartedEventListenerTest {
         MatchingRound round = matchingRoundRepository.findLatestByPositionId(POSITION_ID).orElseThrow();
         assertThat(round.getStatus()).isEqualTo(MatchingRoundStatus.FAILED);
         // 스냅샷도 남아야 한다. 다시 만들면 "모집 시작 시점"이 밀려서 R32 가 깨진다.
+        assertThat(matchingSnapshotRepository.findByPositionIdAndSnapshotType(POSITION_ID, SnapshotType.POSITION))
+                .isPresent();
+    }
+
+    @Test
+    @DisplayName("결제 순간 AI 서버가 죽어 임베딩 저장이 실패해도 회차는 남는다 — 안 남으면 복구가 불가능하다")
+    void failedPositionEmbeddingStillLeavesARound() {
+        // 예전에는 포지션 임베딩 생성을 회차 만드는 트랜잭션 안에서 했다. 결제 순간 AI 서버가
+        // 내려가 있으면 그 트랜잭션이 통째로 롤백돼 **회차도 스냅샷도 안 남았다.**
+        //
+        // 회차가 없으면 후보 조회는 preparing(준비중)으로 보이고, 복구 스케줄러는 RUNNING 회차만
+        // 찾으므로 아무것도 못 한다 - **화면이 영원히 "준비중"에서 멈춘다.** 착수금을 이미 낸
+        // 클라이언트에게 복구 수단이 없다.
+        //
+        // 이 테스트는 임베딩 저장이 회차 커밋 뒤로 옮겨졌는지를 증명한다. 안 옮겨져 있으면
+        // 아래 orElseThrow 에서 터진다.
+        willThrow(new IllegalStateException("AI 서버 연결 실패"))
+                .given(matchingPort).upsertPositionEmbedding(anyLong(), anyString());
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));
+
+        MatchingRound round = matchingRoundRepository.findLatestByPositionId(POSITION_ID).orElseThrow();
+        assertThat(round.getStatus()).isEqualTo(MatchingRoundStatus.FAILED);
+        // 스냅샷도 남아야 한다. 모집 시작 시점 고정값이라 나중에 다시 만들면 기준이 밀린다(R32).
         assertThat(matchingSnapshotRepository.findByPositionIdAndSnapshotType(POSITION_ID, SnapshotType.POSITION))
                 .isPresent();
     }
