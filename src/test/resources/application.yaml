@@ -29,7 +29,8 @@ app.crypto:
 
 jwt:
   secret-key: test-secret-key-for-unit-test-please-change-me-32bytes+
-  access-token-expiration: 1800000
+  access-token-expiration: 3600000
+  access-token-renew-threshold: 1800000
   refresh-token-expiration: 604800000
   cookie-domain: ""
   cookie-secure: false

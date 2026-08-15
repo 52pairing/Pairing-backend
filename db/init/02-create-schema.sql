@@ -176,6 +176,16 @@ CREATE TABLE "client_profile" (
     "business_field" VARCHAR(40) NOT NULL,
     "employee_count" VARCHAR(30) NOT NULL,
     "address" VARCHAR(255),
+    -- 주소는 나눠 받는다(주소 찾기 결과 + 사용자가 직접 쓰는 상세주소).
+    -- 합쳐 저장하면 수정 화면에서 다시 나눌 수 없다. resume 테이블과 같은 이유다.
+    -- address 는 나눈 값을 한 줄로 합친 파생값이다. 계약서 갑 표시와 프로젝트 근무지가 이 컬럼을 읽는다.
+    -- 나눠 담기 전에 가입한 행에는 address 만 있고 아래 다섯 칸은 NULL 이다.
+    "sido" VARCHAR(20),
+    -- 세종특별자치시는 시·군·구가 없어 비어 있을 수 있다.
+    "sigungu" VARCHAR(40),
+    "road_address" VARCHAR(255),
+    "address_detail" VARCHAR(255),
+    "zip_code" VARCHAR(10),
     "logo_file_id" BIGINT,
     "grade" VARCHAR(20) DEFAULT 'SILVER' NOT NULL,
     "grade_checked_at" TIMESTAMP,
@@ -190,6 +200,16 @@ CREATE TABLE "freelancer_profile" (
     "account_id" BIGINT NOT NULL,
     "birth_date" DATE NOT NULL,
     "address" VARCHAR(255),
+    -- 주소는 나눠 받는다(주소 찾기 결과 + 사용자가 직접 쓰는 상세주소).
+    -- 합쳐 저장하면 수정 화면에서 다시 나눌 수 없다. resume 테이블과 같은 이유다.
+    -- address 는 나눈 값을 한 줄로 합친 파생값이다. 계약서 갑 표시와 프로젝트 근무지가 이 컬럼을 읽는다.
+    -- 나눠 담기 전에 가입한 행에는 address 만 있고 아래 다섯 칸은 NULL 이다.
+    "sido" VARCHAR(20),
+    -- 세종특별자치시는 시·군·구가 없어 비어 있을 수 있다.
+    "sigungu" VARCHAR(40),
+    "road_address" VARCHAR(255),
+    "address_detail" VARCHAR(255),
+    "zip_code" VARCHAR(10),
     "profile_file_id" BIGINT,
     "ai_matching_agreed" BOOLEAN DEFAULT TRUE NOT NULL,
     "matching_paused" BOOLEAN DEFAULT FALSE NOT NULL,
@@ -240,6 +260,9 @@ CREATE TABLE "terms_agreement" (
 CREATE TABLE "email_verification" (
     "id" BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     "email" VARCHAR(255) NOT NULL,
+    -- 값을 늘릴 때는 db/migration 의 CHECK 제약 스크립트를 먼저 실행해야 한다.
+    -- @Enumerated(STRING) 이라 Hibernate 가 테이블 생성 시 CHECK 를 굽는데, ddl-auto: update 는
+    -- 그 제약을 갱신하지 않아 새 값의 INSERT 가 거부된다.
     "purpose" VARCHAR(30) NOT NULL,
     "code_hash" VARCHAR(255) NOT NULL,
     "expires_at" TIMESTAMP NOT NULL,
@@ -1280,7 +1303,12 @@ COMMENT ON COLUMN "client_profile"."company_name" IS '기업명(수정 가능)';
 COMMENT ON COLUMN "client_profile"."business_no" IS '사업자등록번호(하이픈 없는 10자리, 국세청 API 검증)';
 COMMENT ON COLUMN "client_profile"."business_field" IS '사업 분야 코드 20종(IT_CONTENTS_AI / GAME / FINANCE / MEDICAL 등)';
 COMMENT ON COLUMN "client_profile"."employee_count" IS '직원수 구간 코드(UNDER_10 / 10_49 / 50_99 / 100_299 / OVER_300)';
-COMMENT ON COLUMN "client_profile"."address" IS '기업 주소(계약서 갑 표시용)';
+COMMENT ON COLUMN "client_profile"."address" IS '기업 주소 한 줄(계약서 갑 표시용). 아래 다섯 칸을 합친 파생값';
+COMMENT ON COLUMN "client_profile"."sido" IS '시·도';
+COMMENT ON COLUMN "client_profile"."sigungu" IS '시·군·구(세종시는 없음)';
+COMMENT ON COLUMN "client_profile"."road_address" IS '도로명 주소(건물번호 포함)';
+COMMENT ON COLUMN "client_profile"."address_detail" IS '상세 주소(사용자 직접 입력)';
+COMMENT ON COLUMN "client_profile"."zip_code" IS '우편번호';
 COMMENT ON COLUMN "client_profile"."logo_file_id" IS '기업 사진 FK';
 COMMENT ON COLUMN "client_profile"."grade" IS 'SILVER / GOLD / DIAMOND';
 COMMENT ON COLUMN "client_profile"."grade_checked_at" IS '최근 등급 산정 시각(월 1회 배치)';
@@ -1288,7 +1316,12 @@ COMMENT ON COLUMN "client_profile"."grade_checked_at" IS '최근 등급 산정 �
 COMMENT ON COLUMN "freelancer_profile"."id" IS 'PK';
 COMMENT ON COLUMN "freelancer_profile"."account_id" IS '계정 FK(1:1)';
 COMMENT ON COLUMN "freelancer_profile"."birth_date" IS '생년월일(만 18세 이상, 연도 하드코딩 금지). 수정 불가';
-COMMENT ON COLUMN "freelancer_profile"."address" IS '주소(수정 가능)';
+COMMENT ON COLUMN "freelancer_profile"."address" IS '주소 한 줄. 아래 다섯 칸을 합친 파생값';
+COMMENT ON COLUMN "freelancer_profile"."sido" IS '시·도';
+COMMENT ON COLUMN "freelancer_profile"."sigungu" IS '시·군·구(세종시는 없음)';
+COMMENT ON COLUMN "freelancer_profile"."road_address" IS '도로명 주소(건물번호 포함)';
+COMMENT ON COLUMN "freelancer_profile"."address_detail" IS '상세 주소(사용자 직접 입력)';
+COMMENT ON COLUMN "freelancer_profile"."zip_code" IS '우편번호';
 COMMENT ON COLUMN "freelancer_profile"."profile_file_id" IS '프로필 사진 FK(5MB 이하)';
 COMMENT ON COLUMN "freelancer_profile"."ai_matching_agreed" IS 'AI 매칭 대상 포함 여부(본인 선택)';
 COMMENT ON COLUMN "freelancer_profile"."grade" IS 'JUNIOR / SENIOR / MASTER';
@@ -1313,7 +1346,7 @@ COMMENT ON COLUMN "terms_agreement"."user_agent" IS '동의 시점 User-Agent';
 
 COMMENT ON COLUMN "email_verification"."id" IS 'PK';
 COMMENT ON COLUMN "email_verification"."email" IS '대상 이메일';
-COMMENT ON COLUMN "email_verification"."purpose" IS 'SIGNUP / UNLOCK / PROFILE_UPDATE. 비밀번호 초기화는 링크 방식이라 여기 포함하지 않음';
+COMMENT ON COLUMN "email_verification"."purpose" IS 'SIGNUP / UNLOCK / PROFILE_UPDATE / PASSWORD_CHANGE / PAYMENT_METHOD. 비밀번호 초기화는 링크 방식이라 여기 포함하지 않음';
 COMMENT ON COLUMN "email_verification"."code_hash" IS '인증코드 해시(평문 저장 금지)';
 COMMENT ON COLUMN "email_verification"."expires_at" IS '만료 시각(발송 +3분)';
 COMMENT ON COLUMN "email_verification"."verified_at" IS '인증 완료 시각';

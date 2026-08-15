@@ -3,6 +3,8 @@ package com.pairing.negotiation.infrastructure.persistence;
 import com.pairing.negotiation.domain.model.NegotiationMessageType;
 import com.pairing.negotiation.domain.model.SenderType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -32,6 +34,29 @@ public interface SpringDataNegotiationMessageRepository extends JpaRepository<Ne
     /** 협상의 최신 제안(조건 무관). */
     Optional<NegotiationMessageJpaEntity> findFirstByNegotiationIdAndMessageTypeOrderByRoundNoDescIdDesc(
             Long negotiationId, NegotiationMessageType messageType);
+
+    /**
+     * 여러 협상의 제안을 협상별 최신순으로 한 번에. 목록 배치용. 협상당 제안 수가 적어 페이지 하나면
+     * 결과가 작다. 각 협상의 최신(첫 행)만 취하는 축약은 어댑터에서 한다.
+     */
+    List<NegotiationMessageJpaEntity>
+    findByNegotiationIdInAndMessageTypeOrderByNegotiationIdAscRoundNoDescIdDesc(
+            Collection<Long> negotiationIds, NegotiationMessageType messageType);
+
+    /** 현재 라운드(negotiation.totalRound)에 해당 타입 메시지가 있는 협상 ID. 목록 '내 응답 필요' 배치 판정용. */
+    @Query("SELECT DISTINCT m.negotiationId FROM NegotiationMessageJpaEntity m, NegotiationJpaEntity n "
+            + "WHERE m.negotiationId = n.id AND m.negotiationId IN :ids "
+            + "AND m.messageType = :type AND m.roundNo = n.totalRound")
+    List<Long> findNegotiationIdsWithMessageInCurrentRound(
+            @Param("ids") Collection<Long> ids, @Param("type") NegotiationMessageType type);
+
+    /** 현재 라운드에 이 주체(sender)의 해당 타입 메시지가 있는 협상 ID. */
+    @Query("SELECT DISTINCT m.negotiationId FROM NegotiationMessageJpaEntity m, NegotiationJpaEntity n "
+            + "WHERE m.negotiationId = n.id AND m.negotiationId IN :ids "
+            + "AND m.messageType = :type AND m.senderType = :sender AND m.roundNo = n.totalRound")
+    List<Long> findNegotiationIdsWithSenderMessageInCurrentRound(
+            @Param("ids") Collection<Long> ids, @Param("type") NegotiationMessageType type,
+            @Param("sender") SenderType sender);
 
     /** 특정 라운드에 이 주체가 남긴 응답 개수. */
     long countByNegotiationIdAndSenderTypeAndRoundNoAndMessageType(

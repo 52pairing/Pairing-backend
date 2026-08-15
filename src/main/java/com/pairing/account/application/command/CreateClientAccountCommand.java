@@ -1,5 +1,6 @@
 package com.pairing.account.application.command;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.EmployeeCount;
 
@@ -14,7 +15,7 @@ public record CreateClientAccountCommand(
         BusinessField businessField,
         EmployeeCount employeeCount,
         /** 기업 주소(필수). 계약서 갑 표시에 쓰인다. */
-        String address,
+        Address address,
         CardCommand card,
         BankAccountCommand bankAccount
 ) {

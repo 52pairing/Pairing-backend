@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.account.domain.model.EmployeeCount;
@@ -88,9 +89,11 @@ class NegotiationNotificationWiringTest {
 
             Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                     CLIENT_ACCOUNT_ID, "유어커피", "1234500000",
-                    BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울")).getId();
+                    BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, 
+                    Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"))).getId();
             Long freelancerProfileId = freelancerProfileRepository.save(
-                    FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1))).getId();
+                    FreelancerProfile.create(FREELANCER_ACCOUNT_ID, LocalDate.of(1990, 1, 1),
+                    Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"))).getId();
 
             jdbcTemplate.update("INSERT INTO project "
                             + "(id, client_id, title, start_negotiable, period_value, period_unit, "

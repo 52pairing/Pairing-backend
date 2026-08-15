@@ -7,6 +7,7 @@ import com.pairing.account.application.command.CreateFreelancerAccountCommand;
 import com.pairing.account.application.command.CreateSocialFreelancerAccountCommand;
 import com.pairing.account.application.command.WithdrawAccountCommand;
 import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.account.domain.model.PaymentMethod;
 import com.pairing.account.domain.model.Role;
@@ -43,13 +44,13 @@ public interface AccountCommandUseCase {
      * <p>{@code logoFileId} 가 null 이면 기존 로고를 유지한다.
      */
     void updateClientProfile(Long accountId, String companyName, EmployeeCount employeeCount, String phone,
-                             String address, Long logoFileId);
+                             Address address, Long logoFileId);
 
     /** 프리랜서 마이페이지 > 매칭 설정 수정. 없으면 {@code AC_002}. */
     void updateFreelancerMatchingSettings(Long accountId, boolean aiMatchingAgreed, boolean matchingPaused);
 
     /** 프리랜서 마이페이지 기본 정보 수정. 전화번호(계정) + 주소·프로필사진·AI매칭동의(프로필)를 함께 반영한다. */
-    void updateFreelancerProfile(Long accountId, String phone, String address, Long profileFileId,
+    void updateFreelancerProfile(Long accountId, String phone, Address address, Long profileFileId,
                                  boolean aiMatchingAgreed);
 
     /**

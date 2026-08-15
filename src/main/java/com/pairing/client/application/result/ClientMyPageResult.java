@@ -1,5 +1,6 @@
 package com.pairing.client.application.result;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.EmployeeCount;
 import com.pairing.client.domain.model.ClientGrade;
@@ -15,7 +16,10 @@ public record ClientMyPageResult(
         String email,
         String name,
         String phone,
+        /** 한 줄로 합친 주소. 화면에 한 줄만 찍는 곳이 쓴다. */
         String address,
+        /** 나눠 담긴 주소. 수정 폼이 쓴다. 나눠 담기 전 가입한 계정은 null. */
+        Address addressParts,
         ClientGrade grade,
         Double ratingAverage,
         int reviewCount,

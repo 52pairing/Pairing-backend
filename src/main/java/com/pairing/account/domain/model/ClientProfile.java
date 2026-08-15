@@ -24,7 +24,18 @@ public class ClientProfile {
     private String businessNo;
     private BusinessField businessField;
     private EmployeeCount employeeCount;
+
+    /**
+     * 한 줄로 합친 주소. {@link #addressParts} 에서 파생된다.
+     *
+     * <p>계약서 갑 표시와 프로젝트 근무지가 이 값을 읽는다. 주소를 나눠 담기 전에 가입한 행에는
+     * 이 값만 있고 {@link #addressParts} 가 비어 있는데, 그때도 조회는 그대로 동작한다.
+     */
     private String address;
+
+    /** 시·도 / 시·군·구 / 도로명 / 상세 / 우편번호. 수정 화면이 각 칸을 다시 채울 때 쓴다. */
+    private Address addressParts;
+
     private Long logoFileId;
     private String grade;
     private LocalDateTime gradeCheckedAt;
@@ -32,7 +43,8 @@ public class ClientProfile {
 
     private ClientProfile(Long id, Long accountId, String companyName, String businessNo,
                           BusinessField businessField, EmployeeCount employeeCount, String address,
-                          Long logoFileId, String grade, LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
+                          Address addressParts, Long logoFileId, String grade,
+                          LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
         this.id = id;
         this.accountId = accountId;
         this.companyName = companyName;
@@ -40,6 +52,7 @@ public class ClientProfile {
         this.businessField = businessField;
         this.employeeCount = employeeCount;
         this.address = address;
+        this.addressParts = addressParts;
         this.logoFileId = logoFileId;
         this.grade = grade;
         this.gradeCheckedAt = gradeCheckedAt;
@@ -52,23 +65,23 @@ public class ClientProfile {
      */
     public static ClientProfile create(Long accountId, String companyName, String businessNo,
                                        BusinessField businessField, EmployeeCount employeeCount,
-                                       String address) {
+                                       Address address) {
         if (accountId == null || companyName == null || companyName.isBlank()
                 || businessNo == null || businessNo.length() != BUSINESS_NO_LENGTH
-                || businessField == null || employeeCount == null
-                || address == null || address.isBlank()) {
+                || businessField == null || employeeCount == null || address == null) {
             throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
         }
         return new ClientProfile(null, accountId, companyName, businessNo, businessField, employeeCount,
-                address, null, INITIAL_GRADE, null, null);
+                address.toSingleLine(), address, null, INITIAL_GRADE, null, null);
     }
 
     public static ClientProfile reconstitute(Long id, Long accountId, String companyName, String businessNo,
                                              BusinessField businessField, EmployeeCount employeeCount,
-                                             String address, Long logoFileId, String grade,
-                                             LocalDateTime gradeCheckedAt, LocalDateTime deletedAt) {
+                                             String address, Address addressParts, Long logoFileId,
+                                             String grade, LocalDateTime gradeCheckedAt,
+                                             LocalDateTime deletedAt) {
         return new ClientProfile(id, accountId, companyName, businessNo, businessField, employeeCount,
-                address, logoFileId, grade, gradeCheckedAt, deletedAt);
+                address, addressParts, logoFileId, grade, gradeCheckedAt, deletedAt);
     }
 
     /** 마이페이지 기업정보 수정. 사업자등록번호·사업 분야는 여기서 바꿀 수 없다. */
@@ -93,14 +106,16 @@ public class ClientProfile {
      * <p>{@code logoFileId} 는 null 이면 기존 로고를 그대로 둔다. 수정 화면이 로고를 건드리지 않고
      * 저장하는 경우가 대부분이라, null 을 "지움"으로 보면 매번 로고가 날아간다.
      */
-    public void updateCompanyInfo(String companyName, EmployeeCount employeeCount, String address,
+    public void updateCompanyInfo(String companyName, EmployeeCount employeeCount, Address address,
                                   Long logoFileId) {
-        if (companyName == null || companyName.isBlank() || employeeCount == null) {
+        if (companyName == null || companyName.isBlank() || employeeCount == null || address == null) {
             throw new BusinessException(AccountErrorCode.INVALID_ACCOUNT_FIELD);
         }
         this.companyName = companyName;
         this.employeeCount = employeeCount;
-        this.address = address;
+        // 나눠 담은 값과 한 줄 값을 항상 함께 갱신한다. 한쪽만 바꾸면 조회 화면과 수정 폼이 갈린다.
+        this.addressParts = address;
+        this.address = address.toSingleLine();
         if (logoFileId != null) {
             this.logoFileId = logoFileId;
         }

@@ -138,13 +138,13 @@ class ClientMyPageIntegrationTest {
         body.put("businessNo", "1234567890");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
-        body.put("address", "서울 강남구 테헤란로 1");
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
         body.put("email", EMAIL);
         body.put("name", "김민준");
         body.put("phone", ACCOUNT_PHONE);
         body.put("password", PASSWORD);
         body.put("passwordConfirm", PASSWORD);
-        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "신한카드"));
+        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "SHINHAN"));
         body.put("bankAccount", Map.of("bankCode", "088", "accountNo", "110-123-456789", "accountHolder", "김민준"));
         body.put("agreements", List.of(
                 Map.of("termsId", clientTermsId, "agreed", true),
@@ -177,7 +177,9 @@ class ClientMyPageIntegrationTest {
                 .andExpect(jsonPath("$.data.name").value("김민준"))
                 .andExpect(jsonPath("$.data.email").value(EMAIL))
                 .andExpect(jsonPath("$.data.phone").value(ACCOUNT_PHONE.replace("-", "")))
-                .andExpect(jsonPath("$.data.address").value("서울 강남구 테헤란로 1"))
+                .andExpect(jsonPath("$.data.address").value("서울 강남구 테헤란로 1 10층"))
+                .andExpect(jsonPath("$.data.addressParts.sido").value("서울"))
+                .andExpect(jsonPath("$.data.addressParts.roadAddress").value("서울 강남구 테헤란로 1"))
                 .andExpect(jsonPath("$.data.grade").value("SILVER"));
     }
 
@@ -188,7 +190,7 @@ class ClientMyPageIntegrationTest {
         body.put("companyName", "주식회사 페어링랩스");
         body.put("employeeCount", "SIZE_50_299");
         body.put("phone", "010-9999-0000");
-        body.put("address", "서울 마포구");
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
 
         mockMvc.perform(patch("/api/v1/clients/me")
                         .cookie(accessToken)
@@ -197,13 +199,13 @@ class ClientMyPageIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.companyName").value("주식회사 페어링랩스"))
                 .andExpect(jsonPath("$.data.phone").value("01099990000"))
-                .andExpect(jsonPath("$.data.address").value("서울 마포구"));
+                .andExpect(jsonPath("$.data.address").value("서울 강남구 테헤란로 1 10층"));
 
         mockMvc.perform(get("/api/v1/clients/me").cookie(accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.companyName").value("주식회사 페어링랩스"))
                 .andExpect(jsonPath("$.data.phone").value("01099990000"))
-                .andExpect(jsonPath("$.data.address").value("서울 마포구"))
+                .andExpect(jsonPath("$.data.address").value("서울 강남구 테헤란로 1 10층"))
                 .andExpect(jsonPath("$.data.businessNo").value("1234567890"));
 
         var savedAccount = accountRepository.findAll().get(0);

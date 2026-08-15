@@ -93,7 +93,11 @@ PATCH /api/v1/freelancers/me
   "email": "kimgaebal@dev.kr",
   "phone": "01012345678",
   "birthDate": "1990-05-20",
-  "address": "서울특별시 강남구 테헤란로 123",
+  "address": "서울 강남구 테헤란로 123 10층",
+  "addressParts": {
+    "sido": "서울", "sigungu": "강남구",
+    "roadAddress": "서울 강남구 테헤란로 123", "addressDetail": "10층", "zipCode": "06234"
+  },
   "profileImageUrl": "https://cdn.../profile/xxx.png",
   "aiMatchingAgreed": true,
   "grade": "SENIOR",
@@ -103,6 +107,16 @@ PATCH /api/v1/freelancers/me
   "withdrawable": true
 }
 ```
+
+**주소는 두 가지 모양으로 내려갑니다.**
+
+- `address` — 한 줄로 합친 값. **화면에 그대로 찍으면 됩니다.**
+- `addressParts` — 나눠 담은 다섯 칸. **수정 폼의 각 입력칸을 채울 때만** 씁니다.
+
+이 기능(2026-08-14) 이전에 가입한 계정은 `addressParts` 가 `null` 입니다. 그때도 `address` 는 옛 값이
+그대로 나가므로 조회 화면은 정상입니다. 수정 폼은 주소 찾기를 다시 시키면 되고, 한 번 저장하면
+`addressParts` 가 채워집니다.
+
 
 | 화면 | 필드 |
 |---|---|
@@ -121,12 +135,20 @@ PATCH /api/v1/freelancers/me
 {
   "profileFileId": 3,
   "phone": "010-1234-5678",
-  "address": "서울특별시 강남구 테헤란로 123",
+  "address": {
+    "sido": "서울", "sigungu": "강남구",
+    "roadAddress": "서울 강남구 테헤란로 123", "addressDetail": "10층", "zipCode": "06234"
+  },
   "aiMatchingAgreed": true
 }
 ```
 
-- `aiMatchingAgreed` 는 **필수**. 나머지는 선택
+- `aiMatchingAgreed`·`address`·`phone` 은 **필수**. `profileFileId` 만 선택
+- **`profileFileId` 를 안 보내면 기존 사진을 그대로 둡니다.** 사진을 안 건드리고 주소만 고칠 때
+  굳이 현재 fileId 를 다시 실어 보낼 필요가 없습니다. (기업 로고 `logoFileId` 와 같은 규칙)
+- **`address` 는 조회 응답의 `addressParts` 와 같은 모양**입니다. 한 줄 문자열을 보내면 400입니다.
+- 주소 찾기 위젯 결과를 **합치지 말고 조각째** 보내세요. 합쳐 보내면 다음 수정 화면에서 다시 나눌 수 없습니다.
+- `sido` 와 `roadAddress` 는 필수, `sigungu` 는 선택입니다(세종특별자치시는 시·군·구가 없습니다).
 - `name`, `email`, `birthDate` 는 수정 불가 — 보내도 무시
 - `phone` 은 `010-1234-5678` / `01012345678` 둘 다 허용
 - `profileFileId` 는 5-1 파일 업로드로 먼저 받습니다
@@ -546,7 +568,11 @@ PATCH /api/v1/clients/me      수정
   "email": "contact@oelab.co.kr",
   "name": "김민준",
   "phone": "01012345678",
-  "address": "서울특별시 강남구 테헤란로 123 10층",
+  "address": "서울 강남구 테헤란로 123 10층",
+  "addressParts": {
+    "sido": "서울", "sigungu": "강남구",
+    "roadAddress": "서울 강남구 테헤란로 123", "addressDetail": "10층", "zipCode": "06234"
+  },
   "grade": "GOLD",
   "ratingAverage": 4.2,
   "reviewCount": 8,
@@ -593,11 +619,18 @@ PATCH /api/v1/clients/me
 {
   "companyName": "주식회사 오이랩",
   "employeeCount": "SIZE_50_299",
-  "address": "서울특별시 강남구 테헤란로 123 10층",
+  "address": {
+    "sido": "서울", "sigungu": "강남구",
+    "roadAddress": "서울 강남구 테헤란로 123", "addressDetail": "10층", "zipCode": "06234"
+  },
   "phone": "010-1234-5678",
   "logoFileId": 7
 }
 ```
+
+**`address` 는 이제 객체이고 필수입니다.** 한 줄 문자열을 보내면 400입니다. 가입 때 필수인 값이라
+수정에서도 비울 수 없습니다 — 비면 계약서 갑 주소가 사라집니다.
+
 
 | 항목 | 수정 |
 |---|---|
@@ -756,8 +789,9 @@ PUT /api/v1/accounts/me/payment-methods/bank-account
   {
     "paymentMethodId": 1,
     "methodType": "CARD",
-    "displayName": "신한카드 · 1234",
+    "displayName": "신한카드 **** 1234",
     "cardBrand": "신한카드",
+    "cardCompany": "SHINHAN",
     "cardLast4": "1234",
     "cardHolder": "홍길동",
     "bankName": null,
@@ -769,12 +803,15 @@ PUT /api/v1/accounts/me/payment-methods/bank-account
     "displayName": "신한은행 ****4567",
     "bankName": "신한은행",
     "accountLast4": "4567",
-    "cardBrand": null, "cardLast4": null, "cardHolder": null
+    "cardBrand": null, "cardCompany": null, "cardLast4": null, "cardHolder": null
   }
 ]
 ```
 
 **서버는 전체 카드번호·계좌번호를 절대 내려주지 않습니다.** 뒤 4자리만 있습니다.
+
+`cardBrand`는 화면에 찍는 한글 카드사명이고, `cardCompany`는 코드(`SHINHAN`)입니다.
+**수정 폼의 카드사 select 초기값에는 `cardCompany`를 쓰세요.** 한글명으로는 항목을 고를 수 없습니다.
 
 > ⚠️ **마스킹 표기 통일 필요**: 화면마다 `****-****-****-4567` / `***-********-****362` 로
 > 제각각입니다. **`bankName` + `accountLast4`** 조합 하나로 통일해주세요.
@@ -785,12 +822,24 @@ PUT /api/v1/accounts/me/payment-methods/bank-account
 ```json
 // 카드
 PUT /api/v1/accounts/me/payment-methods/card
-{ "cardBrand": "신한카드", "cardNumber": "1234567891234567", "cardHolder": "홍길동" }
+{ "cardBrand": "SHINHAN", "cardNumber": "1234-5678-9123-4567", "cardHolder": "홍길동" }
 
 // 계좌
 PUT /api/v1/accounts/me/payment-methods/bank-account
-{ "bankCode": "SHINHAN", "accountNo": "1234567891234567", "accountHolder": "홍길동" }
+{ "bankCode": "088", "accountNo": "110-123-456789", "accountHolder": "홍길동" }
 ```
+
+형식은 **가입 화면과 완전히 같습니다.** (이전에는 두 곳의 규칙이 달라 가입은 통과한 값이 수정에서 막혔습니다)
+
+| 항목 | 규칙 | 목록 API |
+| --- | --- | --- |
+| `cardBrand` | 카드사 **코드**. `"신한카드"` 같은 한글명은 400 | `GET /api/v1/meta/card-companies` |
+| `cardNumber` | 숫자 **16자리**(4자리씩 4묶음). 하이픈·공백 허용 | - |
+| `bankCode` | 금융결제원 **기관코드 3자리**. `"SHINHAN"` 을 보내면 400 (형식). 숫자지만 목록에 없으면 `AC_006` | `GET /api/v1/meta/banks` |
+| `accountNo` | 숫자 **10~14자리**. 하이픈·공백 허용 | - |
+
+> 위 예시의 `"bankCode": "SHINHAN"` 은 이 문서의 오기였습니다. 은행은 숫자 코드(`088`)입니다.
+> 카드사만 영문 코드를 씁니다.
 
 ### 4-4. 파일 업로드
 

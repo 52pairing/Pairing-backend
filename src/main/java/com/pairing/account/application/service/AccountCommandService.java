@@ -10,6 +10,7 @@ import com.pairing.account.application.result.WithdrawalEligibilityResult;
 import com.pairing.account.application.usecase.AccountCommandUseCase;
 import com.pairing.account.application.usecase.WithdrawalEligibilityUseCase;
 import com.pairing.account.domain.model.Account;
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.account.domain.model.BankCode;
 import com.pairing.account.domain.model.EmployeeCount;
@@ -119,7 +120,8 @@ public class AccountCommandService implements AccountCommandUseCase {
                 command.phone()
         ));
 
-        freelancerProfileRepository.save(FreelancerProfile.create(account.getId(), command.birthDate()));
+        freelancerProfileRepository.save(FreelancerProfile.create(account.getId(), command.birthDate(),
+                command.address()));
         savePaymentMethods(account.getId(), command.card(), command.bankAccount());
 
         return account.getId();
@@ -143,7 +145,8 @@ public class AccountCommandService implements AccountCommandUseCase {
                 command.providerEmailVerified()
         ));
 
-        freelancerProfileRepository.save(FreelancerProfile.create(account.getId(), command.birthDate()));
+        freelancerProfileRepository.save(FreelancerProfile.create(account.getId(), command.birthDate(),
+                command.address()));
         savePaymentMethods(account.getId(), command.card(), command.bankAccount());
 
         return account.getId();
@@ -193,7 +196,7 @@ public class AccountCommandService implements AccountCommandUseCase {
 
     @Override
     public void updateClientProfile(Long accountId, String companyName, EmployeeCount employeeCount, String phone,
-                                    String address, Long logoFileId) {
+                                    Address address, Long logoFileId) {
         Account account = loadAccount(accountId);
         account.updatePhone(ContactPolicy.normalizePhone(phone));
         accountRepository.save(account);
@@ -213,7 +216,7 @@ public class AccountCommandService implements AccountCommandUseCase {
     }
 
     @Override
-    public void updateFreelancerProfile(Long accountId, String phone, String address, Long profileFileId,
+    public void updateFreelancerProfile(Long accountId, String phone, Address address, Long profileFileId,
                                         boolean aiMatchingAgreed) {
         Account account = loadAccount(accountId);
         account.updatePhone(ContactPolicy.normalizePhone(phone));
@@ -230,7 +233,7 @@ public class AccountCommandService implements AccountCommandUseCase {
         PaymentMethod card = loadPaymentMethod(accountId, PaymentMethodType.CARD);
         String cardNumber = normalizeNumber(command.cardNumber());
 
-        card.updateCard(dataEncryptionPort.encrypt(cardNumber), command.cardBrand(), lastFourOf(cardNumber),
+        card.updateCard(dataEncryptionPort.encrypt(cardNumber), brandNameOf(command), lastFourOf(cardNumber),
                 command.cardHolder());
         return paymentMethodRepository.save(card);
     }
@@ -247,6 +250,14 @@ public class AccountCommandService implements AccountCommandUseCase {
         bankAccount.updateBankAccount(bank.getCode(), dataEncryptionPort.encrypt(accountNo),
                 lastFourOf(accountNo), command.accountHolder());
         return paymentMethodRepository.save(bankAccount);
+    }
+
+    /**
+     * 카드사를 저장할 문자열로 바꾼다. 한글 카드사명이 아니라 enum 이름("SHINHAN")을 넣는다 —
+     * 카드사명은 바뀔 수 있어서 이름을 저장하면 기존 행이 옛 표기로 남는다.
+     */
+    private String brandNameOf(CardCommand card) {
+        return card.cardBrand() == null ? null : card.cardBrand().name();
     }
 
     private PaymentMethod loadPaymentMethod(Long accountId, PaymentMethodType methodType) {
@@ -283,7 +294,7 @@ public class AccountCommandService implements AccountCommandUseCase {
                 PaymentMethod.createCard(
                         accountId,
                         dataEncryptionPort.encrypt(cardNumber),
-                        card.cardBrand(),
+                        brandNameOf(card),
                         lastFourOf(cardNumber)),
                 PaymentMethod.createBankAccount(
                         accountId,

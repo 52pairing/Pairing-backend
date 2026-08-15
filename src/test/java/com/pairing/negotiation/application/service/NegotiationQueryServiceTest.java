@@ -1,5 +1,6 @@
 package com.pairing.negotiation.application.service;
 
+import com.pairing.account.domain.model.Address;
 import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.BusinessField;
 import com.pairing.account.domain.model.ClientProfile;
@@ -40,10 +41,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
 
 /**
@@ -85,9 +88,11 @@ class NegotiationQueryServiceTest {
 
         Long clientProfileId = clientProfileRepository.save(ClientProfile.create(
                 CLIENT_ACCOUNT_ID, "삼성전자", "1234567890",
-                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, "서울 강남구 테헤란로 1")).getId();
+                BusinessField.IT_CONTENTS_AI, EmployeeCount.SIZE_50_299, 
+                    Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"))).getId();
         freelancerProfileId = freelancerProfileRepository.save(
-                FreelancerProfile.create(freelancerAccountId, LocalDate.of(1990, 1, 1))).getId();
+                FreelancerProfile.create(freelancerAccountId, LocalDate.of(1990, 1, 1),
+                    Address.of("서울", "강남구", "서울 강남구 테헤란로 1", "10층", "06234"))).getId();
 
         // project 는 project 도메인 소유다. 여기선 그 조회 포트를 목킹해 협상 조회 로직만 검증한다
         // (project 테이블 스키마 변화에 협상 테스트가 흔들리지 않게).
@@ -95,6 +100,9 @@ class NegotiationQueryServiceTest {
                 new ProjectReaderPort.ProjectView(PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼",
                         50_000_000L, WorkStyle.REMOTE, WorkForm.FULL_TIME,
                         LocalDate.of(2026, 1, 1), true, 6, PeriodUnit.MONTH)));
+        // 프리랜서 목록은 프로젝트를 카드마다 findById 하는 대신 페이지 단위로 배치 조회한다.
+        when(projectReaderPort.findCardInfoByIds(anyCollection())).thenReturn(
+                Map.of(PROJECT_ID, new ProjectReaderPort.ProjectCardInfo(clientProfileId, "페어링 웹 리뉴얼")));
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
                 50_000_000L, 50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));

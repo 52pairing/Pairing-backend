@@ -1,7 +1,10 @@
 package com.pairing.freelancer.presentation.api.request;
 
+import com.pairing.account.presentation.api.request.AddressRequest;
 import com.pairing.freelancer.application.command.FreelancerProfileUpdateCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -21,11 +24,15 @@ public record FreelancerProfileUpdateRequest(
 
         @Schema(description = "전화번호", example = "010-1234-5678")
         @Pattern(regexp = "^01[016789]-?\\d{3,4}-?\\d{4}$", message = "전화번호 형식이 올바르지 않습니다.")
+        // @Pattern 은 null 을 통과시킨다(Bean Validation 명세). @NotBlank 가 함께 있어야 막힌다.
+        @NotBlank(message = "전화번호는 필수입니다.")
         String phone,
 
-        @Schema(description = "주소", example = "서울 강남구")
-        @Size(max = 255, message = "주소는 255자 이하여야 합니다.")
-        String address,
+        // 가입 때 필수인 값이라 수정에서도 필수다.
+        @Schema(description = "주소")
+        @NotNull(message = "주소는 필수입니다.")
+        @Valid
+        AddressRequest address,
 
         @Schema(description = "AI 매칭 사용 여부. 끄면 추천 대상에서 제외된다.", example = "true")
         @NotNull(message = "AI 매칭 동의 여부는 필수입니다.")
@@ -33,6 +40,7 @@ public record FreelancerProfileUpdateRequest(
 ) {
 
     public FreelancerProfileUpdateCommand toCommand(Long accountId) {
-        return new FreelancerProfileUpdateCommand(accountId, profileFileId, phone, address, aiMatchingAgreed);
+        return new FreelancerProfileUpdateCommand(accountId, profileFileId, phone, address.toAddress(),
+                aiMatchingAgreed);
     }
 }

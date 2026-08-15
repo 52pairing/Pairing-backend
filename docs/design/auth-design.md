@@ -386,7 +386,7 @@ POST /auth/login
  5. sessionId = UUID
     Redis SET SESSION:{accountId} = sessionId  (TTL 7일)
     Redis SET RT:{accountId}      = refreshToken (TTL 7일)   // 이전 값 덮어쓰기 = 이전 기기 무효화
- 6. accessToken(sub=accountId, role, sid=sessionId, 30분) + refreshToken(7일) 쿠키 발급
+ 6. accessToken(sub=accountId, role, sid=sessionId, 1시간) + refreshToken(7일) 쿠키 발급
  7. isTempPassword=true 이면 응답에 표시 -> FE는 비밀번호 변경 화면으로 강제 이동
 ```
 
@@ -415,7 +415,20 @@ POST /auth/logout
  2. accessToken / refreshToken 쿠키 만료 (GlobalJwtProvider.deleteCookie)
 ```
 
-Access 30분·Refresh 7일은 `application.yaml` 에 이미 설정되어 있어 변경하지 않는다.
+Access 1시간·Refresh 7일은 `application.yaml` 에 설정되어 있다.
+
+**액세스 토큰은 슬라이딩이다(2026-08-14).** `GlobalJwtAuthenticationFilter` 가 인증에 성공한 요청에서
+남은 수명이 `jwt.access-token-renew-threshold`(기본 30분) 아래면 만료를 미룬 토큰을 새로 발급해
+`Set-Cookie` 로 내려보낸다. 발급 시점 기준으로 딱 끊으면 작업 중이던 사용자가 로그인 화면으로 튕겨서다.
+
+매 요청마다 발급하지 않는 이유는 두 가지다. 응답마다 `Set-Cookie` 가 붙고, 병렬 요청이 서로 다른
+토큰을 덮어써 쿠키가 계속 튄다. 임계값을 두면 "그 시간 안에 요청이 한 번이라도 있으면 유지"가 된다.
+
+**세션 ID(sid)는 물려준다.** 새로 만들면 진행 중이던 다른 요청이 단일 세션 검사에서 "다른 기기
+로그인"으로 오인되어 끊긴다.
+
+**리프레시 토큰 수명은 늘리지 않는다.** 그쪽이 절대 상한이라 계속 활동해도 7일 뒤에는 재로그인이
+필요하다. 슬라이딩으로 무한정 늘리면 탈취된 세션도 영원히 살아 있게 된다.
 
 ### 6.5 계정 잠금과 비밀번호 재설정
 

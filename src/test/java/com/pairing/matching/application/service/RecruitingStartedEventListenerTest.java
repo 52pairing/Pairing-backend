@@ -255,13 +255,13 @@ class RecruitingStartedEventListenerTest {
         body.put("businessNo", "1234567890");
         body.put("businessField", "IT_CONTENTS_AI");
         body.put("employeeCount", "SIZE_10_49");
-        body.put("address", "서울 강남구 테헤란로 1");
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
         body.put("email", CLIENT_EMAIL);
         body.put("name", "김클라");
         body.put("phone", "010-1111-2222");
         body.put("password", PASSWORD);
         body.put("passwordConfirm", PASSWORD);
-        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "신한카드"));
+        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "SHINHAN"));
         body.put("bankAccount", Map.of("bankCode", "088", "accountNo", "110-123-456789", "accountHolder", "김클라"));
         body.put("agreements", List.of(
                 Map.of("termsId", clientTermsId, "agreed", true),

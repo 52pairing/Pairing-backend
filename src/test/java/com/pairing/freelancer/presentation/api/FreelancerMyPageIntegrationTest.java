@@ -171,7 +171,8 @@ class FreelancerMyPageIntegrationTest {
         body.put("password", PASSWORD);
         body.put("passwordConfirm", PASSWORD);
         body.put("birthDate", "1995-03-01");
-        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "신한카드"));
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
+        body.put("card", Map.of("cardNumber", "1234-5678-1234-5678", "cardBrand", "SHINHAN"));
         body.put("bankAccount", Map.of("bankCode", "088", "accountNo", "110-123-456789", "accountHolder", "홍길동"));
         body.put("agreements", List.of(
                 Map.of("termsId", freelancerTermsId, "agreed", true),
@@ -304,6 +305,7 @@ class FreelancerMyPageIntegrationTest {
         body.put("contactPhone", contactPhone);
         body.put("contactEmail", "");
         body.put("zipCode", "06234");
+        // 이력서 주소는 아직 나누지 않았다(zipCode/address/addressDetail 3칸). 계정 프로필과 구조가 다르다.
         body.put("address", "서울특별시 강남구 테헤란로 123");
         body.put("addressDetail", "2층");
         body.put("selfIntroduction", "백엔드 5년차입니다.");
@@ -614,7 +616,7 @@ class FreelancerMyPageIntegrationTest {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("profileFileId", profileImageFileId);
         body.put("phone", "010-9999-0000");
-        body.put("address", "서울 마포구");
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
         body.put("aiMatchingAgreed", false);
 
         mockMvc.perform(patch("/api/v1/freelancers/me")
@@ -623,14 +625,77 @@ class FreelancerMyPageIntegrationTest {
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.phone").value("01099990000"))
-                .andExpect(jsonPath("$.data.address").value("서울 마포구"))
+                .andExpect(jsonPath("$.data.address").value("서울 강남구 테헤란로 1 10층"))
+                .andExpect(jsonPath("$.data.addressParts.sido").value("서울"))
+                .andExpect(jsonPath("$.data.addressParts.sigungu").value("강남구"))
+                .andExpect(jsonPath("$.data.addressParts.roadAddress").value("서울 강남구 테헤란로 1"))
+                .andExpect(jsonPath("$.data.addressParts.addressDetail").value("10층"))
+                .andExpect(jsonPath("$.data.addressParts.zipCode").value("06234"))
                 .andExpect(jsonPath("$.data.aiMatchingAgreed").value(false));
 
         mockMvc.perform(get("/api/v1/freelancers/me").cookie(accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.phone").value("01099990000"))
-                .andExpect(jsonPath("$.data.address").value("서울 마포구"))
+                .andExpect(jsonPath("$.data.address").value("서울 강남구 테헤란로 1 10층"))
+                .andExpect(jsonPath("$.data.addressParts.sido").value("서울"))
+                .andExpect(jsonPath("$.data.addressParts.sigungu").value("강남구"))
+                .andExpect(jsonPath("$.data.addressParts.roadAddress").value("서울 강남구 테헤란로 1"))
+                .andExpect(jsonPath("$.data.addressParts.addressDetail").value("10층"))
+                .andExpect(jsonPath("$.data.addressParts.zipCode").value("06234"))
                 .andExpect(jsonPath("$.data.aiMatchingAgreed").value(false));
+    }
+
+    @Test
+    @DisplayName("프로필 사진을 안 보내면 기존 사진을 그대로 둔다")
+    void updateMeKeepsProfileImageWhenFileIdOmitted() throws Exception {
+        given(verifiedMarkerPort.isVerified(EMAIL, VerificationPurpose.PROFILE_UPDATE)).willReturn(true);
+
+        // 먼저 사진을 등록해 둔다.
+        Map<String, Object> withImage = new LinkedHashMap<>();
+        withImage.put("profileFileId", profileImageFileId);
+        withImage.put("phone", "010-9999-0000");
+        withImage.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
+        withImage.put("aiMatchingAgreed", true);
+        mockMvc.perform(patch("/api/v1/freelancers/me")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(withImage)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profileImageUrl").isNotEmpty());
+
+        // 사진은 건드리지 않고 주소만 고친다. 이때 사진이 날아가면 안 된다.
+        Map<String, Object> withoutImage = new LinkedHashMap<>();
+        withoutImage.put("phone", "010-9999-0000");
+        withoutImage.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
+        withoutImage.put("aiMatchingAgreed", true);
+
+        mockMvc.perform(patch("/api/v1/freelancers/me")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(withoutImage)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profileImageUrl").isNotEmpty());
+
+        mockMvc.perform(get("/api/v1/freelancers/me").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profileImageUrl").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("전화번호를 빼고 보내면 400 으로 막는다")
+    void updateMeRequiresPhone() throws Exception {
+        given(verifiedMarkerPort.isVerified(EMAIL, VerificationPurpose.PROFILE_UPDATE)).willReturn(true);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
+        body.put("aiMatchingAgreed", true);
+
+        mockMvc.perform(patch("/api/v1/freelancers/me")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errorCode").value("GLOBAL_002"));
     }
 
     @Test
@@ -640,7 +705,7 @@ class FreelancerMyPageIntegrationTest {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("phone", "010-9999-0000");
-        body.put("address", "서울 마포구");
+        body.put("address", Map.of("sido", "서울", "sigungu", "강남구", "roadAddress", "서울 강남구 테헤란로 1", "addressDetail", "10층", "zipCode", "06234"));
         body.put("aiMatchingAgreed", true);
 
         mockMvc.perform(patch("/api/v1/freelancers/me")

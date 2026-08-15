@@ -60,7 +60,7 @@
 
 | 쿠키 | 수명 | 속성 |
 | --- | --- | --- |
-| `accessToken` | 30분 | HttpOnly, Path=/, SameSite=Lax(로컬) / None+Secure(운영) |
+| `accessToken` | 1시간 (요청마다 갱신) | HttpOnly, Path=/, SameSite=Lax(로컬) / None+Secure(운영) |
 | `refreshToken` | 7일 | 동일 |
 
 **모든 요청에 `credentials: 'include'` 를 넣어야 합니다.** 하나라도 빠지면 그 요청만 401 이 납니다.
