@@ -46,6 +46,12 @@ ai:
     base-url: http://localhost:8000
     internal-api-key: test-internal-api-key
 
+# 이 파일이 메인 application.yaml 을 통째로 가리므로, 메인에 있는 폴백
+# (${INTERNAL_API_KEY:${AI_INTERNAL_API_KEY:}})은 테스트에서 동작하지 않는다.
+# 값을 여기에 직접 적어야 /api/v1/internal/** 를 부르는 테스트가 403 에 막히지 않는다.
+internal:
+  api-key: test-internal-api-key
+
 # Lettuce는 지연 연결이므로 실제 Redis 없이도 컨텍스트는 기동된다.
 # Redis를 실제로 쓰는 테스트는 로컬 Redis(또는 Testcontainers)를 띄워야 한다.
 spring.data.redis:

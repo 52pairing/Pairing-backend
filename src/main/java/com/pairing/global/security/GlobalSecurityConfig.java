@@ -74,6 +74,13 @@ public class GlobalSecurityConfig {
                                 // ALB 가 /api/* 만 백엔드로 보내서 /ws 는 백엔드에 닿지 못한다.
                                 // 같은 핸드셰이크를 /api/ws 로도 열어 둔다(app.websocket.endpoint 참고).
                                 "/api/ws/**",
+                                // 서버 간 호출. 사용자 JWT 가 없는 대신 X-Internal-Api-Key 를 각
+                                // 컨트롤러가 InternalCallGuard 로 검사한다. 여기서 열지 않으면
+                                // 토큰이 없어 401 에 먼저 막혀 컨트롤러까지 오지 못한다.
+                                //
+                                // 키 미설정은 잠금으로 처리하므로(InternalCallGuard 참고) 환경변수를
+                                // 빠뜨린 채 배포해도 열린 상태가 되지는 않는다.
+                                "/api/v1/internal/**",
                                 // 시큐리티가 ERROR 디스패치까지 인가 검사를 하므로(6.x 기본값),
                                 // 열어두지 않으면 실제 예외가 401로 덮여 원인 파악이 어려워진다.
                                 "/error"
