@@ -24,6 +24,11 @@ public class CdnUrlSerializer extends JsonSerializer<Object> {
         cdnBase = base == null ? "" : base;
     }
 
+    /** 지금 설정된 루트. 테스트가 값을 바꿨다가 되돌릴 때 쓴다. */
+    static String currentBase() {
+        return cdnBase;
+    }
+
     @Override
     public void serialize(Object value, JsonGenerator gen, SerializerProvider provider) throws IOException {
         if (value == null) {
