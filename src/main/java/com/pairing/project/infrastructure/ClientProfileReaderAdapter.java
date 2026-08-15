@@ -21,4 +21,13 @@ public class ClientProfileReaderAdapter implements ClientProfileReaderPort {
         return new ClientProfileReaderPort.ClientProfileView(
                 profile.getId(), profile.getAddress(), ClientGrade.of(profile.getGrade()));
     }
+
+    @Override
+    public Long findAccountId(Long clientProfileId) {
+        // 없는 것을 예외로 보지 않는 findClientProfileById 를 쓴다. 프로필이 지워졌으면
+        // 알림만 못 보낼 뿐, 취소 처리를 막을 이유가 없다.
+        return accountQueryUseCase.findClientProfileById(clientProfileId)
+                .map(ClientProfile::getAccountId)
+                .orElse(null);
+    }
 }
