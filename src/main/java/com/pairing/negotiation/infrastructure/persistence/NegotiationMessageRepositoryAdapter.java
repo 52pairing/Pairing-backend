@@ -10,8 +10,11 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Repository
 @RequiredArgsConstructor
@@ -72,6 +75,40 @@ public class NegotiationMessageRepositoryAdapter implements NegotiationMessageRe
                 .findFirstByNegotiationIdAndMessageTypeOrderByRoundNoDescIdDesc(
                         negotiationId, NegotiationMessageType.PROPOSAL)
                 .map(mapper::toDomain);
+    }
+
+    @Override
+    public Map<Long, NegotiationMessage> findLatestProposalsByNegotiationIds(Collection<Long> negotiationIds) {
+        if (negotiationIds == null || negotiationIds.isEmpty()) {
+            return Map.of();
+        }
+        // 협상별 최신순으로 정렬돼 오므로, 각 협상의 첫 행만 남기면 최신 제안이 된다.
+        Map<Long, NegotiationMessage> latest = new HashMap<>();
+        for (NegotiationMessageJpaEntity entity : springDataRepository
+                .findByNegotiationIdInAndMessageTypeOrderByNegotiationIdAscRoundNoDescIdDesc(
+                        negotiationIds, NegotiationMessageType.PROPOSAL)) {
+            latest.computeIfAbsent(entity.getNegotiationId(), k -> mapper.toDomain(entity));
+        }
+        return latest;
+    }
+
+    @Override
+    public Set<Long> negotiationIdsWithProposalInCurrentRound(Collection<Long> negotiationIds) {
+        if (negotiationIds == null || negotiationIds.isEmpty()) {
+            return Set.of();
+        }
+        return Set.copyOf(springDataRepository.findNegotiationIdsWithMessageInCurrentRound(
+                negotiationIds, NegotiationMessageType.PROPOSAL));
+    }
+
+    @Override
+    public Set<Long> negotiationIdsWithResponseInCurrentRound(Collection<Long> negotiationIds,
+                                                              SenderType senderType) {
+        if (negotiationIds == null || negotiationIds.isEmpty()) {
+            return Set.of();
+        }
+        return Set.copyOf(springDataRepository.findNegotiationIdsWithSenderMessageInCurrentRound(
+                negotiationIds, NegotiationMessageType.RESPONSE, senderType));
     }
 
     @Override

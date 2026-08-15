@@ -6,7 +6,9 @@ import com.pairing.negotiation.domain.model.SenderType;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /** 협상 메시지(로그) 리포지토리 포트. */
 public interface NegotiationMessageRepository {
@@ -23,6 +25,24 @@ public interface NegotiationMessageRepository {
 
     /** 협상의 최신 AI 제안(조건 무관). 목록 카드의 lastProposalBy/lastProposalAt 표시에 쓴다. */
     Optional<NegotiationMessage> findLatestProposal(Long negotiationId);
+
+    /**
+     * 여러 협상의 최신 제안(조건 무관)을 한 번에. 목록이 카드마다 {@link #findLatestProposal(Long)} 를
+     * 부르면 페이지 크기만큼 쿼리가 나가는 N+1 이므로 IN 절 한 번으로 모은다. 제안이 없는 협상은 맵에서 빠진다.
+     */
+    Map<Long, NegotiationMessage> findLatestProposalsByNegotiationIds(Collection<Long> negotiationIds);
+
+    /**
+     * 주어진 협상들 중, <b>자신의 현재 라운드(negotiation.totalRound)</b>에 제안(PROPOSAL)이 있는 협상 ID.
+     * 카드별 '내 응답 필요' 판정을 카드마다 세지 않고 한 번에 구하기 위한 것.
+     */
+    Set<Long> negotiationIdsWithProposalInCurrentRound(Collection<Long> negotiationIds);
+
+    /**
+     * 주어진 협상들 중, <b>현재 라운드</b>에 이 주체(sender)의 응답(RESPONSE)이 있는 협상 ID.
+     * {@link #negotiationIdsWithProposalInCurrentRound} 와 짝을 이뤄 '내 응답 필요'를 판정한다.
+     */
+    Set<Long> negotiationIdsWithResponseInCurrentRound(Collection<Long> negotiationIds, SenderType senderType);
 
     /**
      * {@code excluded} 발신자를 뺀 최신 제안. <b>뷰어 기준 '상대가 낸 제안'</b>을 고르는 데 쓴다.
