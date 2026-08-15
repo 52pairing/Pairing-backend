@@ -1188,6 +1188,66 @@ class MatchingIntegrationTest {
     }
 
     @Test
+    @DisplayName("후보 카드의 단가도 얼린 값이다 — 노출 뒤 프리랜서가 올려도 안 따라간다")
+    void candidateCardShowsTheConditionFrozenAtExposure() throws Exception {
+        // 카드만 라이브면 클라이언트 화면에서 숫자가 어긋난다.
+        //   카드 900만 / 프로필 상세 650만 / 협상 시작가 650만
+        // 클라이언트는 카드를 보고 후보를 고르므로 그 값이 협상 출발점과 같아야 한다.
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        seedFreelancerSnapshotAtExposure(candidate.getFreelancerId(), 6_500_000L);
+
+        raiseFreelancerPayTo(9_000_000L);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates[0].payAmount").value(6_500_000L))
+                .andExpect(jsonPath("$.data.candidates[0].careerYears").value(6));
+    }
+
+    @Test
+    @DisplayName("평판은 라이브다 — 이름·등급·평점은 지금 값으로 나온다")
+    void candidateCardKeepsReputationLive() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        // 스냅샷에는 다른 이름·등급을 심는다. 그래도 카드에는 실제 계정 값이 나와야 한다.
+        seedFreelancerSnapshotAtExposure(candidate.getFreelancerId(), 6_500_000L);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                // 스냅샷의 "이프리"/"SENIOR"가 아니라 계정의 현재 값이어야 한다
+                .andExpect(jsonPath("$.data.candidates[0].name").value("이프리"))
+                .andExpect(jsonPath("$.data.candidates[0].name").value(org.hamcrest.Matchers.not("얼린이름")));
+    }
+
+    @Test
+    @DisplayName("스냅샷이 없던 예전 후보도 카드가 열린다 — 현재 조건으로 채운다")
+    void candidateCardFallsBackToLiveWhenSnapshotAbsent() throws Exception {
+        // 이 코드 배포 전에 노출된 후보는 스냅샷이 없다. 없다고 목록이 깨지면 안 된다.
+        MatchingRound round = seedRound(2);
+        seedExposedCandidate(round.getId(), 1);
+
+        raiseFreelancerPayTo(9_000_000L);
+
+        mockMvc.perform(get("/api/v1/matchings/positions/" + POSITION_ID + "/candidates")
+                        .cookie(clientAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.candidates[0].payAmount").value(9_000_000L));
+    }
+
+    /** 노출 뒤 프리랜서가 희망 단가를 올린 상황을 만든다. */
+    private void raiseFreelancerPayTo(long payAmount) {
+        freelancerConditionUseCase.upsert(new UpsertConditionCommand(
+                freelancerAccountId, JobCategory.DEVELOPMENT, JobRole.BACKEND,
+                WorkStyle.REMOTE, WorkForm.FULL_TIME, PayUnit.MONTHLY, payAmount, payAmount - 1_000_000L,
+                LocalDate.now().plusDays(14), false, 6, PeriodUnit.MONTH, true, 5,
+                List.of(new UpsertConditionCommand.Skill(SkillCode.JAVA, SkillLevel.ADVANCED),
+                        new UpsertConditionCommand.Skill(SkillCode.SPRING_BOOT, SkillLevel.ADVANCED))));
+    }
+
+    @Test
     @DisplayName("실제로 저장되는 스냅샷 JSON이 그대로 다시 읽힌다 — 모양이 안 맞으면 조용히 라이브로 새어나간다")
     void realSnapshotJsonRoundTripsBackIntoTheSamePayload() throws Exception {
         // 위 테스트는 payload 를 손으로 만들어 심는다. 그래서 **실제 저장 경로가 만든 JSON**이 다시
@@ -1233,6 +1293,9 @@ class MatchingIntegrationTest {
     /** 후보 노출 시점에 찍히는 프리랜서 스냅샷을 직접 심는다(실제로는 fillCandidates 가 찍는다). */
     private void seedFreelancerSnapshotAtExposure(Long freelancerId, long payAmount) throws Exception {
         Map<String, Object> condition = new LinkedHashMap<>();
+        condition.put("jobRole", "BACKEND");
+        condition.put("careerYears", 6);
+        condition.put("skills", List.of(Map.of("skillCode", "JAVA", "skillLevel", "ADVANCED")));
         condition.put("payUnit", "MONTHLY");
         condition.put("payAmount", payAmount);
         condition.put("workStyle", "REMOTE");
@@ -1244,7 +1307,9 @@ class MatchingIntegrationTest {
         condition.put("periodUnit", "MONTH");
 
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("card", Map.of("name", "이프리", "grade", "SENIOR", "reviewCount", 0));
+        // 이름을 실제 계정("이프리")과 다르게 심는다. 카드에 이 이름이 나오면 평판까지 얼린 것이라
+        // 잘못이다 — 평판(이름·등급·평점·리뷰수)은 라이브가 맞다.
+        payload.put("card", Map.of("name", "얼린이름", "grade", "SENIOR", "reviewCount", 0));
         payload.put("condition", condition);
         payload.put("resume", Map.of());
         payload.put("capturedAt", LocalDateTime.now().toString());

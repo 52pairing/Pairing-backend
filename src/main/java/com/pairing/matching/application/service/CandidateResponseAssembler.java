@@ -1,5 +1,7 @@
 package com.pairing.matching.application.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.freelancer.presentation.api.response.FreelancerConditionResponse;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.global.exception.GlobalErrorCode;
@@ -9,18 +11,26 @@ import com.pairing.matching.application.result.FreelancerCardSummary;
 import com.pairing.matching.domain.model.MatchingCandidate;
 import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.domain.model.MatchingRoundStatus;
+import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.model.RecommendationType;
+import com.pairing.matching.domain.model.SnapshotType;
 import com.pairing.matching.domain.repository.MatchingCandidateRepository;
 import com.pairing.matching.domain.repository.MatchingRequestRepository;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
+import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.presentation.api.response.CandidateListResponse;
+import com.pairing.matching.presentation.api.response.CandidateProfileSnapshotResponse;
 import com.pairing.matching.presentation.api.response.CandidateResponse;
 import com.pairing.meta.domain.model.SkillCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * {@link CandidateListResponse}/{@link CandidateResponse} 조립. 매칭 조회·거절·재추천 서비스가 공유한다.
@@ -28,7 +38,12 @@ import java.util.List;
  * <p>fitReason은 DB에 "|"로 이어붙인 하나의 문자열로 저장하고(스키마상 fit_reason은 단일 TEXT 컬럼),
  * 여기서 다시 나눠 태그 목록으로 돌려준다. Pairing-python의 LLM 응답 스키마(Stage E)가 이 구분자로
  * 합쳐서 내려주도록 3일차에 맞춘다.
+ *
+ * <p><b>카드에서 조건은 얼린 값, 평판은 지금 값이다</b>(2026-08-15). 직무·경력·스킬·단가는 노출 시점
+ * 스냅샷에서 읽고, 이름·프로필 사진·등급·평점·리뷰수는 계속 라이브로 읽는다. 클라이언트는 카드를 보고
+ * 후보를 고르므로 그 숫자가 프로필 상세·협상 출발점과 같아야 하고, 평판은 반대로 최신이 맞다.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 class CandidateResponseAssembler {
@@ -38,8 +53,10 @@ class CandidateResponseAssembler {
     private final MatchingCandidateRepository matchingCandidateRepository;
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingRequestRepository matchingRequestRepository;
+    private final MatchingSnapshotRepository matchingSnapshotRepository;
     private final FreelancerDirectoryPort freelancerDirectoryPort;
     private final ProjectDirectoryPort projectDirectoryPort;
+    private final ObjectMapper objectMapper;
 
     CandidateListResponse build(MatchingRound round, Long accountId) {
         if (!projectDirectoryPort.isOwnedByAccount(round.getProjectId(), accountId)) {
@@ -55,8 +72,9 @@ class CandidateResponseAssembler {
                 .findExposedByPositionId(round.getPositionId());
         boolean budgetWarned = exposedCandidates.stream()
                 .anyMatch(CandidateResponseAssembler::hasGuardReason);
+        Map<Long, FreelancerConditionResponse> frozenConditions = loadFrozenConditions(round.getPositionId());
         List<CandidateResponse> candidates = exposedCandidates.stream()
-                .map(this::toCandidateResponse)
+                .map(candidate -> toCandidateResponse(candidate, frozenConditions))
                 .toList();
 
         long paidUsed = matchingRoundRepository.countByProjectIdAndRoundType(round.getProjectId(),
@@ -89,18 +107,62 @@ class CandidateResponseAssembler {
                 (int) Math.max(0, MAX_PAID_RERECOMMEND - paidUsed));
     }
 
-    private CandidateResponse toCandidateResponse(MatchingCandidate candidate) {
+    /**
+     * 한 포지션의 프리랜서 스냅샷을 <b>한 번에</b> 읽어 프리랜서별 조건으로 만든다.
+     *
+     * <p>스냅샷은 (프리랜서, 포지션)마다 1건이라, 같은 사람이 단가를 올린 뒤 다른 포지션에 추천되면
+     * 그 포지션에는 <b>올린 값</b>이 얼린다. 먼저 추천된 포지션은 계속 예전 값을 본다.
+     *
+     * <p>조건을 못 읽는 스냅샷은 지도에 넣지 않는다 — 캡처가 부분 실패한 건이라(이력서가 없으면
+     * 조건도 같이 비는 경우가 있다) 그대로 쓰면 카드가 빈칸이 된다. 부르는 쪽에서 현재 값으로 넘어간다.
+     */
+    private Map<Long, FreelancerConditionResponse> loadFrozenConditions(Long positionId) {
+        Map<Long, FreelancerConditionResponse> conditions = new HashMap<>();
+        for (MatchingSnapshot snapshot : matchingSnapshotRepository
+                .findAllByPositionIdAndSnapshotType(positionId, SnapshotType.FREELANCER)) {
+            readCondition(snapshot).ifPresent(condition -> conditions.put(snapshot.getFreelancerId(), condition));
+        }
+        return conditions;
+    }
+
+    private Optional<FreelancerConditionResponse> readCondition(MatchingSnapshot snapshot) {
+        try {
+            return Optional.ofNullable(objectMapper.readValue(snapshot.getSnapshotJson(),
+                    CandidateProfileSnapshotResponse.SnapshotPayload.class).condition());
+        } catch (JsonProcessingException e) {
+            log.warn("MATCHING_DEBUG java.candidate.card.snapshot_unreadable freelancerId={} positionId={} cause={}",
+                    snapshot.getFreelancerId(), snapshot.getPositionId(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private CandidateResponse toCandidateResponse(MatchingCandidate candidate,
+                                                  Map<Long, FreelancerConditionResponse> frozenConditions) {
+        // **평판은 라이브다.** 이름·프로필 사진·등급·평점·리뷰수는 추천된 뒤에 쌓인 것도 반영되는 게
+        // 맞다 — 클라이언트가 사람을 고르는 데 쓰는 최신 정보다.
         FreelancerCardSummary card = freelancerDirectoryPort.findCardSummary(candidate.getFreelancerId());
-        FreelancerConditionResponse condition = freelancerDirectoryPort.findCondition(candidate.getFreelancerId());
+        // **조건은 얼린 값이다.** 직무·경력·스킬·단가는 노출 시점 값을 쓴다. 라이브로 읽으면 프리랜서가
+        // 단가를 올렸을 때 카드는 새 값, 프로필 상세와 협상 시작가는 얼린 값이 되어 화면끼리 숫자가
+        // 어긋난다. 클라이언트는 카드를 보고 후보를 고르므로 그 값이 협상 출발점과 같아야 한다.
+        FreelancerConditionResponse condition = frozenConditions.computeIfAbsent(candidate.getFreelancerId(),
+                freelancerId -> {
+                    // 이 코드 배포 전에 노출된 후보는 스냅샷이 없다. 없다고 카드를 못 그리면 안 된다.
+                    log.info("MATCHING_DEBUG java.candidate.card.condition source=LIVE freelancerId={} reason=snapshot_absent",
+                            freelancerId);
+                    return freelancerDirectoryPort.findCondition(freelancerId);
+                });
         boolean requested = matchingRequestRepository.existsByCandidateId(candidate.getId());
         // 문구를 서버가 정한다. 프론트가 두 불리언을 조합해 문구를 만들면 우선순위(거절 > 요청)가
         // 서버의 isSelectable() 판정과 갈릴 수 있고, 그러면 "선택 가능"으로 보이는 카드가 눌렀을 때
         // 거부당한다.
         CandidateResponse.Status status = CandidateResponse.Status.of(requested, candidate.isRejected());
 
-        List<SkillCode> skills = condition.skills().stream()
-                .map(FreelancerConditionResponse.Skill::skillCode)
-                .toList();
+        // 스냅샷에서 읽은 조건은 스킬이 비어 있을 수 있다. 캡처가 부분 실패했거나 이 코드 이전에
+        // 손으로 심긴 자료가 그렇다 — 카드 하나 때문에 목록 전체가 500이 되면 안 된다.
+        List<SkillCode> skills = condition.skills() == null ? List.of()
+                : condition.skills().stream()
+                        .map(FreelancerConditionResponse.Skill::skillCode)
+                        .toList();
 
         return new CandidateResponse(
                 candidate.getId(),
