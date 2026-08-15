@@ -21,4 +21,13 @@ public interface MatchingSnapshotRepository {
      * 임베딩 일괄 재색인 대상 포지션을 고르는 데 쓴다.
      */
     List<MatchingSnapshot> findAllBySnapshotType(SnapshotType snapshotType);
+
+    /**
+     * 한 포지션의 스냅샷 전부. 후보 목록이 프리랜서 스냅샷을 <b>한 번에</b> 읽는 데 쓴다.
+     *
+     * <p>{@link #findByFreelancerIdAndPositionIdAndSnapshotType}을 후보마다 부르면 카드 1장당 쿼리가
+     * 하나씩 붙는다. FREELANCER 타입은 (freelancer, position) 조합마다 1건이라 포지션으로 묶어 읽고
+     * 메모리에서 프리랜서별로 나눈다.
+     */
+    List<MatchingSnapshot> findAllByPositionIdAndSnapshotType(Long positionId, SnapshotType snapshotType);
 }

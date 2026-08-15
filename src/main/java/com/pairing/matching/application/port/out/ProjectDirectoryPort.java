@@ -1,5 +1,6 @@
 package com.pairing.matching.application.port.out;
 
+import com.pairing.matching.application.result.ProjectContent;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.project.domain.model.ProjectStatus;
 
@@ -58,4 +59,12 @@ public interface ProjectDirectoryPort {
      * 확인은 해야 하므로 포지션에서 프로젝트를 거슬러 올라간다.
      */
     ProjectPositionSummary findPositionSummary(Long positionId);
+
+    /**
+     * 프리랜서가 수락 전에 보는 프로젝트 본문(진행 상황·세부 업무 범위·우대사항·근무 장소 등).
+     *
+     * <p>요약본({@link #findPositionSummary})과 나눈 이유는 {@link ProjectContent} 주석 참고 —
+     * 요약본은 재색인 루프까지 쓰는 경로라 화면용 필드 때문에 조회를 늘리지 않는다.
+     */
+    ProjectContent findProjectContent(Long projectId);
 }

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.pairing.global.exception.BusinessException;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
+import com.pairing.matching.application.result.ProjectContent;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.model.RecommendationType;
@@ -80,6 +81,18 @@ class RecruitingStartedPositionHandler {
         // 매칭 요청 상세에서만 노출한다(3번 요청, 2026-08-09). 프로젝트 수정으로 바뀔 수 있는
         // 필드라 R32 대상 — companyProfile(라이브 유지)과는 반대로 여기서 얼려둔다.
         projectPayload.put("mainTask", summary.mainTask());
+
+        // 프리랜서가 수락 전에 프로젝트 내용을 다 보고 판단할 수 있어야 한다는 요청(프론트, 2026-08-15).
+        // 위 필드들과 같은 이유로 얼린다 — 요청을 보낸 뒤 클라이언트가 업무 범위나 근무 장소를 바꿔도
+        // 프리랜서가 보고 판단한 내용은 그대로여야 한다(R32).
+        ProjectContent content = projectDirectoryPort.findProjectContent(projectId);
+        projectPayload.put("currentSituation", content.currentSituation());
+        projectPayload.put("startNegotiable", content.startNegotiable());
+        projectPayload.put("periodValue", content.periodValue());
+        projectPayload.put("periodUnit", content.periodUnit());
+        projectPayload.put("detailScope", content.detailScope());
+        projectPayload.put("extraNote", content.extraNote());
+        projectPayload.put("workLocation", content.workLocation());
         saveSnapshotIfAbsent(projectId, positionId, SnapshotType.PROJECT, projectPayload);
 
         Map<String, Object> positionPayload = new LinkedHashMap<>();
