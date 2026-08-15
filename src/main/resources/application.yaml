@@ -191,6 +191,20 @@ ai:
     # jwt.secret-key와 같은 이유로 기본값을 두지 않는다.
     internal-api-key: ${AI_INTERNAL_API_KEY:}
 
+internal:
+  # 다른 서버(관리자 서버)가 이 서버를 부를 때 요구하는 공유 키.
+  #
+  # 관리자 서버는 세션 쿠키, 이 서버는 JWT 라 서로의 토큰을 검증할 수 없다. 서버끼리는
+  # 사용자의 신원이 아니라 "어느 서비스인가"를 증명해야 해서 공유 키를 쓴다.
+  #
+  # 값이 없으면 AI_INTERNAL_API_KEY 를 물려받는다. 세 서버가 이미 같은 비밀값을 쓰고 있어서,
+  # 이름만 다른 변수를 하나 더 요구하면 배포 때 빠뜨리기만 쉽다. 나중에 키를 분리해야 하면
+  # INTERNAL_API_KEY 만 따로 주입하면 되고 이 파일은 그대로 둔다.
+  #
+  # 둘 다 비어 있으면 /api/v1/internal/** 를 전부 잠근다. 미설정을 "제한 없음"으로 읽으면
+  # 환경변수 한 줄 빠뜨린 순간 아무나 남의 계정으로 알림을 만들 수 있다. (InternalCallGuard 참고)
+  api-key: ${INTERNAL_API_KEY:${AI_INTERNAL_API_KEY:}}
+
 cloud:
   aws:
     s3:
