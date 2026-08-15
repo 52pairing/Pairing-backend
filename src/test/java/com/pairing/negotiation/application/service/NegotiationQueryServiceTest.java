@@ -40,10 +40,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.when;
 
 /**
@@ -95,6 +97,9 @@ class NegotiationQueryServiceTest {
                 new ProjectReaderPort.ProjectView(PROJECT_ID, clientProfileId, "페어링 웹 리뉴얼",
                         50_000_000L, WorkStyle.REMOTE, WorkForm.FULL_TIME,
                         LocalDate.of(2026, 1, 1), true, 6, PeriodUnit.MONTH)));
+        // 프리랜서 목록은 프로젝트를 카드마다 findById 하는 대신 페이지 단위로 배치 조회한다.
+        when(projectReaderPort.findCardInfoByIds(anyCollection())).thenReturn(
+                Map.of(PROJECT_ID, new ProjectReaderPort.ProjectCardInfo(clientProfileId, "페어링 웹 리뉴얼")));
 
         Negotiation negotiation = Negotiation.create(100L, PROJECT_ID, 10L, freelancerProfileId,
                 50_000_000L, 50_000_000L, List.of(NegotiationCondition.create(ConditionType.AMOUNT, "3200000", "4000000", 0)));

@@ -28,7 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
 
 @Service
 @Transactional(readOnly = true)
@@ -137,22 +140,75 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
             throw new BusinessException(NegotiationErrorCode.NOT_PARTICIPANT);
         }
 
-        return negotiationRepository.findByProjectId(projectId, status, pageable)
-                .map(n -> summaryView(n, PartyRole.CLIENT, project.title(), project.clientProfileId()));
+        // 클라 탭은 프로젝트가 하나 → title·clientProfileId 는 카드마다 같은 값을 쓴다.
+        Page<Negotiation> page = negotiationRepository.findByProjectId(projectId, status, pageable);
+        return buildSummaryPage(page, PartyRole.CLIENT, n -> project.title(), n -> project.clientProfileId());
     }
 
-    /** 프리랜서 목록: 협상마다 프로젝트가 달라 title 은 건별로 읽는다. */
+    /**
+     * 프리랜서 목록: 협상마다 프로젝트가 다르다.
+     *
+     * <p>예전엔 카드마다 프로젝트·이름·최신제안·응답대기 여부를 각각 조회해 페이지 크기(기본 10)만큼
+     * 쿼리가 쏟아지는 N+1 이었다. 지금은 페이지의 프로젝트 ID·협상 ID 를 모아 <b>종류별로 한 번씩</b>만
+     * 읽고({@link #buildSummaryPage}) 카드를 맵에서 조립한다.
+     */
     private Page<NegotiationView> findFreelancerList(Long accountId, NegotiationStatus status, Pageable pageable) {
         Long myFreelancerProfileId = partyProfilePort.findFreelancerProfileIdByAccountId(accountId)
                 .orElseThrow(() -> new BusinessException(NegotiationErrorCode.NOT_PARTICIPANT));
 
-        return negotiationRepository.findByFreelancerId(myFreelancerProfileId, status, pageable)
-                .map(n -> {
-                    Optional<ProjectView> project = projectReaderPort.findById(n.getProjectId());
-                    return summaryView(n, PartyRole.FREELANCER,
-                            project.map(ProjectView::title).orElse(null),
-                            project.map(ProjectView::clientProfileId).orElse(null));
-                });
+        Page<Negotiation> page = negotiationRepository.findByFreelancerId(myFreelancerProfileId, status, pageable);
+        List<Long> projectIds = page.getContent().stream()
+                .map(Negotiation::getProjectId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, ProjectReaderPort.ProjectCardInfo> projects = projectReaderPort.findCardInfoByIds(projectIds);
+
+        return buildSummaryPage(page, PartyRole.FREELANCER,
+                n -> cardInfo(projects, n).map(ProjectReaderPort.ProjectCardInfo::title).orElse(null),
+                n -> cardInfo(projects, n).map(ProjectReaderPort.ProjectCardInfo::clientProfileId).orElse(null));
+    }
+
+    private Optional<ProjectReaderPort.ProjectCardInfo> cardInfo(
+            Map<Long, ProjectReaderPort.ProjectCardInfo> projects, Negotiation n) {
+        return Optional.ofNullable(projects.get(n.getProjectId()));
+    }
+
+    /**
+     * 목록 카드 조립. 페이지의 협상들에 필요한 부수 데이터를 <b>종류별 한 번</b>씩만 읽어(배치) 맵으로 만든 뒤,
+     * 카드를 그 맵에서 채운다. title·clientProfileId 만 호출부가 정해 주고(프리=프로젝트별, 클라=단일 프로젝트),
+     * 최신 제안·응답대기·당사자 이름은 여기서 공통으로 배치 조회한다.
+     */
+    private Page<NegotiationView> buildSummaryPage(Page<Negotiation> page, PartyRole role,
+                                                   Function<Negotiation, String> titleFn,
+                                                   Function<Negotiation, Long> clientProfileIdFn) {
+        List<Negotiation> negs = page.getContent();
+        List<Long> negIds = negs.stream().map(Negotiation::getId).toList();
+
+        Map<Long, NegotiationMessage> lastProposals =
+                messageRepository.findLatestProposalsByNegotiationIds(negIds);
+        Set<Long> hasProposalInRound = messageRepository.negotiationIdsWithProposalInCurrentRound(negIds);
+        SenderType mySender = role == PartyRole.CLIENT ? SenderType.CLIENT : SenderType.FREELANCER;
+        Set<Long> hasMyResponseInRound =
+                messageRepository.negotiationIdsWithResponseInCurrentRound(negIds, mySender);
+
+        List<Long> clientProfileIds = negs.stream()
+                .map(clientProfileIdFn).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> clientNames = partyNameReaderPort.findClientCompanyNames(clientProfileIds);
+        List<Long> freelancerIds = negs.stream()
+                .map(Negotiation::getFreelancerId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> freelancerNames = partyNameReaderPort.findFreelancerNames(freelancerIds);
+
+        return page.map(n -> {
+            Long clientProfileId = clientProfileIdFn.apply(n);
+            NegotiationMessage lastProposal = lastProposals.get(n.getId());
+            boolean waiting = n.getStatus() == NegotiationStatus.IN_PROGRESS
+                    && n.getTotalRound() > 0
+                    && hasProposalInRound.contains(n.getId())
+                    && !hasMyResponseInRound.contains(n.getId());
+            return NegotiationView.forSummary(n, role, titleFn.apply(n),
+                    clientProfileId == null ? null : clientNames.get(clientProfileId),
+                    freelancerNames.get(n.getFreelancerId()), waiting,
+                    lastProposal != null ? lastProposal.getSenderType() : null,
+                    lastProposal != null ? lastProposal.getCreatedAt() : null);
+        });
     }
 
     /**
@@ -173,15 +229,6 @@ public class NegotiationQueryService implements NegotiationQueryUseCase {
         return NegotiationView.forDetail(negotiation, role, title,
                 clientName(clientProfileId), freelancerName(negotiation), chatRoomId,
                 isWaitingFor(negotiation, role), proposals);
-    }
-
-    /** 목록 뷰: 마지막 제안(주체·시각) + '내 응답 필요' 여부를 채운다. */
-    private NegotiationView summaryView(Negotiation negotiation, PartyRole role, String title, Long clientProfileId) {
-        NegotiationMessage lastProposal = messageRepository.findLatestProposal(negotiation.getId()).orElse(null);
-        return NegotiationView.forSummary(negotiation, role, title,
-                clientName(clientProfileId), freelancerName(negotiation), isWaitingFor(negotiation, role),
-                lastProposal != null ? lastProposal.getSenderType() : null,
-                lastProposal != null ? lastProposal.getCreatedAt() : null);
     }
 
     /** '내 응답 필요': 진행 중 + 이번 라운드에 AI 제안이 있는데 내 응답이 아직 없을 때. */

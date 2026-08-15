@@ -5,7 +5,9 @@ import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -18,6 +20,19 @@ import java.util.Optional;
 public interface ProjectReaderPort {
 
     Optional<ProjectView> findById(Long projectId);
+
+    /**
+     * 협상 목록 카드용 최소 정보(제목·클라 프로필 ID)를 여러 프로젝트에 대해 한 번에 읽는다.
+     *
+     * <p>목록은 행마다 {@link #findById} 를 부르면 페이지 크기만큼 쿼리가 나가는 N+1 이 된다.
+     * 카드가 실제로 쓰는 필드만 IN 절 한 번으로 모아 그 반복을 없앤다. 상세({@link ProjectView})의
+     * 나머지 필드는 목록에 필요 없어 싣지 않는다. 없는 ID 는 맵에서 빠진다(부재 허용).
+     */
+    Map<Long, ProjectCardInfo> findCardInfoByIds(Collection<Long> projectIds);
+
+    /** 협상 목록 카드가 프로젝트에서 쓰는 값만. */
+    record ProjectCardInfo(Long clientProfileId, String title) {
+    }
 
     /**
      * 내가 소유한 프로젝트 ID 목록. 협상은 clientProfileId 를 갖지 않아, 클라 기준으로 협상을 셀 때

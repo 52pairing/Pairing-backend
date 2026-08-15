@@ -6,10 +6,15 @@ import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.project.domain.model.Project;
 import com.pairing.project.exception.ProjectErrorCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * project 도메인 읽기 어댑터. 협상은 자체 포트({@link ProjectReaderPort}·{@code ProjectView})만 알고,
@@ -27,6 +32,7 @@ import java.util.Optional;
 public class ProjectReaderAdapter implements ProjectReaderPort {
 
     private final ProjectQueryUseCase projectQueryUseCase;
+    private final JdbcTemplate jdbcTemplate;
 
     @Override
     public Optional<ProjectView> findById(Long projectId) {
@@ -46,6 +52,32 @@ public class ProjectReaderAdapter implements ProjectReaderPort {
             }
             throw e;
         }
+    }
+
+    /**
+     * 목록 카드용 최소 컬럼만 IN 절 한 번으로 읽는다. 소유 도메인(account 이름)과 같은 방식으로
+     * 읽기 전용 스칼라만 가져와, 상세 엔티티({@link Project}) 로딩이 유발할 수 있는 2차 쿼리를 피한다.
+     * {@code findById} 와 동일하게 소프트 삭제된 프로젝트는 제외한다(카드 제목이 비게 됨).
+     */
+    @Override
+    public Map<Long, ProjectCardInfo> findCardInfoByIds(Collection<Long> projectIds) {
+        List<Long> ids = projectIds == null ? List.of()
+                : projectIds.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        String placeholders = ids.stream().map(id -> "?").collect(Collectors.joining(","));
+        String sql = "SELECT id, client_id, title FROM project "
+                + "WHERE deleted_at IS NULL AND id IN (" + placeholders + ")";
+
+        Map<Long, ProjectCardInfo> result = new HashMap<>();
+        jdbcTemplate.query(sql, rs -> {
+            result.put(rs.getLong("id"),
+                    new ProjectCardInfo(
+                            rs.getObject("client_id", Long.class),
+                            rs.getString("title")));
+        }, ids.toArray());
+        return result;
     }
 
     @Override
