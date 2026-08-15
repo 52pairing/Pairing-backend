@@ -405,15 +405,10 @@ class PaymentMethodIntegrationTest {
     }
 
     @Test
-    @DisplayName("이메일 인증을 안 마치면 결제수단 조회부터 AU_006 으로 막는다")
+    @DisplayName("이메일 인증을 안 마치면 결제수단 수정을 AU_006 으로 막는다")
     void paymentMethodsRequireEmailVerification() throws Exception {
         given(verifiedMarkerPort.isVerified(anyString(), eq(VerificationPurpose.PAYMENT_METHOD)))
                 .willReturn(false);
-
-        // 마스킹해서 내려도 은행명·예금주·끝 4자리가 단서가 되므로 수정만이 아니라 조회부터 막는다.
-        mockMvc.perform(get("/api/v1/accounts/me/payment-methods").cookie(accessToken))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errorCode").value("AU_006"));
 
         mockMvc.perform(put("/api/v1/accounts/me/payment-methods/card")
                         .cookie(accessToken)
@@ -441,7 +436,20 @@ class PaymentMethodIntegrationTest {
     }
 
     @Test
-    @DisplayName("프로필 수정용 인증으로는 결제수단이 열리지 않는다")
+    @DisplayName("인증을 안 마쳐도 결제수단 조회는 열려 있다")
+    void viewingPaymentMethodsNeedsNoVerification() throws Exception {
+        // 수수료 결제 화면이 결제할 카드를 고르려고 이 API 를 부른다. 조회까지 막으면
+        // 결제하려는 사람이 매번 이메일 인증을 거쳐야 한다.
+        given(verifiedMarkerPort.isVerified(anyString(), eq(VerificationPurpose.PAYMENT_METHOD)))
+                .willReturn(false);
+
+        mockMvc.perform(get("/api/v1/accounts/me/payment-methods").cookie(accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2));
+    }
+
+    @Test
+    @DisplayName("프로필 수정용 인증으로는 결제수단 수정이 열리지 않는다")
     void profileUpdateVerificationDoesNotOpenPaymentMethods() throws Exception {
         // 사용자가 프로필 화면에서 받은 코드로 결제수단까지 열리면 안 된다.
         given(verifiedMarkerPort.isVerified(anyString(), eq(VerificationPurpose.PROFILE_UPDATE)))
@@ -449,14 +457,20 @@ class PaymentMethodIntegrationTest {
         given(verifiedMarkerPort.isVerified(anyString(), eq(VerificationPurpose.PAYMENT_METHOD)))
                 .willReturn(false);
 
-        mockMvc.perform(get("/api/v1/accounts/me/payment-methods").cookie(accessToken))
+        mockMvc.perform(put("/api/v1/accounts/me/payment-methods/card")
+                        .cookie(accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "cardBrand", "KB",
+                                "cardNumber", "9999-8888-7777-6666",
+                                "cardHolder", "홍길동"))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errorCode").value("AU_006"));
     }
 
     @Test
-    @DisplayName("조회해도 인증 마커를 소비하지 않아 이어지는 수정이 막히지 않는다")
-    void viewingPaymentMethodsDoesNotConsumeVerification() throws Exception {
+    @DisplayName("카드를 고쳐도 인증 마커를 소비하지 않아 이어지는 계좌 수정이 막히지 않는다")
+    void updatingPaymentMethodDoesNotConsumeVerification() throws Exception {
         // 탭에 들어가 목록을 보고, 카드를 고치고, 계좌까지 고치는 흐름이 인증 한 번으로 끝나야 한다.
         mockMvc.perform(get("/api/v1/accounts/me/payment-methods").cookie(accessToken))
                 .andExpect(status().isOk());

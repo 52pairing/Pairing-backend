@@ -174,14 +174,17 @@
 
 | 메서드 | 경로 | 인증 | 설명 |
 | --- | --- | --- | --- |
-| GET | `/api/v1/accounts/me/payment-methods` | O + 이메일 인증 | 카드·계좌 목록(각 1건, `methodType` 으로 구분: CARD/BANK_ACCOUNT) |
+| GET | `/api/v1/accounts/me/payment-methods` | O | 카드·계좌 목록(각 1건, `methodType` 으로 구분: CARD/BANK_ACCOUNT). 이메일 인증 불필요 |
 | PUT | `/api/v1/accounts/me/payment-methods/card` | O + 이메일 인증 | body `{cardBrand, cardNumber, cardHolder}` 카드 정보 수정. `cardBrand`는 카드사 code |
 | PUT | `/api/v1/accounts/me/payment-methods/bank-account` | O + 이메일 인증 | body `{bankCode, accountNo, accountHolder}` 계좌 정보 수정 |
 
-**결제수단 세 API 는 `purpose=PAYMENT_METHOD` 이메일 인증을 요구한다(2026-08-14).** 수정만이 아니라
-**조회부터** 막는다 — 마스킹해도 은행명·예금주·끝 4자리가 단서가 되기 때문이다. 미인증이면 `400 AU_006`.
+**결제수단 수정 두 API 는 `purpose=PAYMENT_METHOD` 이메일 인증을 요구한다(2026-08-14).** 미인증이면 `400 AU_006`.
 
-인증 마커는 **소비하지 않는다.** 탭에 들어가 목록을 보고 카드·계좌를 잇달아 고치는 흐름이 인증 한 번으로
+**조회(GET)는 막지 않는다.** 수수료 결제 화면도 결제할 카드를 고르려고 같은 API 를 부르기 때문에,
+조회까지 막으면 결제하려는 사람이 매번 이메일 인증을 거쳐야 한다. 막아야 할 위험은 계정을 잠깐 빌린
+사람이 정산 계좌를 바꿔치기하는 것이고, 그건 수정만 막으면 된다.
+
+인증 마커는 **소비하지 않는다.** 카드·계좌를 잇달아 고치는 흐름이 인증 한 번으로
 끝나야 해서다. 유효 시간은 마커 TTL(`app.auth.verified-marker-ttl`, 30분)이 정한다.
 
 `PROFILE_UPDATE` 인증으로는 열리지 않는다. 프로필 화면에서 받은 코드로 결제수단이 열리면 안 된다.
