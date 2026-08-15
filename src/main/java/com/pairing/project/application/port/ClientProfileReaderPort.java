@@ -14,6 +14,14 @@ public interface ClientProfileReaderPort {
 
     ClientProfileView getByAccountId(Long accountId);
 
+    /**
+     * client_profile.id 를 로그인 계정(account.id)으로 번역한다. 프로필이 없으면 null.
+     *
+     * <p>{@code getByAccountId} 의 반대 방향이다. 프로젝트가 들고 있는 건 client_profile.id 인데,
+     * 그 클라이언트에게 알림을 보내려면 계정 id 가 필요하다.
+     */
+    Long findAccountId(Long clientProfileId);
+
     /** 프로젝트가 필요로 하는 클라이언트 최소 조회 모델. grade 는 착수금 수수료 할인에 쓴다. */
     record ClientProfileView(
             Long clientProfileId,

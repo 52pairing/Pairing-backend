@@ -40,6 +40,21 @@ public enum ContractTab {
     AWAITING_COUNTERPART("상대방 서명 대기", SignatureStatus.SIGNED,
             List.of(ContractStatus.SIGN_PENDING)),
 
+    /**
+     * 프리랜서 "서명 대기". 내 서명 여부를 가리지 않고 서명 단계({@code SIGN_PENDING}) 전체를 담는다.
+     *
+     * <p>{@link #AWAITING_ME} 와 라벨이 같지만 대상이 다르다. AWAITING_ME 는 내 서명이 남은 것만
+     * 담아 서명하면 사라지는데, 프리랜서 화면에는 "상대방 서명 대기" 탭이 없어 그러면 계약이 어느
+     * 세부 탭에도 안 걸리고 전체 탭에만 남는다. 서명 대기 대상이 상대가 될 수도 있으므로, 서명한
+     * 뒤에도 이 단계 내내 같은 탭에 둔다.
+     *
+     * <p>내가 서명했는지는 탭이 아니라 카드가 가른다 — 서명 전이면 서명 버튼을, 서명 후면
+     * "상대방의 서명을 기다리고 있습니다" 를 그린다({@code clientSigned}/{@code freelancerSigned}).
+     *
+     * <p>클라이언트 화면은 AWAITING_ME / AWAITING_COUNTERPART 로 나눠 쓰므로 이 값을 쓰지 않는다.
+     */
+    SIGNING("서명 대기", null, List.of(ContractStatus.SIGN_PENDING)),
+
     /** 양측 서명이 끝났다. 체결 이후 단계를 모두 포함한다. */
     CONCLUDED("체결 완료", null,
             List.of(ContractStatus.SIGNED, ContractStatus.IN_PROGRESS,

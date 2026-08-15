@@ -71,6 +71,8 @@ public class ContractController {
                     + "- AWAITING_COUNTERPART: 나는 서명했고 상대를 기다림\n"
                     + "- CONCLUDED: 양측 서명 완료(체결 이후 전체)\n\n"
                     + "프리랜서 내 계약\n"
+                    + "- SIGNING: 서명 대기. 내 서명 여부를 가리지 않고 SIGN_PENDING 전체입니다. "
+                    + "서명한 뒤에도 상대 서명을 기다리는 동안 이 탭에 남습니다\n"
                     + "- IN_PROGRESS: 진행 중. 착수금 수수료 미납(SIGNED)도 함께 나옵니다\n"
                     + "- SETTLEMENT_PENDING: 정산 대기\n"
                     + "- COMPLETED: 완료\n\n"
@@ -99,7 +101,7 @@ public class ContractController {
                     + "다른 5개씩을 나눠 쓰므로, 화면이 자기에게 필요한 탭만 골라 그리면 됩니다. "
                     + "한 계정이 클라이언트이면서 프리랜서일 수 있어 서버가 역할로 가르지 않습니다.\n\n"
                     + "- 클라이언트: ALL · AWAITING_ME · AWAITING_COUNTERPART · CONCLUDED\n"
-                    + "- 프리랜서: ALL · AWAITING_ME · IN_PROGRESS · SETTLEMENT_PENDING · COMPLETED\n\n"
+                    + "- 프리랜서: ALL · SIGNING · IN_PROGRESS · SETTLEMENT_PENDING · COMPLETED\n\n"
                     + "projectId 를 주면 그 프로젝트의 내 계약만 셉니다. 목록 API 와 같은 규칙입니다.")
     public ResponseEntity<ApiResponse<List<ContractTabCountResponse>>> findMyTabCounts(
             @RequestParam(required = false) Long projectId,
