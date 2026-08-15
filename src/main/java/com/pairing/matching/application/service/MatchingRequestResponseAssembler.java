@@ -12,6 +12,7 @@ import com.pairing.matching.application.port.out.NegotiationPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.FreelancerCardSummary;
 import com.pairing.matching.application.result.NegotiationSummary;
+import com.pairing.matching.application.result.ProjectContent;
 import com.pairing.matching.domain.model.MatchingRequest;
 import com.pairing.matching.domain.model.MatchingSnapshot;
 import com.pairing.matching.domain.model.SnapshotType;
@@ -19,8 +20,10 @@ import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.exception.MatchingErrorCode;
 import com.pairing.matching.presentation.api.response.MatchingRequestResponse;
 import com.pairing.meta.domain.model.JobRole;
+import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.SkillCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -34,6 +37,7 @@ import java.util.List;
  * 모집 시작 시점에 얼려둔 {@link MatchingSnapshot}(PROJECT/POSITION)에서 읽는다. companyProfile은
  * account 도메인 값이라(프로젝트 수정 범위 밖) 계속 라이브로 읽는다.
  */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 class MatchingRequestResponseAssembler {
@@ -47,29 +51,50 @@ class MatchingRequestResponseAssembler {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record ProjectSnapshotPayload(String title, String companyName, String workLabel, String periodLabel,
-                                          LocalDate startDesiredDate, Long budgetAmount, String mainTask) {
+                                          LocalDate startDesiredDate, Long budgetAmount, String mainTask,
+                                          String currentSituation, String detailScope, String extraNote,
+                                          String workLocation, Boolean startNegotiable, Integer periodValue,
+                                          PeriodUnit periodUnit) {
+
+        /**
+         * 2026-08-15 이전에 얼린 스냅샷인가. 그때는 아래 7개를 담지 않았다.
+         *
+         * <p>{@code periodValue}로 판별한다. 프로젝트 등록 시 필수라 DB가 NOT NULL이고, 새 스냅샷에는
+         * 반드시 값이 있다 — 비어 있다는 건 이 필드를 담기 전에 얼렸다는 뜻이다. 선택 입력인
+         * {@code detailScope}로 판별하면 "클라이언트가 안 적은 새 스냅샷"과 구분되지 않는다.
+         */
+        boolean predatesProjectContent() {
+            return periodValue == null;
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private record PositionSnapshotPayload(JobRole jobRole, List<SkillCode> requiredSkills, Integer minCareerYears) {
+    private record PositionSnapshotPayload(JobRole jobRole, List<SkillCode> requiredSkills, Integer minCareerYears,
+                                           Integer totalHeadcount) {
     }
 
-    /** 목록/카드(발송·수락·거절 포함)에 쓴다. {@code mainTask}는 상세 전용이라 항상 null이다. */
+    /** 목록/카드(발송·수락·거절 포함)에 쓴다. 상세 전용 필드는 전부 null이다. */
     MatchingRequestResponse build(MatchingRequest request, Long viewerAccountId) {
         return build(request, viewerAccountId, false);
     }
 
-    /** 상세 조회({@code GET /requests/{requestId}})에만 쓴다. {@code mainTask}를 채워서 돌려준다. */
+    /**
+     * 상세 조회({@code GET /requests/{requestId}})에만 쓴다. 담당 업무와 프로젝트 본문 7개를 채운다.
+     *
+     * <p>프리랜서는 수락하면 곧바로 협상이 시작되므로, 그 전에 프로젝트를 다 보고 판단할 수 있어야
+     * 한다(프론트 요청, 2026-08-15).
+     */
     MatchingRequestResponse buildDetail(MatchingRequest request, Long viewerAccountId) {
         return build(request, viewerAccountId, true);
     }
 
-    private MatchingRequestResponse build(MatchingRequest request, Long viewerAccountId, boolean includeMainTask) {
+    private MatchingRequestResponse build(MatchingRequest request, Long viewerAccountId, boolean detail) {
         Account viewer = accountQueryUseCase.getById(viewerAccountId);
         ProjectSnapshotPayload project = readSnapshot(request.getPositionId(), SnapshotType.PROJECT,
                 ProjectSnapshotPayload.class);
         PositionSnapshotPayload position = readSnapshot(request.getPositionId(), SnapshotType.POSITION,
                 PositionSnapshotPayload.class);
+        ProjectContentView content = resolveContent(request.getProjectId(), project, detail);
         String companyProfile = projectDirectoryPort.findCompanyProfile(request.getProjectId());
         FreelancerCardSummary freelancer = freelancerDirectoryPort.findCardSummary(request.getFreelancerId());
         String counterpartName = viewer.getRole() == Role.CLIENT ? freelancer.name() : project.companyName();
@@ -92,7 +117,15 @@ class MatchingRequestResponseAssembler {
                 project.startDesiredDate(),
                 request.getStatus(),
                 project.budgetAmount(),
-                includeMainTask ? project.mainTask() : null,
+                detail ? project.mainTask() : null,
+                content.currentSituation(),
+                content.detailScope(),
+                content.extraNote(),
+                content.workLocation(),
+                content.startNegotiable(),
+                content.periodValue(),
+                content.periodUnit(),
+                detail ? position.totalHeadcount() : null,
                 request.getRequestedAt(),
                 request.getExpiresAt(),
                 request.getRespondedAt(),
@@ -102,6 +135,43 @@ class MatchingRequestResponseAssembler {
                 negotiation != null ? negotiation.newProposalCount() : null,
                 negotiation != null ? negotiation.negotiationId() : null
         );
+    }
+
+    /** 응답에 실을 프로젝트 본문. 목록에서는 전부 null이라 원시타입을 쓰지 않는다. */
+    private record ProjectContentView(String currentSituation, String detailScope, String extraNote,
+                                      String workLocation, Boolean startNegotiable, Integer periodValue,
+                                      PeriodUnit periodUnit) {
+
+        private static final ProjectContentView EMPTY =
+                new ProjectContentView(null, null, null, null, null, null, null);
+    }
+
+    /**
+     * 얼려둔 값을 쓰되, 없으면 현재 값으로 채운다.
+     *
+     * <p><b>왜 폴백이 필요한가.</b> {@code saveSnapshotIfAbsent}는 이미 있는 스냅샷을 덮지 않는다.
+     * 그래서 이 필드들을 담기 시작해도 <b>이미 모집 중인 프로젝트는 영원히 안 나온다.</b> 배포 시점에
+     * 진행 중이던 요청이 전부 빈 화면을 받는 것보다, 현재 값이라도 보여주는 편이 낫다.
+     *
+     * <p>폴백으로 읽은 값은 얼린 값이 아니라 <b>지금</b> 값이라 R32의 취지에서 살짝 벗어난다. 그래도
+     * 이 필드들은 협상 조건이 아니라 설명글이라 판단 근거가 뒤집히지는 않는다. 새로 모집을 시작하는
+     * 프로젝트부터는 얼린 값이 나간다.
+     *
+     * <p>목록에서는 아예 부르지 않는다 — 옛 요청 20건이 페이지마다 프로젝트를 20번 더 읽게 된다.
+     */
+    private ProjectContentView resolveContent(Long projectId, ProjectSnapshotPayload project, boolean detail) {
+        if (!detail) {
+            return ProjectContentView.EMPTY;
+        }
+        if (!project.predatesProjectContent()) {
+            return new ProjectContentView(project.currentSituation(), project.detailScope(), project.extraNote(),
+                    project.workLocation(), project.startNegotiable(), project.periodValue(), project.periodUnit());
+        }
+        ProjectContent live = projectDirectoryPort.findProjectContent(projectId);
+        log.info("MATCHING_DEBUG java.request.detail.project_content source=LIVE projectId={} reason=snapshot_predates",
+                projectId);
+        return new ProjectContentView(live.currentSituation(), live.detailScope(), live.extraNote(),
+                live.workLocation(), live.startNegotiable(), live.periodValue(), live.periodUnit());
     }
 
     private <T> T readSnapshot(Long positionId, SnapshotType type, Class<T> payloadType) {
