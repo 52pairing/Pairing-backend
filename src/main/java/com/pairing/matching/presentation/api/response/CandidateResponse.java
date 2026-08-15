@@ -1,5 +1,6 @@
 package com.pairing.matching.presentation.api.response;
 
+import com.pairing.global.infrastructure.s3.CdnMappable;
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.PayUnit;
 import com.pairing.meta.domain.model.SkillCode;
@@ -12,6 +13,10 @@ import java.util.List;
  *
  * <p>노출 수는 모집 인원을 넘지 않으며 클라이언트 등급에 따라 달라진다.
  * 카드마다 적합 근거(fitReason)가 함께 표시된다.
+ *
+ * <p>{@link CdnMappable} 을 구현해야 {@code profileImageUrl} 이 CDN 절대 URL로 나간다.
+ * 빠뜨리면 DB에 저장된 object key("dummy/profile/freelancer-0082.png")가 그대로 나가서
+ * 프론트의 {@code next/image} 가 상대경로를 파싱하지 못하고 카드 사진이 전부 깨진다.
  */
 @Schema(description = "추천 후보")
 public record CandidateResponse(
@@ -71,7 +76,7 @@ public record CandidateResponse(
 
         @Schema(description = "카드 상태 문구. 화면에 그대로 찍는다.", example = "선택 가능")
         String statusLabel
-) {
+) implements CdnMappable {
 
     /**
      * 후보 카드 상태. {@code requested}/{@code rejected} 두 불리언에서 파생된다.
