@@ -3,9 +3,11 @@ package com.pairing.matching.infrastructure.directory;
 import com.pairing.account.application.usecase.AccountQueryUseCase;
 import com.pairing.account.domain.model.ClientProfile;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
+import com.pairing.matching.application.result.ProjectContent;
 import com.pairing.matching.application.result.ProjectPositionSummary;
 import com.pairing.project.application.usecase.ProjectQueryUseCase;
 import com.pairing.project.domain.model.Position;
+import com.pairing.project.domain.model.Project;
 import com.pairing.project.domain.model.ProjectStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -103,6 +105,26 @@ public class ProjectDirectoryAdapter implements ProjectDirectoryPort {
                 source.mainTask(),
                 source.detailScope(),
                 source.extraNote()
+        );
+    }
+
+    /**
+     * 요약본이 아니라 프로젝트 엔티티에서 직접 읽는다. 근무 장소·시작일 협의 여부가 요약본에 없어서다.
+     *
+     * <p>{@code getDetail} 이 아니라 {@code getById} 를 쓴다. 그쪽은 첨부 자료와 정산 ID까지 같이
+     * 읽어오는데 둘 다 프리랜서에게 안 내보내는 값이라 조회만 늘어난다.
+     */
+    @Override
+    public ProjectContent findProjectContent(Long projectId) {
+        Project project = projectQueryUseCase.getById(projectId);
+        return new ProjectContent(
+                project.getCurrentSituation(),
+                project.isStartNegotiable(),
+                project.getPeriodValue(),
+                project.getPeriodUnit(),
+                project.getDetailScope(),
+                project.getExtraNote(),
+                project.getWorkLocation()
         );
     }
 }

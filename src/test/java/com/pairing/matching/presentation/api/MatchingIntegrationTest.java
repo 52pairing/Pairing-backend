@@ -292,12 +292,14 @@ class MatchingIntegrationTest {
     private void seedProjectWithPosition(Long clientProfileId) {
         jdbcTemplate.update(
                 "INSERT INTO project (id, client_id, title, start_desired_date, start_negotiable, "
-                        + "period_value, period_unit, budget_amount, work_style, work_form, current_situation, "
-                        + "main_task, status, payment_status, total_headcount, confirmed_headcount, "
+                        + "period_value, period_unit, budget_amount, work_style, work_form, work_location, "
+                        + "current_situation, main_task, detail_scope, extra_note, "
+                        + "status, payment_status, total_headcount, confirmed_headcount, "
                         + "extension_count, free_rerecommend_used, paid_rerecommend_used) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 PROJECT_ID, clientProfileId, "AI 추천 시스템 구축", LocalDate.now().plusDays(14), false,
-                6, "MONTH", 60_000_000L, "ONSITE", "FULL_TIME", "현행 시스템 운영중", "백엔드 API 개발",
+                6, "MONTH", 60_000_000L, "ONSITE", "FULL_TIME", "서울 강남구 테헤란로",
+                "현행 시스템 운영중", "백엔드 API 개발", "주문/결제 도메인 개발", "MSA 경험자 우대",
                 "RECRUITING", "SUCCESS_FEE_PAID", 2, 0, 0, 0, 0);
 
         jdbcTemplate.update(
@@ -326,6 +328,15 @@ class MatchingIntegrationTest {
         projectPayload.put("startDesiredDate", LocalDate.now().plusDays(14));
         projectPayload.put("budgetAmount", 60_000_000L);
         projectPayload.put("mainTask", "주문 시스템 API 개발");
+        // 프로젝트 본문(2026-08-15). **일부러 project 테이블의 현재 값과 다르게 심는다** — 이 값이
+        // 나오면 얼린 것을 읽은 것이고, seedProjectWithPosition 의 값이 나오면 라이브 폴백이다.
+        projectPayload.put("currentSituation", "얼린 진행 상황");
+        projectPayload.put("startNegotiable", true);
+        projectPayload.put("periodValue", 6);
+        projectPayload.put("periodUnit", "MONTH");
+        projectPayload.put("detailScope", "얼린 세부 업무 범위");
+        projectPayload.put("extraNote", "얼린 우대사항");
+        projectPayload.put("workLocation", "얼린 근무 장소");
         matchingSnapshotRepository.save(MatchingSnapshot.create(PROJECT_ID, POSITION_ID, null,
                 SnapshotType.PROJECT, objectMapper.writeValueAsString(projectPayload)));
 
@@ -1020,6 +1031,106 @@ class MatchingIntegrationTest {
                         .cookie(freelancerAccessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].mainTask").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("요청 상세에 프로젝트 본문이 얼린 값 그대로 나온다")
+    void requestDetailExposesFrozenProjectContent() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 프리랜서가 수락 전에 보는 화면이므로 프리랜서 토큰으로 확인한다.
+        // 값이 "얼린 ~"이어야 한다 — project 테이블의 현재 값이 나오면 스냅샷을 안 읽은 것이다.
+        mockMvc.perform(get("/api/v1/matchings/requests/" + requestId).cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currentSituation").value("얼린 진행 상황"))
+                .andExpect(jsonPath("$.data.detailScope").value("얼린 세부 업무 범위"))
+                .andExpect(jsonPath("$.data.extraNote").value("얼린 우대사항"))
+                .andExpect(jsonPath("$.data.workLocation").value("얼린 근무 장소"))
+                .andExpect(jsonPath("$.data.startNegotiable").value(true))
+                .andExpect(jsonPath("$.data.periodValue").value(6))
+                .andExpect(jsonPath("$.data.periodUnit").value("MONTH"))
+                .andExpect(jsonPath("$.data.totalHeadcount").value(2));
+    }
+
+    @Test
+    @DisplayName("프로젝트 본문도 목록에는 안 나온다")
+    void projectContentIsDetailOnly() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        sendRequestAndGetId(candidate.getId());
+
+        // 목록에도 채우면 옛 요청 20건이 페이지마다 프로젝트를 20번 더 읽는다(아래 폴백 참고).
+        mockMvc.perform(get("/api/v1/matchings/requests/received").cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].currentSituation").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].detailScope").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].workLocation").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].startNegotiable").doesNotExist())
+                .andExpect(jsonPath("$.data.content[0].totalHeadcount").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("본문을 담기 전에 얼린 스냅샷이면 현재 프로젝트 값으로 채운다")
+    void requestDetailFallsBackToLiveProjectWhenSnapshotPredatesContent() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 2026-08-15 이전 모양으로 되돌린다(본문 7개가 없는 스냅샷). saveSnapshotIfAbsent 는 기존
+        // 스냅샷을 덮지 않으므로, 배포 시점에 이미 모집 중이던 프로젝트가 실제로 이 상태다.
+        replaceProjectSnapshotWithLegacyShape();
+
+        mockMvc.perform(get("/api/v1/matchings/requests/" + requestId).cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                // seedProjectWithPosition 이 심은 현재 값
+                .andExpect(jsonPath("$.data.currentSituation").value("현행 시스템 운영중"))
+                .andExpect(jsonPath("$.data.detailScope").value("주문/결제 도메인 개발"))
+                .andExpect(jsonPath("$.data.extraNote").value("MSA 경험자 우대"))
+                .andExpect(jsonPath("$.data.workLocation").value("서울 강남구 테헤란로"))
+                .andExpect(jsonPath("$.data.startNegotiable").value(false))
+                .andExpect(jsonPath("$.data.periodValue").value(6))
+                // 얼린 값은 그대로 나와야 한다. 폴백이 스냅샷 전체를 덮으면 안 된다.
+                .andExpect(jsonPath("$.data.projectTitle").value("AI 추천 시스템 구축"));
+    }
+
+    @Test
+    @DisplayName("선택 입력이라 비어 있어도 상세 조회가 깨지지 않는다")
+    void requestDetailSurvivesEmptyOptionalProjectFields() throws Exception {
+        MatchingRound round = seedRound(2);
+        MatchingCandidate candidate = seedExposedCandidate(round.getId(), 1);
+        Long requestId = sendRequestAndGetId(candidate.getId());
+
+        // 세부 업무 범위·우대사항·근무 장소는 등록 시 선택 입력이라 NULL 인 프로젝트가 실제로 있다.
+        jdbcTemplate.update("UPDATE project SET detail_scope = NULL, extra_note = NULL, "
+                + "work_location = NULL WHERE id = ?", PROJECT_ID);
+        replaceProjectSnapshotWithLegacyShape();
+
+        mockMvc.perform(get("/api/v1/matchings/requests/" + requestId).cookie(freelancerAccessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.detailScope").doesNotExist())
+                .andExpect(jsonPath("$.data.extraNote").doesNotExist())
+                .andExpect(jsonPath("$.data.workLocation").doesNotExist())
+                // 필수 입력이라 이쪽은 계속 나온다
+                .andExpect(jsonPath("$.data.currentSituation").value("현행 시스템 운영중"));
+    }
+
+    /** 프로젝트 본문 7개를 담기 전(2026-08-15 이전) 모양으로 PROJECT 스냅샷을 다시 심는다. */
+    private void replaceProjectSnapshotWithLegacyShape() throws Exception {
+        jdbcTemplate.update("DELETE FROM matching_snapshot WHERE position_id = ? AND snapshot_type = 'PROJECT'",
+                POSITION_ID);
+
+        Map<String, Object> legacy = new LinkedHashMap<>();
+        legacy.put("title", "AI 추천 시스템 구축");
+        legacy.put("companyName", "주식회사 페어링테크");
+        legacy.put("workLabel", "상주 · 풀타임");
+        legacy.put("periodLabel", "6개월");
+        legacy.put("startDesiredDate", LocalDate.now().plusDays(14));
+        legacy.put("budgetAmount", 60_000_000L);
+        legacy.put("mainTask", "주문 시스템 API 개발");
+        matchingSnapshotRepository.save(MatchingSnapshot.create(PROJECT_ID, POSITION_ID, null,
+                SnapshotType.PROJECT, objectMapper.writeValueAsString(legacy)));
     }
 
     /** 특정 계정에게 실제로 저장된 알림 제목들. 알림 도메인 API를 거치지 않고 테이블을 직접 본다. */
