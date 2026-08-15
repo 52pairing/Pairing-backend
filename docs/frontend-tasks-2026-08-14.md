@@ -19,7 +19,7 @@
 | T1 | 주소를 5칸 객체로 전송 | 7 | ✅ |
 | T2 | 카드사 자유입력 → select | 4 | ✅ |
 | T3 | 카드·계좌번호 자릿수 검증 | 1 | ✅ |
-| T4 | 결제수단 탭 이메일 인증 | 3 | ✅ |
+| T4 | 결제수단 **수정** 시 이메일 인증 | 3 | ✅ |
 | T5 | 클라이언트 화면에 회사명 표시 | 4 | |
 | T6 | 로그인 후 화면 전환 실패 수정 | 4 | |
 | T7 | 원격 이미지 호스트 등록 | 1 | |
@@ -336,21 +336,25 @@ const isValidAccountNo = (v: string) => {
 
 ---
 
-# T4. 결제수단 탭 이메일 인증
+# T4. 결제수단 이메일 인증
 
 ## 배경
 
-결제수단은 **수정만이 아니라 조회부터** 이메일 인증이 필요해졌습니다. 마스킹해도 은행명·예금주·끝 4자리가
-계정을 잠깐 빌린 사람에게 단서가 되기 때문입니다.
+결제수단을 **바꿀 때만** 이메일 인증이 필요합니다. 계정을 잠깐 빌린 사람이 정산 계좌를 자기 것으로
+바꿔치기하는 걸 막기 위해서입니다.
+
+> **조회(GET)는 인증이 필요 없습니다.** 수수료 결제 화면도 결제할 카드를 고르려고 같은 API 를
+> 부르기 때문에, 조회까지 막으면 결제하려는 사람이 매번 이메일 인증을 거쳐야 합니다.
+> **수수료 결제 모달(`PaymentMethodModal.tsx`)은 고칠 필요가 없습니다.**
 
 ## 흐름
 
 ```
-1. 사용자가 결제수단 탭 클릭
+1. 사용자가 결제수단 탭에서 "수정" 클릭
 2. POST /api/v1/auth/email-verifications          { email, purpose: "PAYMENT_METHOD" }
 3. 사용자가 메일에서 코드 확인
 4. POST /api/v1/auth/email-verifications/confirm  { email, purpose: "PAYMENT_METHOD", code }
-5. GET  /api/v1/accounts/me/payment-methods       ← 여기서부터 열림
+5. PUT  /api/v1/accounts/me/payment-methods/card  ← 여기서부터 열림
 ```
 
 - `purpose` 는 반드시 **`PAYMENT_METHOD`**. 기존 `PROFILE_UPDATE` 인증으로는 열리지 않습니다.
@@ -373,17 +377,17 @@ const isValidAccountNo = (v: string) => {
 { "status": 400, "errorCode": "AU_006", "message": "이메일 인증을 완료해 주세요." }
 ```
 
-**아래 세 API 모두** `AU_006` 을 낼 수 있습니다.
+**수정 두 건만** `AU_006` 을 낼 수 있습니다.
 
-| 메서드 | 경로 |
-| --- | --- |
-| GET | `/api/v1/accounts/me/payment-methods` |
-| PUT | `/api/v1/accounts/me/payment-methods/card` |
-| PUT | `/api/v1/accounts/me/payment-methods/bank-account` |
+| 메서드 | 경로 | 인증 |
+| --- | --- | --- |
+| GET | `/api/v1/accounts/me/payment-methods` | **불필요** |
+| PUT | `/api/v1/accounts/me/payment-methods/card` | 필요 |
+| PUT | `/api/v1/accounts/me/payment-methods/bank-account` | 필요 |
 
-## 인증은 탭당 한 번
+## 인증은 화면당 한 번
 
-인증 마커를 **소비하지 않습니다.** 목록 조회 → 카드 수정 → 계좌 수정이 인증 **한 번**으로 끝납니다.
+인증 마커를 **소비하지 않습니다.** 카드 수정 → 계좌 수정이 인증 **한 번**으로 끝납니다.
 유효 시간 **30분**. 30분 뒤 다시 `AU_006` 이 오면 인증 화면을 다시 띄우세요.
 
 > 프로필 수정(`PROFILE_UPDATE`)은 저장 후 마커를 지우는 1회용이라 동작이 다릅니다. 같은 컴포넌트를
@@ -393,25 +397,32 @@ const isValidAccountNo = (v: string) => {
 
 ### 1) `src/features/payment/services/settlementPayment.ts`
 
-`getMyPaymentMethods` / `updateMyCard` / `updateMyBankAccount` 가 `AU_006` 을 던질 수 있습니다.
-호출부에서 이 코드를 잡아 인증 화면으로 보내세요. (`ApiException.errorCode === "AU_006"`)
+`updateMyCard` / `updateMyBankAccount` 가 `AU_006` 을 던질 수 있습니다. 호출부에서 이 코드를 잡아
+인증 화면으로 보내세요. (`ApiException.errorCode === "AU_006"`)
+
+`getMyPaymentMethods` 는 **인증과 무관합니다.** 손대지 마세요.
 
 ### 2) `src/features/client/mypage/components/ClientPaymentMethods.tsx`
 ### 3) `src/features/freelancer/mypage/components/FreelancerPaymentMethods.tsx`
 
-- 탭 진입 시 목록 조회를 시도하고, `AU_006` 이면 인증 화면을 먼저 렌더
-- 인증 완료 후 목록 조회 재시도
+- 목록 조회는 지금처럼 그대로 (인증 불필요)
+- **"수정" 버튼을 누른 시점**에 인증을 요구. 인증 전에는 수정 폼을 열지 않거나, 저장 시 `AU_006` 을 받으면 인증 화면 표시
+- 인증 완료 후 저장 재시도
 - 기존 이메일 인증 컴포넌트(`src/features/auth/components/EmailOtpField.tsx`)를 재사용하되 `purpose` 를 `PAYMENT_METHOD` 로 전달
 
-> ❓사람 확인: 인증 UI 를 **탭 안 인라인**으로 넣을지 **모달**로 띄울지는 디자인 결정입니다.
-> 기존 마이페이지 정보수정 화면의 인증 UX 와 맞추는 것을 권장하지만, 확정 전에 확인하세요.
+> ❓사람 확인: 인증을 **수정 버튼을 누를 때 선제적으로** 띄울지, **저장 후 `AU_006` 이 왔을 때** 띄울지는
+> UX 결정입니다. 선제적으로 띄우는 쪽이 입력을 날리지 않아 낫습니다.
+
+> **수수료 결제 모달(`PaymentMethodModal.tsx`)은 건드리지 않습니다.** 조회만 하므로 인증과 무관합니다.
 
 ## 완료 조건
 
-- [ ] 인증 없이 탭 진입 시 인증 화면이 먼저 뜸
-- [ ] 인증 후 목록·카드 수정·계좌 수정이 **재인증 없이** 연속 동작
-- [ ] 30분 경과 후 재진입 시 인증 화면이 다시 뜸
+- [ ] 인증 없이 탭에 들어가도 **목록은 그대로 보임**
+- [ ] 수정 시도할 때 인증 화면이 뜸
+- [ ] 인증 후 카드 수정 → 계좌 수정이 **재인증 없이** 연속 동작
+- [ ] 30분 경과 후 다시 수정하면 인증 화면이 다시 뜸
 - [ ] 발송 3분 타이머와 남은 횟수 표시 동작
+- [ ] **수수료 결제가 이메일 인증 없이 그대로 동작** (결제 모달은 코드 변경 없음)
 
 ---
 
@@ -669,7 +680,7 @@ const fieldErrors = Object.fromEntries(
 | `GLOBAL_009` | 401 | Access 토큰 만료 → `/auth/refresh` 후 1회 재시도 |
 | `GLOBAL_010` | 401 | 토큰 위조·손상 → 재로그인 |
 | `GLOBAL_011` | 401 | 다른 기기 로그인으로 세션 종료 → 모달 후 로그인 페이지 |
-| `AU_006` | 400 | 이메일 인증 미완료 (결제수단 탭 진입 포함) |
+| `AU_006` | 400 | 이메일 인증 미완료 (결제수단 **수정** 포함. 조회는 해당 없음) |
 | `AU_012` | 400 | 인증코드 입력 5회 초과 → 재발송부터 |
 | `AC_006` | 400 | 지원하지 않는 은행 코드 |
 
@@ -683,7 +694,7 @@ const fieldErrors = Object.fromEntries(
 | --- | --- |
 | 클라이언트·프리랜서·소셜 회원가입 | 400 |
 | 마이페이지 기업정보/계정정보 수정 | 400 |
-| 마이페이지 결제수단 탭 | 400 |
+| 마이페이지 결제수단 **수정** | 400 |
 
 **동시 배포가 필요합니다.** 프론트를 먼저 올리는 것도 안 됩니다(신 요청을 구 백엔드가 못 받습니다).
 T5~T7 은 순서와 무관합니다.

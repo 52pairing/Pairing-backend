@@ -66,8 +66,11 @@ public class AccountController {
     // ==========================================
     // 결제수단 (마이페이지 > 결제수단)
     //
-    // 세 엔드포인트 모두 이메일 인증(purpose=PAYMENT_METHOD)을 요구한다. 수정만이 아니라
-    // 조회부터 막는다 - 마스킹해도 은행명·예금주·끝 4자리가 단서가 되기 때문이다.
+    // 수정(PUT) 두 건만 이메일 인증(purpose=PAYMENT_METHOD)을 요구한다. 조회는 막지 않는다.
+    //
+    // 조회까지 막으면 수수료 결제 화면이 함께 막힌다. 그 화면도 카드 목록을 받으려고 이 API 를
+    // 부르는데, 결제하려는 사람에게 매번 이메일 인증을 요구하는 꼴이 된다. 노리는 위험은
+    // "계정을 잠깐 빌린 사람이 정산 계좌를 바꿔치기하는 것"이고, 그건 PUT 을 막으면 끝난다.
     //
     // 관문을 서비스가 아니라 여기에 두는 이유는 PaymentMethodAccessGuard 의 javadoc 에 있다.
     // 요약하면 findMyPaymentMethods 를 계약서와 정산도 쓰고 있어서, 서비스에 걸면 그 둘이 함께 막힌다.
@@ -76,14 +79,11 @@ public class AccountController {
     @GetMapping("/me/payment-methods")
     @Operation(summary = "결제수단 목록",
             description = "수수료 결제 카드 1건 + 용역비 수령 계좌 1건을 반환합니다. 둘 다 가입 시 만들어집니다. "
-                    + "수수료 결제 화면은 methodType 이 CARD 인 건만 사용하세요.")
+                    + "수수료 결제 화면은 methodType 이 CARD 인 건만 사용하세요. 조회는 이메일 인증이 필요 없습니다.")
     @ApiErrorCodeExample(domain = GlobalErrorCode.class, value = {"UNAUTHORIZED"})
-    @ApiErrorCodeExample(domain = AuthErrorCode.class, value = {"EMAIL_NOT_VERIFIED"})
     public ResponseEntity<ApiResponse<List<PaymentMethodResponse>>> findMyPaymentMethods(
             @CurrentAccountId Long accountId
     ) {
-        paymentMethodAccessGuard.requireVerified(accountId);
-
         List<PaymentMethodResponse> data = accountQueryUseCase.findMyPaymentMethods(accountId).stream()
                 .map(PaymentMethodResponse::from)
                 .toList();
