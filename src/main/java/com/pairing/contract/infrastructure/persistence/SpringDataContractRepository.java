@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -87,4 +88,21 @@ public interface SpringDataContractRepository extends JpaRepository<ContractJpaE
             """)
     List<ContractStatusCountRow> countByPartyGroupedByStatus(@Param("accountId") Long accountId,
                                                              @Param("projectId") Long projectId);
+
+    /**
+     * DRAFT 로 멈춘 계약의 id. 문구 채우기 복구 배치가 쓴다.
+     *
+     * <p>{@code createdAt} 으로 거른다. 방금 만들어진 계약은 지금 이 순간 AI 응답을 기다리는
+     * 중일 수 있고, 그걸 집으면 같은 계약에 호출이 두 번 나가 Gemini 비용이 두 배가 된다.
+     *
+     * <p>DRAFT 는 평상시 0건에 가까운 과도기 상태라 별도 인덱스를 두지 않았다. 계약이 쌓여
+     * 이 조회가 느려지면 {@code (created_at) WHERE status = 'DRAFT'} 부분 인덱스를 만든다.
+     */
+    @Query("""
+            SELECT c.id FROM ContractJpaEntity c
+             WHERE c.status = com.pairing.contract.domain.model.ContractStatus.DRAFT
+               AND c.createdAt < :stuckBefore
+             ORDER BY c.id ASC
+            """)
+    List<Long> findStuckDraftIds(@Param("stuckBefore") LocalDateTime stuckBefore, Pageable pageable);
 }

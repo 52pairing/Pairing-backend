@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.pairing.contract.application.port.ContractDraftPort;
 import com.pairing.contract.domain.model.ContractDraftText;
+import com.pairing.contract.exception.ContractErrorCode;
+import com.pairing.contract.infrastructure.config.ContractDraftRetryConfig;
+import com.pairing.global.exception.BusinessException;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,8 +22,9 @@ import java.util.Optional;
 /**
  * 계약서 문구를 파이썬 AI 서버(/api/v1/contracts/draft-texts)에서 받는다.
  *
- * <p>호출 실패·타임아웃이면 {@code Optional.empty()} 를 돌려주고 호출부가 원문을 잘라 쓴다.
- * 외부 의존 실패가 계약 체결을 끊지 않게 하려는 것으로, 협상 제안 어댑터와 같은 방식이다.
+ * <p><b>실패를 삼키지 않는다.</b> 예외가 그대로 올라가야 {@code @Retry} 가 재시도하고,
+ * 호출부가 계약을 DRAFT 에 남길 수 있다. 예전처럼 원문으로 대체해 버리면 덜 다듬어진
+ * 계약서가 서명 단계로 넘어간다.
  */
 @Slf4j
 @Component
@@ -36,7 +41,7 @@ public class ContractDraftAdapter implements ContractDraftPort {
     public ContractDraftAdapter(
             @Value("${app.ai.base-url:http://localhost:8000}") String baseUrl,
             @Value("${app.ai.internal-api-key:}") String internalApiKey,
-            @Value("${app.ai.timeout-ms:20000}") int timeoutMs) {
+            @Value("${app.ai.timeout-ms:120000}") int timeoutMs) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(CONNECT_TIMEOUT_MS);
         factory.setReadTimeout(timeoutMs);
@@ -44,35 +49,32 @@ public class ContractDraftAdapter implements ContractDraftPort {
         this.internalApiKey = internalApiKey;
     }
 
+    /**
+     * <p><b>{@code fallbackMethod} 를 두지 않는다.</b> 폴백을 두면 실패가 정상 반환으로 바뀌어
+     * 재시도를 걸 자리가 다시 사라진다. 그게 지금 고치려는 문제다.
+     *
+     * <p>재시도 대상은 연결 실패뿐이다({@link ContractDraftRetryConfig}). 5xx 는
+     * 파이썬이 이미 Gemini 를 재시도한 뒤라 곧바로 다시 불러도 성공 확률이 오르지 않는다.
+     * 그쪽 회복은 5분 주기 스케줄러가 맡는다.
+     */
     @Override
-    public Optional<ContractDraftText> draft(ContractDraftCommand command) {
-        try {
-            DraftApiResponse response = restClient.post()
-                    .uri(DRAFT_PATH)
-                    .header(INTERNAL_KEY_HEADER, internalApiKey)
-                    .headers(headers -> traceId().ifPresent(id -> headers.add(TRACE_ID_HEADER, id)))
-                    .contentType(MediaType.APPLICATION_JSON)
-                    // Accept 를 안 보내면 상대가 application/octet-stream 으로 내려줄 수 있고, 그러면
-                    // 이 응답을 읽을 컨버터가 없어 예외가 난다. 협상 어댑터에서 실제로 겪은
-                    // 실패다(2026-08-11 실측). 여기서는 기본 문구로 조용히 대체되므로,
-                    // AI 문구가 아예 안 붙은 계약서가 나가고도 아무도 눈치채지 못한다.
-                    .accept(MediaType.APPLICATION_JSON)
-                    .body(toRequest(command))
-                    .retrieve()
-                    .body(DraftApiResponse.class);
+    @Retry(name = ContractDraftRetryConfig.RETRY_NAME)
+    public ContractDraftText draft(ContractDraftCommand command) {
+        DraftApiResponse response = restClient.post()
+                .uri(DRAFT_PATH)
+                .header(INTERNAL_KEY_HEADER, internalApiKey)
+                .headers(headers -> traceId().ifPresent(id -> headers.add(TRACE_ID_HEADER, id)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(toRequest(command))
+                .retrieve()
+                .body(DraftApiResponse.class);
 
-            if (response == null || response.data() == null) {
-                log.warn("계약서 문구 응답이 비었습니다. 기본 문구로 진행합니다: contractId={}",
-                        command.contractId());
-                return Optional.empty();
-            }
-            return Optional.of(response.data().toDomain());
-
-        } catch (Exception e) {
-            log.warn("계약서 문구 파이썬 호출 실패. 기본 문구로 진행합니다: contractId={}, cause={}",
-                    command.contractId(), e.toString());
-            return Optional.empty();
+        // 2xx 인데 본문이 비었다. 다시 부르면 성공할 수 있으므로 실패로 다룬다.
+        if (response == null || response.data() == null) {
+            log.warn("계약서 문구 응답이 비었습니다: contractId={}", command.contractId());
+            throw new BusinessException(ContractErrorCode.DRAFT_TEXT_UNAVAILABLE);
         }
+        return response.data().toDomain();
     }
 
     private Optional<String> traceId() {
