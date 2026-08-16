@@ -4,10 +4,13 @@ import com.pairing.review.application.command.CreateReviewCommand;
 import com.pairing.review.application.result.PendingReviewResult;
 import com.pairing.review.application.result.ReviewResult;
 import com.pairing.review.application.result.ReviewSummaryResult;
+import com.pairing.review.domain.model.ReviewRating;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public interface ReviewUseCase {
 
@@ -21,6 +24,17 @@ public interface ReviewUseCase {
     Page<ReviewResult> findWritten(Long accountId, Pageable pageable);
 
     ReviewSummaryResult getSummary(Long accountId);
+
+    /**
+     * 여러 계정의 평균 별점·건수를 한 번에. 목록 화면이 사람마다 되묻지 않게 하려는 것이다.
+     *
+     * <p>{@link #getSummary} 와 달리 <b>등급을 계산하지 않는다.</b> 등급은 계정과 프로필을 더 읽어야
+     * 나오는데, 목록을 그리는 쪽은 대개 프로필을 이미 들고 있어 그 조회가 통째로 낭비다.
+     *
+     * <p>받은 리뷰가 없는 계정은 <b>결과에 없다.</b> 0건과 조회 실패를 구분해야 하는 쪽은
+     * {@code ReviewRating.empty} 로 채워 쓴다.
+     */
+    Map<Long, ReviewRating> getRatings(Collection<Long> accountIds);
 
     /**
      * 대금 지급이 끝난 계약 중 내가 아직 리뷰를 쓰지 않은 것.
