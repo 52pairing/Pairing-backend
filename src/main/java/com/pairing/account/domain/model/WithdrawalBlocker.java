@@ -17,14 +17,31 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum WithdrawalBlocker {
 
-    NEGOTIATION("진행 중인 협상", "/negotiations"),
-    PROJECT("진행 중인 프로젝트", "/my-projects"),
-    SIGN_PENDING_CONTRACT("서명 대기 계약", "/contracts"),
-    CONTRACT("진행 중인 계약", "/contracts"),
-    UNPAID_SETTLEMENT("미납 수수료", "/mypage/settlements");
+    NEGOTIATION("진행 중인 협상", "/client/projects"),
+    PROJECT("진행 중인 프로젝트", "/client/projects"),
+    SIGN_PENDING_CONTRACT("서명 대기 계약", "/freelancer/contracts"),
+    /** SIGNED(체결 완료)도 여기 걸린다. "진행 중"이라고 하면 체결 화면 문구와 어긋나 보인다. */
+    CONTRACT("아직 끝나지 않은 계약", "/freelancer/contracts"),
+    UNPAID_SETTLEMENT("미납 수수료", null);
 
     private final String label;
-    private final String linkUrl;
+
+    /**
+     * 역할이 고정인 사유의 경로. 협상·프로젝트는 클라이언트만, 계약은 프리랜서만 걸리므로
+     * 상수로 둘 수 있다. 미납 수수료만 양쪽에서 걸려 {@code null} 이고 {@link #linkUrl(Role)} 이 채운다.
+     */
+    private final String fixedLinkUrl;
+
+    /**
+     * 화면 경로. 프론트 라우트가 {@code /client/…} · {@code /freelancer/…} 로 갈려서 접두사가 필요하다.
+     * 접두사 없는 경로를 내려주면 그 링크는 전부 404 가 된다.
+     */
+    public String linkUrl(Role role) {
+        if (this == UNPAID_SETTLEMENT) {
+            return role == Role.CLIENT ? "/client/mypage/payments" : "/freelancer/mypage/payments";
+        }
+        return fixedLinkUrl;
+    }
 
     /** 정산만 성격이 다르다. 결제하면 풀리고, 나머지는 거래가 끝나야 풀린다. */
     public boolean isSettlement() {
