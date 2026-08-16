@@ -26,8 +26,8 @@ class NegotiationProposalHttpAdapterTest {
                 new NegotiationProposalHttpAdapter("http://localhost:1", "test-key", 500);
 
         ProposalContext context = new ProposalContext(1L, 1, 5_000_000L, List.of(
-                new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null),
-                new ConditionInput(402L, ConditionType.WORK_STYLE, "ONSITE", "REMOTE", null, null)));
+                new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null, null, null),
+                new ConditionInput(402L, ConditionType.WORK_STYLE, "ONSITE", "REMOTE", null, null, null, null)));
 
         NegotiationProposalPort.A2AResult result = adapter.propose(context);
 
@@ -43,6 +43,26 @@ class NegotiationProposalHttpAdapterTest {
         assertThat(result.messages()).isNotEmpty();
         assertThat(result.messages())
                 .allMatch(m -> m.conditionId().equals(401L) || m.conditionId().equals(402L));
+    }
+
+    @Test
+    @DisplayName("직전 제시값이 있으면 그 값에서 이어간다 — 매 라운드 희망값으로 리셋하지 않는다")
+    void carriesForwardLastProposedValues() {
+        // 파이썬 불가 → stub 폴백. stub 은 두 오프닝의 중간값을 제안한다.
+        NegotiationProposalHttpAdapter adapter =
+                new NegotiationProposalHttpAdapter("http://localhost:1", "test-key", 500);
+
+        // 희망값은 400만/600만이지만, 직전 라운드에 클라 440만·프리 500만까지 좁혀졌다.
+        // 오프닝을 희망값(중간 500만)이 아니라 직전값(중간 470만)에서 잡아야 한다.
+        ProposalContext context = new ProposalContext(1L, 3, 5_000_000L, List.of(
+                new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null,
+                        "4400000", "5000000")));
+
+        NegotiationProposalPort.A2AResult result = adapter.propose(context);
+
+        assertThat(result.outcomes()).hasSize(1);
+        // 직전값(440만·500만) 중간 = 470만. 희망값 리셋이었다면 500만이 나온다.
+        assertThat(result.outcomes().get(0).proposedValue()).isEqualTo("4700000");
     }
 
     @Test
@@ -72,7 +92,7 @@ class NegotiationProposalHttpAdapterTest {
             NegotiationProposalHttpAdapter adapter =
                     new NegotiationProposalHttpAdapter("http://127.0.0.1:" + port, "test-key", 2000);
             ProposalContext context = new ProposalContext(1L, 1, 5_000_000L, List.of(
-                    new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null)));
+                    new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null, null, null)));
 
             NegotiationProposalPort.A2AResult result = adapter.propose(context);
 
