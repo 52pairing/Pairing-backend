@@ -9,10 +9,12 @@ import com.pairing.contract.infrastructure.mapper.ContractMapper;
 import com.pairing.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
@@ -150,5 +152,10 @@ public class ContractRepositoryAdapter implements ContractRepository {
     @Override
     public long countSignedByPositionId(Long positionId) {
         return springDataRepository.countByPositionIdAndStatusIn(positionId, SIGNED_STATUSES);
+    }
+
+    @Override
+    public List<Long> findStuckDraftIds(LocalDateTime stuckBefore, int limit) {
+        return springDataRepository.findStuckDraftIds(stuckBefore, PageRequest.of(0, limit));
     }
 }

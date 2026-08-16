@@ -19,7 +19,15 @@ public enum ContractErrorCode implements BaseErrorCode {
     PDF_RENDER_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "CT_007", "계약서 파일을 만들지 못했습니다."),
 
     /** 수행분 산정 기준(정책 P32)이 정해지지 않아 아직 만들 수 없다. 기준이 확정되면 제거한다. */
-    TERMINATION_NOT_SUPPORTED(HttpStatus.NOT_IMPLEMENTED, "CT_008", "중도 파기는 아직 지원하지 않습니다.");
+    TERMINATION_NOT_SUPPORTED(HttpStatus.NOT_IMPLEMENTED, "CT_008", "중도 파기는 아직 지원하지 않습니다."),
+
+    /**
+     * AI 서버가 2xx 를 주면서 본문을 비웠다. 계약이 DRAFT 에 남고 스케줄러가 다시 시도한다.
+     *
+     * <p>화면에 뜨는 코드가 아니다. 어댑터가 "실패했다"를 호출부에 알리는 수단이라,
+     * 이 값이 응답으로 나가는 경로는 없다.
+     */
+    DRAFT_TEXT_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "CT_009", "계약서 문구를 생성하지 못했습니다.");
 
     private final HttpStatus status;
     private final String code;
