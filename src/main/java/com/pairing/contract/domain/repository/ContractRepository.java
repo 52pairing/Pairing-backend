@@ -6,6 +6,7 @@ import com.pairing.contract.domain.model.ContractTab;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -71,4 +72,19 @@ public interface ContractRepository {
 
     /** 포지션의 체결 완료 건수. 인원 충족 판정에 쓴다. */
     long countSignedByPositionId(Long positionId);
+
+    /**
+     * DRAFT 로 멈춘 계약의 id. 문구 채우기가 실패해 서명 단계로 못 넘어간 것들이다.
+     *
+     * <p>엔티티가 아니라 id 만 준다. 채우는 쪽이 자기 트랜잭션에서 다시 읽어야 하기 때문이다 —
+     * 조회와 처리 사이에 이미 채워졌을 수 있고, 엔티티를 넘기면 다른 트랜잭션의 준영속
+     * 인스턴스를 들고 다니게 된다.
+     *
+     * <p>오래된 것부터 준다. 포기 시한이 가까운 계약이 먼저 결론 나야 한다.
+     *
+     * @param stuckBefore 이 시각 이전에 만들어진 것만. 아직 응답을 기다리는 중인 계약을 다시
+     *                    집으면 같은 계약에 AI 호출이 두 번 나간다
+     * @param limit       한 번에 집을 최대 건수
+     */
+    List<Long> findStuckDraftIds(LocalDateTime stuckBefore, int limit);
 }
