@@ -76,20 +76,25 @@ public class WithdrawalEligibilityService implements WithdrawalEligibilityUseCas
     @Override
     public WithdrawalEligibilityResult getWithdrawalEligibility(Long accountId) {
         Account account = accountQueryUseCase.getById(accountId);
+        Role role = account.hasRole(Role.CLIENT) ? Role.CLIENT : Role.FREELANCER;
 
-        List<Blocked> blockers = new ArrayList<>(account.hasRole(Role.CLIENT)
-                ? projectBlockers(accountId)
-                : contractBlockers(accountId));
+        List<Blocked> blockers = new ArrayList<>(role == Role.CLIENT
+                ? projectBlockers(accountId, role)
+                : contractBlockers(accountId, role));
 
         if (settlementQueryUseCase.hasUnpaidSettlement(accountId)) {
             // 미납은 건수를 세지 않는다. "몇 건인지"보다 "결제 화면으로 가라"가 필요한 정보다.
-            blockers.add(new Blocked(WithdrawalBlocker.UNPAID_SETTLEMENT, 1));
+            blockers.add(blocked(WithdrawalBlocker.UNPAID_SETTLEMENT, 1, role));
         }
         return WithdrawalEligibilityResult.of(blockers);
     }
 
+    private Blocked blocked(WithdrawalBlocker blocker, long count, Role role) {
+        return new Blocked(blocker, count, blocker.linkUrl(role));
+    }
+
     /** 클라이언트: 아직 끝나지 않은 프로젝트. 협상 단계는 따로 센다 — 화면이 구분해 보여준다. */
-    private List<Blocked> projectBlockers(Long accountId) {
+    private List<Blocked> projectBlockers(Long accountId, Role role) {
         Map<ProjectStatus, Long> byStatus = projectQueryUseCase.findProjectIdsByAccountId(accountId).stream()
                 .map(projectQueryUseCase::findStatus)
                 .filter(status -> !WITHDRAWABLE_PROJECT_STATUSES.contains(status))
@@ -99,12 +104,12 @@ public class WithdrawalEligibilityService implements WithdrawalEligibilityUseCas
         long others = total(byStatus) - negotiating;
 
         return toBlockers(
-                new Blocked(WithdrawalBlocker.NEGOTIATION, negotiating),
-                new Blocked(WithdrawalBlocker.PROJECT, others));
+                blocked(WithdrawalBlocker.NEGOTIATION, negotiating, role),
+                blocked(WithdrawalBlocker.PROJECT, others, role));
     }
 
     /** 프리랜서: 아직 끝나지 않은 계약. 서명 대기는 따로 센다. */
-    private List<Blocked> contractBlockers(Long accountId) {
+    private List<Blocked> contractBlockers(Long accountId, Role role) {
         Map<ContractStatus, Long> byStatus = contractQueryUseCase
                 .findMine(accountId, null, null, PageRequest.of(0, ONGOING_SCAN_LIMIT))
                 .getContent().stream()
@@ -116,8 +121,8 @@ public class WithdrawalEligibilityService implements WithdrawalEligibilityUseCas
         long others = total(byStatus) - signPending;
 
         return toBlockers(
-                new Blocked(WithdrawalBlocker.SIGN_PENDING_CONTRACT, signPending),
-                new Blocked(WithdrawalBlocker.CONTRACT, others));
+                blocked(WithdrawalBlocker.SIGN_PENDING_CONTRACT, signPending, role),
+                blocked(WithdrawalBlocker.CONTRACT, others, role));
     }
 
     private long total(Map<?, Long> byStatus) {

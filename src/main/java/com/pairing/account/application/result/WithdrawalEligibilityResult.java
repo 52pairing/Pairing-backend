@@ -15,7 +15,8 @@ public record WithdrawalEligibilityResult(
         List<Blocked> blockers
 ) {
 
-    public record Blocked(WithdrawalBlocker blocker, long count) {
+    /** {@code linkUrl} 은 역할까지 반영된 최종 경로다. 역할을 아는 건 서비스뿐이라 여기서 들고 온다. */
+    public record Blocked(WithdrawalBlocker blocker, long count, String linkUrl) {
     }
 
     public static WithdrawalEligibilityResult of(List<Blocked> blockers) {

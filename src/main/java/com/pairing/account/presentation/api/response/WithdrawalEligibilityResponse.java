@@ -34,7 +34,7 @@ public record WithdrawalEligibilityResponse(
             @Schema(description = "건수", example = "1")
             long count,
 
-            @Schema(description = "정리하러 갈 화면 경로", example = "/negotiations")
+            @Schema(description = "정리하러 갈 화면 경로", example = "/client/projects")
             String linkUrl
     ) {
     }
@@ -47,7 +47,7 @@ public record WithdrawalEligibilityResponse(
                                 blocked.blocker(),
                                 blocked.blocker().getLabel(),
                                 blocked.count(),
-                                blocked.blocker().getLinkUrl()))
+                                blocked.linkUrl()))
                         .toList());
     }
 }
