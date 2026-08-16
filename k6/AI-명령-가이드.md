@@ -1,7 +1,10 @@
 # k6 실행 명령 만들기 — AI 용 가이드
 
 빌더 GUI(`builder/index.html`) 대신 **말로 시켜서 명령을 받는** 방식이다.
-사람용 설명은 `가이드.md` 에 있다. 이 문서는 AI 가 읽고 명령 한 줄을 만들어 내기 위한 것이다.
+이 문서는 AI 가 읽고 명령 한 줄을 만들어 내기 위한 것이다.
+
+- 실행 절차와 결과 해석은 **`부하테스트-가이드.md`** 에 있다. **고정값의 기준은 그 문서 0절이고, 4절이 그걸 그대로 옮긴 것이다**
+- 빌더 GUI 사용법은 `가이드.md` 에 있다
 
 ---
 
@@ -46,7 +49,7 @@ k6 run k6/main.js -e KEY=값 -e KEY=값 ...
 | `VUS` | `10` | 목표 동시 접속자 수 |
 | `DURATION` | `1m` | 계단 하나를 유지하는 시간 |
 | `RAMP` | `30s` | 계단 사이 증감 시간 |
-| `THINK_MS` | `500` | 반복 사이 대기. 0 이면 서버가 아니라 k6(내 PC) 한계를 재게 된다 |
+| `THINK_MS` | `500` | 반복 사이 대기. **기본값을 쓰지 말고 4절의 세트별 값을 반드시 명시한다** |
 | `TESTID` | `run` | 리포트 파일명. 같으면 덮어쓴다 |
 | `AI_BASE_URL` | `http://localhost:8000` | 파이썬 주소. AI 항목을 고를 때만 |
 | `INTERNAL_API_KEY` | 없음 | 파이썬 내부 호출 키. AI 항목을 고를 때 필수 |
@@ -172,22 +175,51 @@ node -e "global.window=global;require('./k6/builder/catalog.js');console.log(win
 | "개선 전/후 비교", "이 인원에서 기준 지키나" | `load` | 목표까지 올려 유지 |
 | "오래 돌려보자", "누수" | `soak` | 고정 인원 장시간 |
 
-### VU
+### VU · 시간 — 고정값이다
 
-말이 없으면 **`stress` 는 150, `load` 는 50** 으로 잡고 근거를 한 줄 덧붙인다.
-150 의 근거는 운영 ECS 가 1 vCPU 라 한계가 동시 60~150명 사이에 있기 때문이다(`가이드.md` 2절).
+**`부하테스트-가이드.md` 0절이 기준이고, 이 값들을 임의로 바꾸지 않는다.** 바꾸면 다른 사람 결과와 비교할 수 없다.
 
-`stress` 총 실행 시간은 `(RAMP + DURATION) × 5 + RAMP` 다. `RAMP=30s, DURATION=2m` 이면 약 13분.
-사용자가 "짧게"라고 하면 `DURATION=1m` (약 8분) 으로 줄인다. 그보다 짧으면 계단마다 표본이 모자라 무릎이 안 보인다.
+| 항목 | 고정값 |
+| --- | --- |
+| 목표 VU | **150** (S3 AI 세트만 30) |
+| `stress` (한계점) | `DURATION=2m` `RAMP=30s` — 약 13분 |
+| `load` (전/후 비교) | `DURATION=3m` `RAMP=30s` — 약 4분 |
+| 계정 | 15개 (프리랜서 8 / 클라이언트 7) |
+| 합격 기준 | 기본값 그대로 두고 **명령에 넣지 않는다** |
 
-### 계정 수
+`stress` 총 실행 시간은 `(RAMP + DURATION) × 5 + RAMP` 다. 사용자가 "짧게"라고 하면 `DURATION=1m`(약 8분)까지만 줄인다.
+그보다 짧으면 계단마다 표본이 모자라 무릎이 안 보인다.
 
-VU 10명당 1개, 최대 20개를 권한다. 부족하면 경고만 나오고 실행은 된다.
-**단, 5절의 ID 제약이 이 규칙보다 우선한다.**
+### 생각 시간 — 고른 API 개수에서 나온다
 
-### 생각 시간
+한 반복에서 고른 API 를 **전부** 호출하므로, 개수가 바뀌면 같은 값이라도 부하가 몇 배씩 달라진다.
+사용자 1명이 초당 0.85건을 만들도록 맞춘 값이 아래다. **API 를 바꾸면 생각 시간도 같이 바꾼다.**
 
-기본 `1000`. 0 으로 두면 서버가 아니라 내 PC 의 한계를 재게 된다. 사용자가 "최대 처리량"을 원하면 0 을 쓰되 그 사실을 말해 준다.
+| 고른 API 수 | THINK_MS |
+| --- | --- |
+| 1개 | `1000` |
+| 4개 (S1) | `4500` |
+| 6개 (S2) | `7000` |
+
+`0` 은 쓰지 않는다. 서버가 아니라 내 PC 한계를 재게 된다. 사용자가 "최대 처리량"을 원해서 굳이 0 을 쓸 때는 그 사실을 말해 준다.
+
+### 표준 세트 — 이 조합으로 만든다
+
+| 세트 | APIS | THINK_MS | VU |
+| --- | --- | --- | --- |
+| **S1 공개** | `meta_skills,meta_jobroles,terms_list,home_summary` | `4500` | 150 |
+| **S2 폴링 (대표)** | `me,notifs_unread,chat_unread,negos_waiting,chatrooms,notifs` | `7000` | 150 |
+| **S3 AI** | `ai_chatbot` | `1000` | 30 |
+
+사용자가 다른 조합을 원하면 만들어 주되, **표준 전/후 비교와 섞어서 해석할 수 없다**는 점을 알린다.
+
+### 실행 이름
+
+```
+<세트>-<프로파일>-<상태>        예: s2-load-before, s2-load-after, s2-stress-before
+```
+
+같은 이름이면 리포트를 덮어쓴다.
 
 ---
 
@@ -231,6 +263,8 @@ VU 구간 통계가 인스턴스 전체 VU 수를 보기 때문에 WebSocket VU 
 - [ ] AI key 가 있으면 `INTERNAL_API_KEY` 와 `AI_BASE_URL` 이 들어갔는가
 - [ ] 한 줄인가, 값이 따옴표로 감싸였는가
 - [ ] `TESTID` 가 이전 실행과 겹치지 않는가 (겹치면 리포트를 덮어쓴다)
+- [ ] `VUS`·`DURATION`·`RAMP`·`THINK_MS` 가 4절 고정값과 같은가. 특히 **고른 API 개수에 맞는 `THINK_MS`** 인가
+- [ ] 전/후 비교라면 앞 실행과 `TESTID` 외에 다른 값이 하나도 다르지 않은가
 
 처음 돌리는 설정이라면 **같은 명령의 `PROFILE=smoke` 판을 먼저 제안한다.** 30초면 계정과 주소가 맞는지 확인된다.
 
@@ -246,31 +280,40 @@ VU 구간 통계가 인스턴스 전체 VU 수를 보기 때문에 WebSocket VU 
 k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e ACCOUNTS='tester1@pairing.com:Passw0rd!:FREELANCER' -e APIS='me,notifs_unread' -e PROFILE=smoke -e TESTID=smoke
 ```
 
-**공개 API 한계점 — 계정이 필요 없다. 캐시 전/후 비교에 가장 적합하다**
+**S2 한계점 (13분) — 개선 전에 한 번. 여기서 고정 VU 를 확정한다**
 
 ```bash
-k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e APIS='meta_skills,meta_jobroles,terms_list,home_summary' -e PROFILE=stress -e VUS=150 -e DURATION=2m -e RAMP=30s -e THINK_MS=1000 -e TESTID=public-before
+k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e ACCOUNTS='<15개 계정>' -e APIS='me,notifs_unread,chat_unread,negos_waiting,chatrooms,notifs' -e PROFILE=stress -e VUS=150 -e DURATION=2m -e RAMP=30s -e THINK_MS=7000 -e TESTID=s2-stress-before
 ```
 
-**프론트 폴링 경로 한계점 — 실제 트래픽 비중이 가장 큰 조합**
+**S2 개선 전/후 (4분) — VU 150 고정. 본 측정이다**
 
 ```bash
-k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e ACCOUNTS='t1@pairing.com:Passw0rd!:FREELANCER,t2@pairing.com:Passw0rd!:CLIENT' -e APIS='me,notifs_unread,chat_unread,negos_waiting,chatrooms,notifs' -e PROFILE=stress -e VUS=150 -e DURATION=2m -e RAMP=30s -e THINK_MS=1000 -e TESTID=poll-before
+k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e ACCOUNTS='<15개 계정>' -e APIS='me,notifs_unread,chat_unread,negos_waiting,chatrooms,notifs' -e PROFILE=load -e VUS=150 -e DURATION=3m -e RAMP=30s -e THINK_MS=7000 -e TESTID=s2-load-before
 ```
 
-**개선 전/후** — 위 명령에서 `TESTID` 만 `-after` 로 바꿔 다시 돌린다. **다른 값은 하나도 건드리지 않는다.**
-끝나면 `k6/compare.html` 에 `reports/poll-before.json` 과 `reports/poll-after.json` 을 넣는다.
+개선 후에는 **`TESTID` 만** `s2-load-after` 로 바꿔 다시 돌린다. 다른 값은 하나도 건드리지 않는다.
+끝나면 `k6/compare.html` 에 두 json 을 넣는다.
 
-**AI 대기가 다른 API 를 막는지 본다** — 파이썬을 `AI_STUB_MODE=true AI_STUB_DELAY_MS=20000 AI_STUB_JITTER_MS=3000` 으로 띄운 뒤
+**S1 공개 API — 계정이 필요 없다. 캐시 개선 효과가 가장 선명하다**
 
 ```bash
-k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e AI_BASE_URL=http://localhost:8000 -e INTERNAL_API_KEY='<파이썬 .env 의 INTERNAL_API_KEY 값>' -e ACCOUNTS='t1@pairing.com:Passw0rd!:FREELANCER' -e APIS='ai_chatbot,me,notifs_unread' -e PROFILE=load -e VUS=30 -e DURATION=3m -e RAMP=30s -e TESTID=ai-delay20
+k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e APIS='meta_skills,meta_jobroles,terms_list,home_summary' -e PROFILE=load -e VUS=150 -e DURATION=3m -e RAMP=30s -e THINK_MS=4500 -e TESTID=s1-load-before
 ```
 
-**WebSocket 동시 접속** — `stress` 와 섞지 않는다
+**S3 AI — 파이썬 AI 서버의 동시 처리 한계.** 파이썬을 `AI_STUB_MODE=true AI_STUB_DELAY_MS=10000 AI_STUB_JITTER_MS=2000` 으로 띄운 뒤
 
 ```bash
-k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e ACCOUNTS='t1@pairing.com:Passw0rd!:FREELANCER,t2@pairing.com:Passw0rd!:CLIENT' -e APIS='me,notifs_unread' -e PROFILE=load -e VUS=20 -e DURATION=5m -e WS=1 -e WS_VUS=50 -e WS_HOLD=5m -e TESTID=ws-50
+k6 run k6/main.js -e AI_BASE_URL=http://localhost:8000 -e INTERNAL_API_KEY='<파이썬 .env 의 INTERNAL_API_KEY 값>' -e APIS='ai_chatbot' -e PROFILE=load -e VUS=30 -e DURATION=3m -e RAMP=30s -e THINK_MS=1000 -e TESTID=s3-load-before
+```
+
+지연을 10000 으로 고정한다. 챗봇 1회는 스텁을 2번 호출하므로(관련성 임베딩 + 답변 생성) 실제 응답이 20~24초가 되는데,
+20000 으로 두면 40초가 되어 기본 기준 `P95_AI=30000` 을 무조건 넘긴다.
+
+**WebSocket 동시 접속 — 표준 세트 밖이다.** `stress` 와 섞지 않는다
+
+```bash
+k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e ACCOUNTS='<15개 계정>' -e APIS='me,notifs_unread' -e PROFILE=load -e VUS=20 -e DURATION=5m -e THINK_MS=2000 -e WS=1 -e WS_VUS=50 -e WS_HOLD=5m -e TESTID=ws-load-50
 ```
 
 ---
