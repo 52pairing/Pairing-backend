@@ -17,6 +17,7 @@ import com.pairing.review.application.result.ReviewResult;
 import com.pairing.review.application.result.ReviewSummaryResult;
 import com.pairing.review.application.usecase.ReviewUseCase;
 import com.pairing.review.domain.model.Review;
+import com.pairing.review.domain.model.ReviewRating;
 import com.pairing.review.domain.model.SiteReview;
 import com.pairing.review.domain.repository.ReviewRepository;
 import com.pairing.review.domain.repository.SiteReviewRepository;
@@ -32,8 +33,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 클래스 전체를 {@code @Transactional} 로 묶지 않는다. {@code toResult()} 가 조회하는
@@ -121,6 +126,12 @@ public class ReviewService implements ReviewUseCase {
         long reviewCount = reviewRepository.countByRevieweeAccountId(accountId);
         String grade = resolveCurrentGrade(accountId);
         return new ReviewSummaryResult(averageScore, (int) reviewCount, grade);
+    }
+
+    @Override
+    public Map<Long, ReviewRating> getRatings(Collection<Long> accountIds) {
+        return reviewRepository.findRatingsByRevieweeAccountIds(accountIds).stream()
+                .collect(Collectors.toMap(ReviewRating::accountId, Function.identity()));
     }
 
     @Override

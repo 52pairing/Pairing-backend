@@ -32,6 +32,8 @@ import com.pairing.global.config.SettlementResultStub;
 import com.pairing.settlement.application.usecase.SettlementQueryUseCase;
 import com.pairing.settlement.domain.model.SettlementPhase;
 import com.pairing.settlement.domain.model.SettlementStatus;
+import com.pairing.review.application.usecase.ReviewUseCase;
+import com.pairing.review.domain.model.ReviewRating;
 import com.pairing.review.infrastructure.persistence.SiteReviewJpaEntity;
 import com.pairing.review.infrastructure.persistence.SpringDataReviewRepository;
 import com.pairing.review.infrastructure.persistence.SpringDataSiteReviewRepository;
@@ -92,6 +94,8 @@ class ReviewIntegrationTest {
     private MockMvc mockMvc;
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private ReviewUseCase reviewUseCase;
 
     @Autowired
     private SpringDataTermsRepository termsRepository;
@@ -357,6 +361,25 @@ class ReviewIntegrationTest {
                 .andExpect(jsonPath("$.data.averageScore").value(5.0))
                 .andExpect(jsonPath("$.data.reviewCount").value(1))
                 .andExpect(jsonPath("$.data.grade").value("SILVER"));
+    }
+
+    @Test
+    @DisplayName("평점 일괄 조회는 리뷰가 있는 계정만 돌려주고 없는 계정은 뺀다")
+    void getRatingsReturnsOnlyAccountsWithReviews() throws Exception {
+        mockMvc.perform(post("/api/v1/reviews")
+                        .cookie(freelancerAccessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reviewCreateBody())))
+                .andExpect(status().isCreated());
+
+        // 집계 쿼리(GROUP BY)는 행이 없는 계정을 아예 만들지 않는다. 그 계약이 지켜지는지 본다 —
+        // 여기서 0건짜리가 섞여 나오면 호출부가 "없음"과 "0점"을 구분하지 못한다.
+        Map<Long, ReviewRating> ratings =
+                reviewUseCase.getRatings(List.of(clientAccountId, freelancerAccountId));
+
+        assertThat(ratings).containsOnlyKeys(clientAccountId);
+        assertThat(ratings.get(clientAccountId).averageScore()).isEqualTo(5.0);
+        assertThat(ratings.get(clientAccountId).reviewCount()).isEqualTo(1);
     }
 
     @Test
