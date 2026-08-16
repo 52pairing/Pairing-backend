@@ -50,4 +50,12 @@ public class MatchingSnapshotRepositoryAdapter implements MatchingSnapshotReposi
                 .map(matchingSnapshotMapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public List<MatchingSnapshot> findAllByPositionIdInAndSnapshotType(List<Long> positionIds,
+                                                                        SnapshotType snapshotType) {
+        return springDataRepository.findAllByPositionIdInAndSnapshotType(positionIds, snapshotType).stream()
+                .map(matchingSnapshotMapper::toDomain)
+                .toList();
+    }
 }

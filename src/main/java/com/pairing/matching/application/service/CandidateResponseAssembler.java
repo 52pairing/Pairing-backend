@@ -73,8 +73,10 @@ class CandidateResponseAssembler {
         boolean budgetWarned = exposedCandidates.stream()
                 .anyMatch(CandidateResponseAssembler::hasGuardReason);
         Map<Long, FreelancerConditionResponse> frozenConditions = loadFrozenConditions(round.getPositionId());
+        Map<Long, FreelancerCardSummary> cardSummaries = freelancerDirectoryPort.findCardSummaries(
+                exposedCandidates.stream().map(MatchingCandidate::getFreelancerId).distinct().toList());
         List<CandidateResponse> candidates = exposedCandidates.stream()
-                .map(candidate -> toCandidateResponse(candidate, frozenConditions))
+                .map(candidate -> toCandidateResponse(candidate, frozenConditions, cardSummaries))
                 .toList();
 
         long paidUsed = matchingRoundRepository.countByProjectIdAndRoundType(round.getProjectId(),
@@ -137,10 +139,15 @@ class CandidateResponseAssembler {
     }
 
     private CandidateResponse toCandidateResponse(MatchingCandidate candidate,
-                                                  Map<Long, FreelancerConditionResponse> frozenConditions) {
+                                                  Map<Long, FreelancerConditionResponse> frozenConditions,
+                                                  Map<Long, FreelancerCardSummary> cardSummaries) {
         // **평판은 라이브다.** 이름·프로필 사진·등급·평점·리뷰수는 추천된 뒤에 쌓인 것도 반영되는 게
         // 맞다 — 클라이언트가 사람을 고르는 데 쓰는 최신 정보다.
-        FreelancerCardSummary card = freelancerDirectoryPort.findCardSummary(candidate.getFreelancerId());
+        //
+        // 카드 요약은 포지션 단위로 한 번에 미리 읽어둔다(findCardSummaries). 배치 결과에 없으면
+        // (freelancer_profile이 그 사이 지워진 등 방어적 경우) 그 후보만 개별로 채운다.
+        FreelancerCardSummary card = cardSummaries.computeIfAbsent(candidate.getFreelancerId(),
+                freelancerDirectoryPort::findCardSummary);
         // **조건은 얼린 값이다.** 직무·경력·스킬·단가는 노출 시점 값을 쓴다. 라이브로 읽으면 프리랜서가
         // 단가를 올렸을 때 카드는 새 값, 프로필 상세와 협상 시작가는 얼린 값이 되어 화면끼리 숫자가
         // 어긋난다. 클라이언트는 카드를 보고 후보를 고르므로 그 값이 협상 출발점과 같아야 한다.

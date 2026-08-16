@@ -30,4 +30,10 @@ public interface MatchingSnapshotRepository {
      * 메모리에서 프리랜서별로 나눈다.
      */
     List<MatchingSnapshot> findAllByPositionIdAndSnapshotType(Long positionId, SnapshotType snapshotType);
+
+    /**
+     * 여러 포지션의 한 타입 스냅샷을 한 번에 읽는다. 매칭 요청 목록이 행마다 PROJECT/POSITION을
+     * 각각 조회하던 것을 페이지당 타입별 1번으로 줄이는 데 쓴다.
+     */
+    List<MatchingSnapshot> findAllByPositionIdInAndSnapshotType(List<Long> positionIds, SnapshotType snapshotType);
 }

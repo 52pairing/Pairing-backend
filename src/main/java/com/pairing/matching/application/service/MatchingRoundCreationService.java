@@ -291,9 +291,17 @@ class MatchingRoundCreationService {
      * ({@code MatchingCandidateService.findCandidateProfile}).
      */
     private void saveFreelancerSnapshots(MatchingRound round, List<Long> exposedFreelancerIds) {
+        // 노출된 인원마다 findByFreelancerIdAndPositionIdAndSnapshotType을 개별로 부르면 후보
+        // 수만큼 존재 확인 쿼리가 나간다. 포지션 단위로 이미 있는 FREELANCER 스냅샷을 한 번에 읽어
+        // (같은 메서드를 후보 카드 조회도 쓴다 — CandidateResponseAssembler.loadFrozenConditions)
+        // 메모리에서 걸러낸다.
+        Set<Long> alreadySnapshotted = matchingSnapshotRepository
+                .findAllByPositionIdAndSnapshotType(round.getPositionId(), SnapshotType.FREELANCER).stream()
+                .map(MatchingSnapshot::getFreelancerId)
+                .collect(Collectors.toSet());
+
         for (Long freelancerId : exposedFreelancerIds) {
-            if (matchingSnapshotRepository.findByFreelancerIdAndPositionIdAndSnapshotType(freelancerId,
-                    round.getPositionId(), SnapshotType.FREELANCER).isPresent()) {
+            if (alreadySnapshotted.contains(freelancerId)) {
                 continue;
             }
             try {

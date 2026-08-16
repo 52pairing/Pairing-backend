@@ -3,6 +3,7 @@ package com.pairing.matching.application.service;
 import com.pairing.matching.application.event.RerecommendRequestedEvent;
 import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.domain.model.MatchingRoundStatus;
+import com.pairing.matching.infrastructure.config.MatchingAsyncExecutorConfig;
 import com.pairing.notification.application.command.CreateNotificationCommand;
 import com.pairing.notification.application.usecase.NotificationCreateUseCase;
 import com.pairing.notification.domain.model.NotificationType;
@@ -42,7 +43,7 @@ class RerecommendRequestedEventListener {
     private final MatchingRoundFiller matchingRoundFiller;
     private final NotificationCreateUseCase notificationCreateUseCase;
 
-    @Async
+    @Async(MatchingAsyncExecutorConfig.EXECUTOR_NAME)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     // AFTER_COMMIT 시점에는 원 트랜잭션이 "커밋 완료" 상태로 아직 붙어 있다. 여기서 알림 저장처럼
     // 기본 전파(REQUIRED)로 쓰기를 하면 그 끝난 트랜잭션에 합류해 **조용히 버려진다**(예외도 안 난다).
