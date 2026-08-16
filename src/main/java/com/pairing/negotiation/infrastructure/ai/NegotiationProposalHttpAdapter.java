@@ -241,8 +241,13 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
 
     /** 파이썬 없이도 대화 로그가 나오도록, 조건당 [클라 제안 → 프리 수락] 2턴 + 합의 결과를 만든다. */
     private StubExchange stubExchange(ConditionInput condition) {
+        // stub 도 직전 제시값(현재 위치)이 있으면 거기서 중간값을 잡는다 — 없으면 희망값.
+        String clientOpening = condition.clientLastValue() != null
+                ? condition.clientLastValue() : condition.clientValue();
+        String freelancerOpening = condition.freelancerLastValue() != null
+                ? condition.freelancerLastValue() : condition.freelancerValue();
         NegotiationProposalStub.Proposal p =
-                NegotiationProposalStub.propose(condition.clientValue(), condition.freelancerValue());
+                NegotiationProposalStub.propose(clientOpening, freelancerOpening);
         List<AgentMessage> messages = List.of(
                 new AgentMessage(CLIENT_AGENT, condition.conditionId(), "PROPOSAL",
                         p.value(), p.content(), p.reason()),
@@ -268,6 +273,7 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
                 .map(c -> new ConditionPayload(c.conditionId(),
                         c.type() == null ? null : c.type().name(),
                         c.clientValue(), c.freelancerValue(), c.clientFloor(), c.freelancerFloor(),
+                        c.clientLastValue(), c.freelancerLastValue(),
                         emptyToNull(NegotiationAgreedValueNormalizer.allowedValues(c.type())),
                         NegotiationAgreedValueNormalizer.valueFormat(c.type())))
                 .toList();
@@ -288,6 +294,7 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     private record ConditionPayload(Long conditionId, String type, String clientValue, String freelancerValue,
                                     String clientFloor, String freelancerFloor,
+                                    String clientLastValue, String freelancerLastValue,
                                     List<String> allowedValues, String valueFormat) {
     }
 

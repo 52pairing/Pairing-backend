@@ -21,10 +21,15 @@ public interface NegotiationProposalPort {
     record ConditionInput(
             Long conditionId,
             ConditionType type,
-            String clientValue,
+            String clientValue,      // 각 측 희망값(공개·고정). 라운드 1 오프닝 앵커.
             String freelancerValue,
             String clientFloor,      // 비공개 마지노선(내부 호출이라 참고용으로 전달)
-            String freelancerFloor
+            String freelancerFloor,
+            // 직전 라운드에서 각 대리인이 마지막으로 낸 제시값(현재 협상 위치). 라운드 1 이거나
+            // 아직 그 측 제안이 없으면 null → 그때는 희망값에서 시작한다. 이 값이 있으면 매 라운드
+            // 희망값으로 리셋하지 않고 여기서 이어 협상한다(사람이 재지시로 좁힌 진행을 보존).
+            String clientLastValue,
+            String freelancerLastValue
     ) {
     }
 

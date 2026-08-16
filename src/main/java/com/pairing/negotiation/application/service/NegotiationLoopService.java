@@ -564,6 +564,20 @@ public class NegotiationLoopService
         }
     }
 
+    /**
+     * 한 조건에서 {@code side} 대리인이 지금까지 마지막으로 낸 제시값. 없으면 null(라운드 1 등).
+     *
+     * <p>다음 라운드 A2A 의 오프닝 앵커로 쓴다. 제안(PROPOSAL)은 대리인만 만들고 사람 재지시는
+     * 응답(RESPONSE)이라, 상대측 발신자를 제외한 최신 제안이 곧 {@code side} 의 마지막 제시다.
+     * 재지시는 마지노선(floor)만 바꾸므로, 이어갈 위치는 '마지막으로 부른 값'이 맞다.
+     */
+    private String lastProposalValueOf(Long negotiationId, Long conditionId, PartyRole side) {
+        PartyRole opponent = side == PartyRole.CLIENT ? PartyRole.FREELANCER : PartyRole.CLIENT;
+        return messageRepository.findLatestProposalExcluding(negotiationId, conditionId, opponent.ownSenders())
+                .map(NegotiationMessage::getProposedValue)
+                .orElse(null);
+    }
+
     /** PENDING 조건들에 대한 제안 메시지 생성(현재 라운드). 제안값은 AI 포트(실패 시 stub 폴백)에서 온다. */
     private List<NegotiationMessage> proposeForPending(Negotiation negotiation) {
         List<NegotiationCondition> pending = negotiation.getConditions().stream()
@@ -575,7 +589,11 @@ public class NegotiationLoopService
 
         List<NegotiationProposalPort.ConditionInput> inputs = pending.stream()
                 .map(c -> new NegotiationProposalPort.ConditionInput(c.getId(), c.getConditionType(),
-                        c.getClientValue(), c.getFreelancerValue(), c.getClientFloor(), c.getFreelancerFloor()))
+                        c.getClientValue(), c.getFreelancerValue(), c.getClientFloor(), c.getFreelancerFloor(),
+                        // 직전 라운드 각 측 마지막 제시값(현재 위치). 있으면 A2A 가 희망값이 아니라
+                        // 여기서 이어 협상한다 — 매 라운드 희망값으로 리셋돼 사람의 재지시가 묻히던 문제.
+                        lastProposalValueOf(negotiation.getId(), c.getId(), PartyRole.CLIENT),
+                        lastProposalValueOf(negotiation.getId(), c.getId(), PartyRole.FREELANCER)))
                 .toList();
         NegotiationProposalPort.A2AResult result = proposalPort.propose(
                 new NegotiationProposalPort.ProposalContext(negotiation.getId(),
