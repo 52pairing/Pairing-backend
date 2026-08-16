@@ -214,8 +214,10 @@
     </div>
     <div>
       <label class="f">생각 시간 (THINK_MS)</label>
-      <input type="number" id="thinkMs" value="1000" min="0"/>
-      <div class="hint">반복 사이 대기. 0 이면 서버가 아니라 k6 한계를 재게 된다</div>
+      <input type="number" id="thinkMs" value="7000" min="0"/>
+      <div class="hint">반복 사이 대기. 0 이면 서버가 아니라 k6 한계를 재게 된다.
+        <b>고른 API 개수에 맞춰야 한다</b> — 한 반복이 고른 API 를 전부 호출하므로, 개수가 늘면 같은 값이라도
+        부하가 그만큼 커진다. 사용자 1명이 초당 0.85건을 만드는 기준으로 1개 = 1000 / 4개 = 4500 / 6개 = 7000</div>
     </div>
     <div>
       <label class="f">실행 이름 (TESTID)</label>
