@@ -1,6 +1,7 @@
 package com.pairing.negotiation.application.port.out;
 
 import com.pairing.negotiation.domain.model.ConditionType;
+import com.pairing.negotiation.domain.model.FloorDirection;
 
 import java.util.List;
 
@@ -29,7 +30,11 @@ public interface NegotiationProposalPort {
             // 아직 그 측 제안이 없으면 null → 그때는 희망값에서 시작한다. 이 값이 있으면 매 라운드
             // 희망값으로 리셋하지 않고 여기서 이어 협상한다(사람이 재지시로 좁힌 진행을 보존).
             String clientLastValue,
-            String freelancerLastValue
+            String freelancerLastValue,
+            // 각 측 마지노선의 방향(상한 MAX / 하한 MIN / 허용값 CHOICE / 없음 NONE). ConditionType 이
+            // 정한 값을 그대로 실어 프롬프트가 타입으로 다시 추론하지 않게 한다(방향 단일 진실 원본).
+            FloorDirection clientFloorDirection,
+            FloorDirection freelancerFloorDirection
     ) {
     }
 

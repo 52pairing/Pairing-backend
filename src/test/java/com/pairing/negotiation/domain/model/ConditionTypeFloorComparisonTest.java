@@ -42,10 +42,14 @@ class ConditionTypeFloorComparisonTest {
         assertThat(respects(ConditionType.PERIOD, "5 MONTH", "6 MONTH", "4 MONTH")).isTrue();
         assertThat(respects(ConditionType.PERIOD, "7 MONTH", "6 MONTH", "4 MONTH")).isFalse();
 
-        // 시작일: 프리 착수 가능일 ≤ x ≤ 클라 최종 기한
+        // 시작일: 양측 모두 상한(늦어도 이 날까지). x ≤ 클라 상한 and x ≤ 프리 상한.
         assertThat(ConditionType.START_DATE.getFloorComparison()).isEqualTo(FloorComparison.RANGE);
-        assertThat(respects(ConditionType.START_DATE, "2026-09-15", "2026-10-01", "2026-09-01")).isTrue();
-        assertThat(respects(ConditionType.START_DATE, "2026-10-15", "2026-10-01", "2026-09-01")).isFalse();
+        assertThat(ConditionType.START_DATE.floorDirectionFor(PartyRole.CLIENT)).isEqualTo(FloorDirection.MAX);
+        assertThat(ConditionType.START_DATE.floorDirectionFor(PartyRole.FREELANCER)).isEqualTo(FloorDirection.MAX);
+        // 클라 상한 10/1, 프리 상한 10/21 → 9/15 는 둘 다 이하라 통과
+        assertThat(respects(ConditionType.START_DATE, "2026-09-15", "2026-10-01", "2026-10-21")).isTrue();
+        // 10/15 는 클라 상한(10/1) 초과 → 거절
+        assertThat(respects(ConditionType.START_DATE, "2026-10-15", "2026-10-01", "2026-10-21")).isFalse();
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.pairing.negotiation.presentation.api.response;
 import com.pairing.negotiation.domain.model.ConditionStatus;
 import com.pairing.negotiation.domain.model.ConditionType;
 import com.pairing.negotiation.domain.model.FloorComparison;
+import com.pairing.negotiation.domain.model.FloorDirection;
 import com.pairing.negotiation.domain.model.NegotiationAgentState;
 import com.pairing.negotiation.domain.model.PartyRole;
 import com.pairing.negotiation.domain.model.NegotiationStatus;
@@ -110,8 +111,13 @@ public record NegotiationResponse(
             @Schema(description = "내 마지노선(직전 입력값). 뷰어 본인 것만 내려감. 상대 마지노선은 절대 노출하지 않는다. 재지시 '직전 마지노선' 표시에 쓴다.", example = "3500000") String myFloor,
             @Schema(description = "마지노선 비교 방식. RANGE=크기 비교(\"480만 원 이상이어야 합니다\"), "
                     + "CHOICE=허용값 집합(\"재택을 허용해야 합니다\"), NONE=비교 기준 없음(안내 불필요). "
-                    + "RANGE 의 이상/이하 방향은 viewerRole 로 판단한다 — 클라는 상한, 프리는 하한이다.",
+                    + "RANGE 의 이상/이하 방향은 floorDirection 을 쓴다(role 추론 금지 — 시작일은 프리도 상한이다).",
                     example = "CHOICE") FloorComparison floorComparison,
+            @Schema(description = "**내 마지노선 방향(뷰어 기준, 단일 진실 원본).** MAX=이 값 이하여야 함(\"늦어도 ~까지\"/\"~이하\"), "
+                    + "MIN=이 값 이상이어야 함(\"~이상\"), CHOICE=허용값 집합, NONE=기준 없음. "
+                    + "화면은 이 값으로 안내 문구 방향을 정한다 — floorComparison+role 추론을 대체한다. "
+                    + "시작일은 클라·프리 모두 MAX(늦어도 이 날까지)다.",
+                    example = "MAX") FloorDirection floorDirection,
             @Schema(description = "**최종 절충값.** finalOffer=true 인 미합의 조건에만 채워진다(양쪽이 마지노선을 넘겨 "
                     + "만나는 중간 지점: 숫자·기간·날짜는 중간값, 근무 방식/형태는 ANY=모두 가능). 이미 합의된 조건이나 "
                     + "절충 불가 조건은 null. 화면은 이 값을 '최종 절충안'으로 보여주고, 양측이 수락하면 이 값이 "

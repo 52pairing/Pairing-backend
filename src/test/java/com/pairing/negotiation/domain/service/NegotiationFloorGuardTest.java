@@ -141,4 +141,40 @@ class NegotiationFloorGuardTest {
     void blankAgreedValueIsRejected() {
         assertThat(NegotiationFloorGuard.respectsFloors(ConditionType.AMOUNT, "  ", null, null)).isFalse();
     }
+
+    @Nested
+    @DisplayName("START_DATE — 양측 모두 상한(늦어도 이 날까지) + 프리 가용 시작일은 하한")
+    class StartDate {
+
+        // 클라 상한 9/22, 프리 상한 10/21, 프리 가용 시작일 10/1.
+        private static final String CLIENT_MAX = "2026-09-22";
+        private static final String FREELANCER_MAX = "2026-10-21";
+        private static final String AVAILABLE_FROM = "2026-10-01";
+
+        @Test
+        @DisplayName("가용 시작일 이상 & 양측 상한 이하면 통과")
+        void withinBoundsPasses() {
+            assertThat(NegotiationFloorGuard.respectsFloors(
+                    ConditionType.START_DATE, "2026-10-05", CLIENT_MAX, FREELANCER_MAX, AVAILABLE_FROM))
+                    .isFalse();   // 10/5 는 클라 상한 9/22 초과 → 거절
+            assertThat(NegotiationFloorGuard.respectsFloors(
+                    ConditionType.START_DATE, "2026-10-10", null, FREELANCER_MAX, AVAILABLE_FROM))
+                    .isTrue();    // 클라 제약 없음 + 10/10 ≤ 10/21 & ≥ 10/1
+        }
+
+        @Test
+        @DisplayName("프리 상한 초과면 차단 — '늦어도 10/21까지'인데 10/25")
+        void laterThanFreelancerMaxIsRejected() {
+            assertThat(NegotiationFloorGuard.respectsFloors(
+                    ConditionType.START_DATE, "2026-10-25", null, FREELANCER_MAX, AVAILABLE_FROM)).isFalse();
+        }
+
+        @Test
+        @DisplayName("가용 시작일보다 이르면 차단 — 프리는 10/1 이전엔 시작 못 한다(하한)")
+        void earlierThanAvailableFromIsRejected() {
+            // 9/22 는 클라 상한 이하지만 프리 가용 시작일(10/1)보다 이르다 → 물리적으로 불가.
+            assertThat(NegotiationFloorGuard.respectsFloors(
+                    ConditionType.START_DATE, "2026-09-22", CLIENT_MAX, FREELANCER_MAX, AVAILABLE_FROM)).isFalse();
+        }
+    }
 }

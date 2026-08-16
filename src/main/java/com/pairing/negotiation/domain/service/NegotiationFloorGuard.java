@@ -4,6 +4,8 @@ import com.pairing.meta.domain.model.PeriodUnit;
 import com.pairing.meta.domain.model.WorkForm;
 import com.pairing.meta.domain.model.WorkStyle;
 import com.pairing.negotiation.domain.model.ConditionType;
+import com.pairing.negotiation.domain.model.FloorDirection;
+import com.pairing.negotiation.domain.model.PartyRole;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -22,10 +24,11 @@ import java.util.regex.Pattern;
  * <p>검증에 실패하면 락하지 않는다. 조건은 미합의로 남아 사람의 승인 패널로 넘어간다 —
  * {@link NegotiationAgreedValueNormalizer} 가 해석 불가한 값을 강등하는 것과 같은 방식이다.
  *
- * <p><b>마지노선의 방향</b>은 역할마다 반대다.
+ * <p><b>마지노선의 방향</b>은 {@link ConditionType#floorDirectionFor}가 정한다(단일 진실 원본).
  * <ul>
- *   <li>프리랜서 = <b>하한</b>. 이 값 미만은 수락하지 않는다(최소 단가·최소 기간·착수 가능일).</li>
- *   <li>클라이언트 = <b>상한</b>. 이 값 초과는 수락하지 않는다(최대 단가·최대 기간·최종 착수 기한).</li>
+ *   <li>금액·기간: 프리=하한(MIN, 이 값 미만 거절), 클라=상한(MAX, 이 값 초과 거절).</li>
+ *   <li>시작일: <b>양측 모두 상한(MAX)</b> = "늦어도 이 날까지 시작". 프리가 그보다 <b>일찍</b> 시작
+ *       못 하는 하한은 마지노선이 아니라 <b>가용 시작일(freelancerValue)</b>이 담당한다(5-인자 오버로드).</li>
  *   <li>선택형(근무 방식·형태)은 크기 비교가 없다. 각자 <b>허용한 값</b>이며 {@code ANY} 는 전부 허용이다.</li>
  * </ul>
  */
@@ -50,21 +53,31 @@ public final class NegotiationFloorGuard {
      *
      * @param type            조건 타입
      * @param agreedValue     대리인이 합의했다고 주장하는 값(정규화된 표기)
-     * @param clientFloor     클라이언트 마지노선(상한). 없으면 null
-     * @param freelancerFloor 프리랜서 마지노선(하한). 없으면 null
+     * @param clientFloor     클라이언트 마지노선. 방향은 {@link ConditionType#floorDirectionFor}. 없으면 null
+     * @param freelancerFloor 프리랜서 마지노선. 방향은 위와 같다. 없으면 null
      */
     public static boolean respectsFloors(ConditionType type, String agreedValue,
                                          String clientFloor, String freelancerFloor) {
+        return respectsFloors(type, agreedValue, clientFloor, freelancerFloor, null);
+    }
+
+    /**
+     * 마지노선 검증(START_DATE 하한 포함). {@code freelancerValue} 는 START_DATE 에서 프리랜서의
+     * <b>가용 시작일</b>(이보다 이르게는 시작 불가)로만 쓴다 — 다른 타입은 무시한다. 시작일은 양측
+     * 마지노선이 모두 상한이라, 프리가 그보다 일찍 시작 못 하는 하한을 여기서 함께 지켜야 한다.
+     */
+    public static boolean respectsFloors(ConditionType type, String agreedValue,
+                                         String clientFloor, String freelancerFloor, String freelancerValue) {
         if (type == null || agreedValue == null || agreedValue.isBlank()) {
             return false;
         }
         return switch (type) {
-            case AMOUNT -> withinRange(parseAmount(agreedValue), parseAmount(clientFloor),
-                    parseAmount(freelancerFloor));
-            case PERIOD -> withinRange(parsePeriodDays(agreedValue), parsePeriodDays(clientFloor),
-                    parsePeriodDays(freelancerFloor));
-            case START_DATE -> withinRange(parseEpochDay(agreedValue), parseEpochDay(clientFloor),
-                    parseEpochDay(freelancerFloor));
+            case AMOUNT -> respectsNumericFloors(type, parseAmount(agreedValue),
+                    parseAmount(clientFloor), parseAmount(freelancerFloor), Optional.empty());
+            case PERIOD -> respectsNumericFloors(type, parsePeriodDays(agreedValue),
+                    parsePeriodDays(clientFloor), parsePeriodDays(freelancerFloor), Optional.empty());
+            case START_DATE -> respectsNumericFloors(type, parseEpochDay(agreedValue),
+                    parseEpochDay(clientFloor), parseEpochDay(freelancerFloor), parseEpochDay(freelancerValue));
             case WORK_STYLE -> allowedByBoth(agreedValue, clientFloor, freelancerFloor, WorkStyle.ANY.name());
             case WORK_FORM -> allowedByBoth(agreedValue, clientFloor, freelancerFloor, WorkForm.ANY.name());
             // 자유 텍스트는 대소 관계도 허용값도 없다. 검증할 기준이 없으므로 통과시킨다.
@@ -73,21 +86,38 @@ public final class NegotiationFloorGuard {
     }
 
     /**
-     * 하한(프리) ≤ 합의값 ≤ 상한(클라) 인가.
+     * 각 측 마지노선을 <b>그 방향대로</b> 지켰는가(+ START_DATE 는 프리 가용 시작일 하한).
      *
-     * <p>합의값 자체를 해석 못 하면 실패다. 마지노선을 해석 못 하는 경우도 실패로 본다 —
-     * 그 값은 {@code /start} 에서 이미 정규화를 통과했어야 하므로, 여기서 깨져 있다는 건
-     * 신뢰할 수 없는 상태라는 뜻이다.
+     * <p>합의값을 해석 못 하면 실패다. 마지노선을 해석 못 하는 경우도 실패로 본다 —
+     * {@code /start} 에서 이미 정규화를 통과했어야 하므로, 여기서 깨져 있다면 신뢰할 수 없는 상태다.
      */
-    private static boolean withinRange(Optional<Long> agreed, Optional<Long> upper, Optional<Long> lower) {
+    private static boolean respectsNumericFloors(ConditionType type, Optional<Long> agreed,
+                                                 Optional<Long> clientFloor, Optional<Long> freelancerFloor,
+                                                 Optional<Long> freelancerMin) {
         if (agreed.isEmpty()) {
             return false;
         }
         long value = agreed.get();
-        if (upper.isPresent() && value > upper.get()) {
+        if (!respectsBound(value, clientFloor, type.floorDirectionFor(PartyRole.CLIENT))) {
             return false;
         }
-        return lower.isEmpty() || value >= lower.get();
+        if (!respectsBound(value, freelancerFloor, type.floorDirectionFor(PartyRole.FREELANCER))) {
+            return false;
+        }
+        // START_DATE: 프리는 가용 시작일보다 이르게 시작 못 한다(마지노선 상한과 별개의 하한).
+        return freelancerMin.isEmpty() || value >= freelancerMin.get();
+    }
+
+    /** 합의값이 한 측 마지노선을 그 방향(MAX=이하 / MIN=이상)으로 지켰는가. 마지노선 없으면 제약 없음. */
+    private static boolean respectsBound(long value, Optional<Long> floor, FloorDirection direction) {
+        if (floor.isEmpty()) {
+            return true;
+        }
+        return switch (direction) {
+            case MAX -> value <= floor.get();
+            case MIN -> value >= floor.get();
+            case CHOICE, NONE -> true;
+        };
     }
 
     /** 양측이 모두 받아들일 수 있는 선택지인가. 마지노선이 {@code ANY} 면 무엇이든 허용한다. */

@@ -110,6 +110,8 @@ public final class NegotiationResponseFactory {
                 // 화면이 마지노선 안내 문구를 맞게 쓰려면 비교 방식을 알아야 한다.
                 // 프론트가 조건 타입으로 다시 판단하면 규칙이 두 곳에 생긴다.
                 c.getConditionType().getFloorComparison(),
+                // 방향(뷰어 기준). 화면은 이걸로 이상/이하를 정한다 — role 추론 금지(시작일은 프리도 상한).
+                c.getConditionType().floorDirectionFor(role),
                 c.getCompromiseValue()      // 최종 절충값(최종 절충 단계의 미합의 조건에만)
         );
     }

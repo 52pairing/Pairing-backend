@@ -146,8 +146,10 @@ public class NegotiationLoopService
                         ? null : condition.getClientFloor();
                 String freelancerFloor = answer.acceptBelowFloor() && role == PartyRole.FREELANCER
                         ? null : condition.getFreelancerFloor();
+                // freelancerValue(START_DATE=가용 시작일 하한)는 acceptBelowFloor 와 무관하게 항상 지킨다
+                // — 사람이 넘기겠다 해도 물리적으로 가용일보다 이르게 시작할 수는 없다.
                 if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), lockValue,
-                        clientFloor, freelancerFloor)) {
+                        clientFloor, freelancerFloor, condition.getFreelancerValue())) {
                     throw new BusinessException(NegotiationErrorCode.ACCEPT_BREAKS_FLOOR);
                 }
                 condition.lock(lockValue);
@@ -497,7 +499,7 @@ public class NegotiationLoopService
         List<String> values = new ArrayList<>(pending.size());
         for (NegotiationCondition c : pending) {
             Optional<String> compromise = NegotiationCompromiseCalculator.compromise(
-                    c.getConditionType(), c.getClientFloor(), c.getFreelancerFloor());
+                    c.getConditionType(), c.getClientFloor(), c.getFreelancerFloor(), c.getFreelancerValue());
             if (compromise.isEmpty()) {
                 failNoCompromise(negotiation, messages, c);
                 return;
@@ -593,7 +595,10 @@ public class NegotiationLoopService
                         // 직전 라운드 각 측 마지막 제시값(현재 위치). 있으면 A2A 가 희망값이 아니라
                         // 여기서 이어 협상한다 — 매 라운드 희망값으로 리셋돼 사람의 재지시가 묻히던 문제.
                         lastProposalValueOf(negotiation.getId(), c.getId(), PartyRole.CLIENT),
-                        lastProposalValueOf(negotiation.getId(), c.getId(), PartyRole.FREELANCER)))
+                        lastProposalValueOf(negotiation.getId(), c.getId(), PartyRole.FREELANCER),
+                        // 마지노선 방향(단일 진실 원본). 프롬프트가 타입으로 다시 추론하지 않게 실어 보낸다.
+                        c.getConditionType().floorDirectionFor(PartyRole.CLIENT),
+                        c.getConditionType().floorDirectionFor(PartyRole.FREELANCER)))
                 .toList();
         NegotiationProposalPort.A2AResult result = proposalPort.propose(
                 new NegotiationProposalPort.ProposalContext(negotiation.getId(),
@@ -629,7 +634,7 @@ public class NegotiationLoopService
             // 대리인이 사람이 그은 선을 넘겨 합의했으면 락하지 않는다. 미합의로 남겨 승인 패널로 넘긴다.
             // (프롬프트로 유도하지만 LLM 이 지킨다는 보장이 없어 여기서 최종 확인한다)
             if (!NegotiationFloorGuard.respectsFloors(condition.getConditionType(), o.proposedValue(),
-                    condition.getClientFloor(), condition.getFreelancerFloor())) {
+                    condition.getClientFloor(), condition.getFreelancerFloor(), condition.getFreelancerValue())) {
                 log.warn("마지노선을 넘은 합의라 락하지 않음(사람 승인으로 이관): negotiationId={}, conditionId={}, "
                                 + "type={}, value={}", negotiation.getId(), condition.getId(),
                         condition.getConditionType(), o.proposedValue());

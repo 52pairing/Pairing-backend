@@ -26,8 +26,8 @@ class NegotiationProposalHttpAdapterTest {
                 new NegotiationProposalHttpAdapter("http://localhost:1", "test-key", 500);
 
         ProposalContext context = new ProposalContext(1L, 1, 5_000_000L, List.of(
-                new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null, null, null),
-                new ConditionInput(402L, ConditionType.WORK_STYLE, "ONSITE", "REMOTE", null, null, null, null)));
+                new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null, null, null, null, null),
+                new ConditionInput(402L, ConditionType.WORK_STYLE, "ONSITE", "REMOTE", null, null, null, null, null, null)));
 
         NegotiationProposalPort.A2AResult result = adapter.propose(context);
 
@@ -56,7 +56,7 @@ class NegotiationProposalHttpAdapterTest {
         // 오프닝을 희망값(중간 500만)이 아니라 직전값(중간 470만)에서 잡아야 한다.
         ProposalContext context = new ProposalContext(1L, 3, 5_000_000L, List.of(
                 new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null,
-                        "4400000", "5000000")));
+                        "4400000", "5000000", null, null)));
 
         NegotiationProposalPort.A2AResult result = adapter.propose(context);
 
@@ -92,7 +92,7 @@ class NegotiationProposalHttpAdapterTest {
             NegotiationProposalHttpAdapter adapter =
                     new NegotiationProposalHttpAdapter("http://127.0.0.1:" + port, "test-key", 2000);
             ProposalContext context = new ProposalContext(1L, 1, 5_000_000L, List.of(
-                    new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null, null, null)));
+                    new ConditionInput(401L, ConditionType.AMOUNT, "4000000", "6000000", null, null, null, null, null, null)));
 
             NegotiationProposalPort.A2AResult result = adapter.propose(context);
 

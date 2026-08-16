@@ -35,11 +35,18 @@ class NegotiationCompromiseCalculatorTest {
         }
 
         @Test
-        @DisplayName("START_DATE: 두 날짜의 중간일")
-        void startDateMidpoint() {
-            // 2026-09-01 ~ 2026-09-11 의 중간일 = 2026-09-06
+        @DisplayName("START_DATE: 프리 가용 시작일 — 클라가 그날까지 당겨 맞춘다")
+        void startDateUsesAvailableFrom() {
+            // 클라 상한 9/22, 프리 상한 10/21, 프리 가용 시작일 10/1 → 절충 = 10/1 (프리가 더 이르게는 불가)
             assertThat(NegotiationCompromiseCalculator.compromise(
-                    ConditionType.START_DATE, "2026-09-11", "2026-09-01")).contains("2026-09-06");
+                    ConditionType.START_DATE, "2026-09-22", "2026-10-21", "2026-10-01")).contains("2026-10-01");
+        }
+
+        @Test
+        @DisplayName("START_DATE: 프리가 가용일 이후로도 못 기다리면(프리 상한 < 가용일) 절충 불가")
+        void startDateInfeasibleWhenMaxBeforeAvailable() {
+            assertThat(NegotiationCompromiseCalculator.compromise(
+                    ConditionType.START_DATE, "2026-09-22", "2026-09-25", "2026-10-01")).isEmpty();
         }
 
         @Test

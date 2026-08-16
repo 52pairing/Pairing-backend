@@ -14,8 +14,8 @@ import java.util.Optional;
  * <p>마지노선 파싱은 {@link NegotiationFloorGuard} 의 것을 재사용한다 — 가드가 통과시킨 값을
  * 절충기가 못 읽는 어긋남을 막기 위해 파싱 규칙을 한 곳에 둔다.
  *
- * <p><b>마지노선의 방향</b>은 {@link NegotiationFloorGuard} 와 같다: 프리랜서=하한, 클라이언트=상한,
- * 선택형은 각자 허용값({@code ANY}=전부 허용).
+ * <p><b>마지노선의 방향</b>은 {@link NegotiationFloorGuard}·{@link ConditionType#floorDirectionFor} 와
+ * 같다: 금액·기간은 프리=하한/클라=상한, 시작일은 양측 상한(+프리 가용 시작일 하한), 선택형은 허용값.
  */
 public final class NegotiationCompromiseCalculator {
 
@@ -29,8 +29,9 @@ public final class NegotiationCompromiseCalculator {
      * 양쪽이 각자 마지노선을 넘겨 만나는 최종 절충값.
      *
      * <ul>
-     *   <li>RANGE(금액·기간·시작일): 두 마지노선의 <b>중간값</b>. 예) 프리 460·클라 340 → 400.
-     *       기간은 일 단위 중간을 월로 환산(최소 1개월), 시작일은 두 날짜의 중간일.</li>
+     *   <li>금액·기간: 두 마지노선의 <b>중간값</b>. 예) 프리 460·클라 340 → 400.
+     *       기간은 일 단위 중간을 월로 환산(최소 1개월).</li>
+     *   <li>시작일: 프리 <b>가용 시작일</b>(클라가 그날까지 당겨 맞춤). 프리가 그날 이후로도 못 기다리면 절충 불가.</li>
      *   <li>WORK_STYLE: {@code ANY}(혼합/하이브리드).</li>
      *   <li>WORK_FORM: {@code ANY}(모두 가능). 실제 근무형태를 확정 않는 유연 합의라 다소 약하지만
      *       WORK_STYLE 과 대칭으로 통일한다.</li>
@@ -41,13 +42,24 @@ public final class NegotiationCompromiseCalculator {
      * 호출부는 이 경우를 "절충 불가"로 보고 즉시 결렬시킨다.
      */
     public static Optional<String> compromise(ConditionType type, String clientFloor, String freelancerFloor) {
+        return compromise(type, clientFloor, freelancerFloor, null);
+    }
+
+    /**
+     * 최종 절충값. {@code freelancerValue} 는 START_DATE 에서 프리랜서 <b>가용 시작일</b>로만 쓴다
+     * (다른 타입은 무시). 시작일은 양측 마지노선이 모두 상한이라 중간값이 성립하지 않기 때문이다.
+     */
+    public static Optional<String> compromise(ConditionType type, String clientFloor, String freelancerFloor,
+                                              String freelancerValue) {
         if (type == null) {
             return Optional.empty();
         }
         return switch (type) {
             case AMOUNT -> midAmount(clientFloor, freelancerFloor);
             case PERIOD -> midPeriodMonths(clientFloor, freelancerFloor);
-            case START_DATE -> midDate(clientFloor, freelancerFloor);
+            // 시작일: 프리는 가용 시작일보다 이르게 시작 못 하므로, 절충 = 그 가용 시작일(클라가 그날까지
+            // 당겨 맞춘다). 단 프리가 그날 이후로도 못 기다리면(프리 상한 < 가용일) 성립 불가.
+            case START_DATE -> compromiseDate(freelancerValue, freelancerFloor);
             case WORK_STYLE -> Optional.of(WorkStyle.ANY.name());
             case WORK_FORM -> Optional.of(WorkForm.ANY.name());
             case SCOPE, OTHER -> Optional.empty();
@@ -76,13 +88,15 @@ public final class NegotiationCompromiseCalculator {
         return Optional.of(months + " MONTH");
     }
 
-    private static Optional<String> midDate(String clientFloor, String freelancerFloor) {
-        Optional<Long> upper = NegotiationFloorGuard.parseEpochDay(clientFloor);
-        Optional<Long> lower = NegotiationFloorGuard.parseEpochDay(freelancerFloor);
-        if (upper.isEmpty() || lower.isEmpty()) {
+    private static Optional<String> compromiseDate(String freelancerAvailableFrom, String freelancerFloor) {
+        Optional<Long> earliest = NegotiationFloorGuard.parseEpochDay(freelancerAvailableFrom);
+        if (earliest.isEmpty()) {
             return Optional.empty();
         }
-        long midDay = Math.floorDiv(upper.get() + lower.get(), 2);
-        return Optional.of(LocalDate.ofEpochDay(midDay).toString());
+        Optional<Long> freelancerMax = NegotiationFloorGuard.parseEpochDay(freelancerFloor);
+        if (freelancerMax.isPresent() && earliest.get() > freelancerMax.get()) {
+            return Optional.empty();   // 프리가 가용일 이후로도 못 기다린다 → 절충 불가
+        }
+        return Optional.of(LocalDate.ofEpochDay(earliest.get()).toString());
     }
 }

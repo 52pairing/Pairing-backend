@@ -274,6 +274,8 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
                         c.type() == null ? null : c.type().name(),
                         c.clientValue(), c.freelancerValue(), c.clientFloor(), c.freelancerFloor(),
                         c.clientLastValue(), c.freelancerLastValue(),
+                        c.clientFloorDirection() == null ? null : c.clientFloorDirection().name(),
+                        c.freelancerFloorDirection() == null ? null : c.freelancerFloorDirection().name(),
                         emptyToNull(NegotiationAgreedValueNormalizer.allowedValues(c.type())),
                         NegotiationAgreedValueNormalizer.valueFormat(c.type())))
                 .toList();
@@ -295,6 +297,7 @@ public class NegotiationProposalHttpAdapter implements NegotiationProposalPort {
     private record ConditionPayload(Long conditionId, String type, String clientValue, String freelancerValue,
                                     String clientFloor, String freelancerFloor,
                                     String clientLastValue, String freelancerLastValue,
+                                    String clientFloorDirection, String freelancerFloorDirection,
                                     List<String> allowedValues, String valueFormat) {
     }
 

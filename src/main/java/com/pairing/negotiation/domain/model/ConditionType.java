@@ -25,4 +25,25 @@ public enum ConditionType {
 
     private final String label;
     private final FloorComparison floorComparison;
+
+    /**
+     * 이 쟁점에서 <b>해당 역할의 마지노선을 어느 방향으로 비교하는가</b>. 방향의 단일 진실 원본이다
+     * (가드·프롬프트·응답이 모두 이걸 읽는다).
+     *
+     * <ul>
+     *   <li>AMOUNT·PERIOD: 클라=상한(MAX), 프리=하한(MIN). 프리는 더 받으려 하고 클라는 덜 주려 한다.</li>
+     *   <li>START_DATE: <b>양측 모두 상한(MAX)</b> — "늦어도 이 날까지 시작". 프리가 그보다 일찍 시작
+     *       못 하는 하한은 마지노선이 아니라 가용 시작일(freelancerValue)이 담당한다.</li>
+     *   <li>WORK_STYLE·WORK_FORM: 크기 비교 없음(CHOICE).</li>
+     *   <li>SCOPE·OTHER: 기준 없음(NONE).</li>
+     * </ul>
+     */
+    public FloorDirection floorDirectionFor(PartyRole role) {
+        return switch (this) {
+            case AMOUNT, PERIOD -> role == PartyRole.CLIENT ? FloorDirection.MAX : FloorDirection.MIN;
+            case START_DATE -> FloorDirection.MAX;
+            case WORK_STYLE, WORK_FORM -> FloorDirection.CHOICE;
+            case SCOPE, OTHER -> FloorDirection.NONE;
+        };
+    }
 }
