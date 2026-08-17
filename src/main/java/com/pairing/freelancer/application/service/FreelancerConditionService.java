@@ -9,8 +9,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -23,6 +27,13 @@ public class FreelancerConditionService implements FreelancerConditionUseCase {
     @Transactional(readOnly = true)
     public Optional<FreelancerCondition> findMyCondition(Long accountId) {
         return freelancerConditionRepository.findByAccountId(accountId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, FreelancerCondition> findConditions(Collection<Long> accountIds) {
+        return freelancerConditionRepository.findByAccountIdIn(accountIds).stream()
+                .collect(Collectors.toMap(FreelancerCondition::getAccountId, Function.identity()));
     }
 
     @Override

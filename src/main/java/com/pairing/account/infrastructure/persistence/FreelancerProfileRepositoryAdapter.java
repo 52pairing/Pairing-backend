@@ -31,8 +31,28 @@ public class FreelancerProfileRepositoryAdapter implements FreelancerProfileRepo
     }
 
     @Override
+    public List<FreelancerProfile> findByAccountIdIn(Collection<Long> accountIds) {
+        if (accountIds.isEmpty()) {
+            return List.of();
+        }
+        return springDataRepository.findByAccountIdInAndDeletedAtIsNull(accountIds).stream()
+                .map(freelancerProfileMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public Optional<FreelancerProfile> findById(Long id) {
         return springDataRepository.findByIdAndDeletedAtIsNull(id).map(freelancerProfileMapper::toDomain);
+    }
+
+    @Override
+    public List<FreelancerProfile> findByIdIn(Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return springDataRepository.findByIdInAndDeletedAtIsNull(ids).stream()
+                .map(freelancerProfileMapper::toDomain)
+                .toList();
     }
 
     @Override

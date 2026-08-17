@@ -14,6 +14,8 @@ public interface SpringDataFreelancerConditionRepository extends JpaRepository<F
 
     Optional<FreelancerConditionJpaEntity> findByAccountId(Long accountId);
 
+    List<FreelancerConditionJpaEntity> findByAccountIdIn(Collection<Long> accountIds);
+
     /**
      * 사전 검수 1차 후보. 직무·스킬·이력서까지만 본다. (정책 P02)
      *

@@ -31,6 +31,16 @@ public class FreelancerConditionRepositoryAdapter implements FreelancerCondition
     }
 
     @Override
+    public List<FreelancerCondition> findByAccountIdIn(Collection<Long> accountIds) {
+        if (accountIds.isEmpty()) {
+            return List.of();
+        }
+        return springDataRepository.findByAccountIdIn(accountIds).stream()
+                .map(conditionMapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public List<Long> findMatchableAccountIds(JobRole jobRole, Collection<SkillCode> skills,
                                               int minSkillMatchCount) {
         return springDataRepository.findMatchableAccountIds(jobRole, skills, minSkillMatchCount);

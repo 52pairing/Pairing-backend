@@ -4,6 +4,7 @@ import com.pairing.account.domain.model.Account;
 import com.pairing.account.domain.model.Role;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +19,12 @@ public interface AccountRepository {
     Account save(Account account);
 
     Optional<Account> findById(Long id);
+
+    /**
+     * 여러 계정을 한 번에. 목록 화면이 항목마다 {@link #findById} 를 부르면 N+1 이라 만들었다.
+     * 없는 id 는 결과에서 빠진다.
+     */
+    List<Account> findByIdIn(Collection<Long> ids);
 
     /** 로그인 아이디는 이메일이지만, 역할까지 맞아야 계정 하나로 좁혀진다. */
     Optional<Account> findByEmailAndRole(String email, Role role);

@@ -10,6 +10,7 @@ import com.pairing.account.domain.model.SocialProvider;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -30,6 +31,12 @@ public interface AccountQueryUseCase {
      * 이걸 쓰고, 계정이 반드시 있어야 하는 곳은 {@link #getById} 를 그대로 쓴다.
      */
     Optional<Account> findById(Long accountId);
+
+    /**
+     * 여러 계정을 한 번에. 목록 화면이 항목마다 {@link #getById} 를 부르면 N+1 이라 만들었다.
+     * 없는 id 는 결과에서 빠진다.
+     */
+    Map<Long, Account> getByIds(Collection<Long> accountIds);
 
     Optional<Account> findByEmailAndRole(String email, Role role);
 
@@ -65,8 +72,21 @@ public interface AccountQueryUseCase {
     /** 매칭/협상 도메인이 freelancer_profile.id 로 프리랜서를 다시 찾을 때 쓴다. 없으면 empty. */
     Optional<FreelancerProfile> findFreelancerProfileById(Long freelancerProfileId);
 
+    /**
+     * 여러 freelancer_profile.id 를 한 번에. 후보 목록이 항목마다
+     * {@link #findFreelancerProfileById} 를 부르면 N+1 이라 만들었다. 없는 id 는 결과에서 빠진다.
+     */
+    Map<Long, FreelancerProfile> findFreelancerProfilesByIds(Collection<Long> freelancerProfileIds);
+
     /** 매칭 도메인이 로그인 계정(accountId)을 freelancerId 로 변환할 때 쓴다. 없으면 empty. */
     Optional<FreelancerProfile> findFreelancerProfileByAccountId(Long accountId);
+
+    /**
+     * 여러 계정의 프로필을 accountId 로 한 번에. 목록 화면이 계정마다
+     * {@link #findFreelancerProfileByAccountId} 를 부르면 N+1 이라 만들었다.
+     * 프로필이 없는 계정은 결과에서 빠진다.
+     */
+    Map<Long, FreelancerProfile> findFreelancerProfilesByAccountIds(Collection<Long> accountIds);
 
     /** 매칭/협상 도메인이 client_profile.id 로 클라이언트를 다시 찾을 때 쓴다. 없으면 empty. */
     Optional<ClientProfile> findClientProfileById(Long clientProfileId);
