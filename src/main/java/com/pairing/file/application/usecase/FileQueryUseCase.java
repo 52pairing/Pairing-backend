@@ -2,6 +2,8 @@ package com.pairing.file.application.usecase;
 
 import com.pairing.file.application.result.FileResult;
 
+import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
 
 public interface FileQueryUseCase {
@@ -14,6 +16,12 @@ public interface FileQueryUseCase {
      * fileId 가 null 이거나 대상이 없으면 empty (다른 도메인은 이걸 profileImageUrl 등에 null 로 반영하면 된다).
      */
     Optional<String> findObjectKey(Long fileId);
+
+    /**
+     * 여러 fileId 를 한 번에. 목록 화면이 항목마다 {@link #findObjectKey} 를 부르면 N+1 이라 만들었다.
+     * fileId 가 null 이거나 대상이 없는 항목은 결과에서 빠진다. 호출부가 {@code getOrDefault} 등으로 채운다.
+     */
+    Map<Long, String> findObjectKeys(Collection<Long> fileIds);
 
     /**
      * 파일 내용을 바이트로 읽는다. 없거나 스토리지에서 못 읽으면 empty.

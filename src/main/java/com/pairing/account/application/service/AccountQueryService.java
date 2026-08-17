@@ -22,7 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -44,6 +47,12 @@ public class AccountQueryService implements AccountQueryUseCase {
     @Override
     public Optional<Account> findById(Long accountId) {
         return accountRepository.findById(accountId);
+    }
+
+    @Override
+    public Map<Long, Account> getByIds(Collection<Long> accountIds) {
+        return accountRepository.findByIdIn(accountIds).stream()
+                .collect(Collectors.toMap(Account::getId, Function.identity()));
     }
 
     @Override
@@ -105,8 +114,20 @@ public class AccountQueryService implements AccountQueryUseCase {
     }
 
     @Override
+    public Map<Long, FreelancerProfile> findFreelancerProfilesByIds(Collection<Long> freelancerProfileIds) {
+        return freelancerProfileRepository.findByIdIn(freelancerProfileIds).stream()
+                .collect(Collectors.toMap(FreelancerProfile::getId, Function.identity()));
+    }
+
+    @Override
     public Optional<FreelancerProfile> findFreelancerProfileByAccountId(Long accountId) {
         return freelancerProfileRepository.findByAccountId(accountId);
+    }
+
+    @Override
+    public Map<Long, FreelancerProfile> findFreelancerProfilesByAccountIds(Collection<Long> accountIds) {
+        return freelancerProfileRepository.findByAccountIdIn(accountIds).stream()
+                .collect(Collectors.toMap(FreelancerProfile::getAccountId, Function.identity()));
     }
 
     @Override

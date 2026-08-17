@@ -26,8 +26,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @Transactional
@@ -45,6 +50,33 @@ public class ResumeService implements ResumeUseCase {
     @Transactional(readOnly = true)
     public Optional<ResumeResult> findMyResume(Long accountId) {
         return resumeRepository.findByAccountId(accountId).map(resume -> toResult(accountId, resume));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, ResumeResult> findResumes(Collection<Long> accountIds) {
+        List<Resume> resumes = resumeRepository.findByAccountIdIn(accountIds);
+        if (resumes.isEmpty()) {
+            return Map.of();
+        }
+
+        List<Long> ids = resumes.stream().map(Resume::getAccountId).toList();
+        Map<Long, Account> accounts = accountQueryUseCase.getByIds(ids);
+        Map<Long, FreelancerProfile> profiles = accountQueryUseCase.findFreelancerProfilesByAccountIds(ids);
+
+        List<Long> fileIds = resumes.stream()
+                .flatMap(r -> Stream.of(r.getProfileFileId(), r.getPortfolioFileId()))
+                .filter(Objects::nonNull)
+                .toList();
+        Map<Long, String> objectKeys = fileQueryUseCase.findObjectKeys(fileIds);
+
+        return resumes.stream().collect(Collectors.toMap(Resume::getAccountId, resume -> {
+            Account account = accounts.get(resume.getAccountId());
+            LocalDate birthDate = Optional.ofNullable(profiles.get(resume.getAccountId()))
+                    .map(FreelancerProfile::getBirthDate)
+                    .orElse(null);
+            return toResult(resume, account, birthDate, objectKeys);
+        }));
     }
 
     @Override
@@ -136,7 +168,30 @@ public class ResumeService implements ResumeUseCase {
         LocalDate birthDate = accountQueryUseCase.findFreelancerProfileByAccountId(accountId)
                 .map(FreelancerProfile::getBirthDate)
                 .orElse(null);
+        String profileImageUrl = fileQueryUseCase.findObjectKey(resume.getProfileFileId()).orElse(null);
+        String portfolioUrl = fileQueryUseCase.findObjectKey(resume.getPortfolioFileId()).orElse(null);
+        return toResult(resume, account, birthDate, profileImageUrl, portfolioUrl);
+    }
 
+    /** {@link #findResumes} 가 미리 배치로 모은 계정·파일 정보를 받아 조립한다. */
+    private ResumeResult toResult(Resume resume, Account account, LocalDate birthDate, Map<Long, String> objectKeys) {
+        return toResult(resume, account, birthDate,
+                objectKey(objectKeys, resume.getProfileFileId()),
+                objectKey(objectKeys, resume.getPortfolioFileId()));
+    }
+
+    /**
+     * fileId 가 null 이면 조회하지 않는다.
+     *
+     * <p>{@code Map.of()} 가 돌려주는 불변 맵은 {@code get(null)} 에 NPE 를 던진다. 파일이 없는
+     * 이력서가 섞여 있으면 목록 전체가 500 으로 터지므로 여기서 먼저 끊는다.
+     */
+    private static String objectKey(Map<Long, String> objectKeys, Long fileId) {
+        return fileId == null ? null : objectKeys.get(fileId);
+    }
+
+    private ResumeResult toResult(Resume resume, Account account, LocalDate birthDate,
+                                  String profileImageUrl, String portfolioUrl) {
         // 연락처를 비워두면 계정 값을 그대로 보여준다. 계정 값이 바뀌면 다음 조회부터 자동으로 반영된다.
         String contactPhone = isBlank(resume.getContactPhone()) ? account.getPhone() : resume.getContactPhone();
         String contactEmail = isBlank(resume.getContactEmail()) ? account.getEmail() : resume.getContactEmail();
@@ -151,9 +206,9 @@ public class ResumeService implements ResumeUseCase {
                 resume.getZipCode(),
                 resume.getAddress(),
                 resume.getAddressDetail(),
-                fileQueryUseCase.findObjectKey(resume.getProfileFileId()).orElse(null),
+                profileImageUrl,
                 resume.getSelfIntroduction(),
-                fileQueryUseCase.findObjectKey(resume.getPortfolioFileId()).orElse(null),
+                portfolioUrl,
                 resume.getEducations(),
                 resume.getCareers(),
                 resume.getCertificates(),

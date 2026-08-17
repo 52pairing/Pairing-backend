@@ -11,7 +11,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -34,6 +39,16 @@ public class FileQueryService implements FileQueryUseCase {
             return Optional.empty();
         }
         return fileRepository.findById(fileId).map(UploadedFile::getObjectKey);
+    }
+
+    @Override
+    public Map<Long, String> findObjectKeys(Collection<Long> fileIds) {
+        List<Long> validIds = fileIds.stream().filter(Objects::nonNull).toList();
+        if (validIds.isEmpty()) {
+            return Map.of();
+        }
+        return fileRepository.findByIdIn(validIds).stream()
+                .collect(Collectors.toMap(UploadedFile::getId, UploadedFile::getObjectKey));
     }
 
     @Override

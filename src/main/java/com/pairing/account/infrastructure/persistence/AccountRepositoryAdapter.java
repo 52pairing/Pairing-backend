@@ -9,6 +9,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +29,18 @@ public class AccountRepositoryAdapter implements AccountRepository {
     @Override
     public Optional<Account> findById(Long id) {
         return springDataRepository.findById(id).map(accountMapper::toDomain);
+    }
+
+    @Override
+    public List<Account> findByIdIn(Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        // JpaRepository 가 이미 제공하는 findAllById 를 쓴다. SpringDataAccountRepository 에
+        // 새 메서드를 추가할 필요가 없다.
+        return springDataRepository.findAllById(ids).stream()
+                .map(accountMapper::toDomain)
+                .toList();
     }
 
     @Override

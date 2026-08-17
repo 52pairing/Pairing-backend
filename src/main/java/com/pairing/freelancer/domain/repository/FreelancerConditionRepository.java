@@ -15,6 +15,14 @@ public interface FreelancerConditionRepository {
     Optional<FreelancerCondition> findByAccountId(Long accountId);
 
     /**
+     * 여러 계정의 조건을 한 번에. 매칭 도메인이 노출 확정 시점에 프리랜서마다
+     * {@link #findByAccountId} 를 부르면 N+1 이라 배치로 받는다.
+     *
+     * <p>조건을 등록하지 않은 계정은 결과에 없다. 부르는 쪽이 없는 계정을 걸러 쓴다.
+     */
+    List<FreelancerCondition> findByAccountIdIn(Collection<Long> accountIds);
+
+    /**
      * 직무가 같고 요구 스킬 중 {@code minSkillMatchCount} 개 이상을 보유하며 이력서를 완성한 계정 id.
      *
      * <p>계정 자격(활성·AI 매칭 동의)은 여기서 보지 않는다. account 도메인 소관이라

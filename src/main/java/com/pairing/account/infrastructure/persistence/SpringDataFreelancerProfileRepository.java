@@ -12,7 +12,11 @@ public interface SpringDataFreelancerProfileRepository extends JpaRepository<Fre
 
     Optional<FreelancerProfileJpaEntity> findByAccountIdAndDeletedAtIsNull(Long accountId);
 
+    List<FreelancerProfileJpaEntity> findByAccountIdInAndDeletedAtIsNull(Collection<Long> accountIds);
+
     Optional<FreelancerProfileJpaEntity> findByIdAndDeletedAtIsNull(Long id);
+
+    List<FreelancerProfileJpaEntity> findByIdInAndDeletedAtIsNull(Collection<Long> ids);
 
     /**
      * 활성 계정이면서 AI 매칭에 동의했고 매칭을 일시중지하지 않은 프리랜서의 계정 id. (프로젝트 사전 검수)

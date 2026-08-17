@@ -5,13 +5,25 @@ import com.pairing.freelancer.application.command.UpsertResumeCommand;
 import com.pairing.freelancer.application.result.ResumeDraftResult;
 import com.pairing.freelancer.application.result.ResumeResult;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface ResumeUseCase {
 
     /** 등록하지 않았으면 empty. */
     Optional<ResumeResult> findMyResume(Long accountId);
+
+    /**
+     * 여러 계정의 이력서를 한 번에. 매칭 도메인이 노출 확정 시점에 후보마다
+     * {@link #findMyResume} 를 부르면 N+1 이라 만들었다.
+     *
+     * <p>이력서 테이블 조회는 한 번으로 끝나지만, 각 결과를 채우는 계정 이름·프로필
+     * 이미지 조회는 <b>아직 건별이다</b> — account/file 도메인에 배치 포트가 생기면
+     * 마저 줄어든다. 이력서를 등록하지 않은 계정은 결과에 없다.
+     */
+    Map<Long, ResumeResult> findResumes(Collection<Long> accountIds);
 
     /** 없으면 생성하고 있으면 전체 교체한다. 등록에 성공하면 임시 저장 초안은 지워진다. */
     ResumeResult upsert(UpsertResumeCommand command);

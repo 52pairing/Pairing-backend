@@ -6,6 +6,8 @@ import com.pairing.file.infrastructure.mapper.FileMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -24,6 +26,18 @@ public class FileRepositoryAdapter implements FileRepository {
     @Override
     public Optional<UploadedFile> findById(Long id) {
         return springDataRepository.findById(id).map(fileMapper::toDomain);
+    }
+
+    @Override
+    public List<UploadedFile> findByIdIn(Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        // JpaRepository 가 이미 제공하는 findAllById 를 쓴다. SpringDataFileRepository 에
+        // 새 메서드를 추가할 필요가 없다.
+        return springDataRepository.findAllById(ids).stream()
+                .map(fileMapper::toDomain)
+                .toList();
     }
 
     @Override

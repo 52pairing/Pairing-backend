@@ -74,7 +74,11 @@ public class GradeCalculator {
             return false;
         }
         try {
-            return projectQueryUseCase.getById(contract.getProjectId()).getStatus() == ProjectStatus.CLOSED;
+            // 상태 하나만 필요해서 findStatus 를 쓴다. getById 는 포지션·스킬·첨부까지 딸려오는
+            // 애그리거트 조회라, 계약마다(최대 SCAN_LIMIT 건) 부르면 그만큼 낭비가 커진다.
+            // 이 메서드를 부르는 GradeRecalculationService 는 전체 활성 계정을 도는 배치라
+            // 그 낭비가 계정 수만큼 배가된다.
+            return projectQueryUseCase.findStatus(contract.getProjectId()) == ProjectStatus.CLOSED;
         } catch (BusinessException e) {
             // 프로젝트가 지워졌으면 판단할 근거가 없다. 실적으로 세지 않는다.
             return false;
