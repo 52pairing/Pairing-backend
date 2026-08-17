@@ -98,8 +98,12 @@ public class ReviewService implements ReviewUseCase {
         Review review = Review.create(command.contractId(), projectId, command.reviewerAccountId(),
                 reviewerRole, revieweeAccountId, revieweeRole, command.counterpartScore(),
                 command.counterpartContent());
+        // 프로젝트명·작성자명을 여기서 한 번 찾아 후기에 복사한다. 메인 화면은 이 후기를 6건씩
+        // 읽는데, 그때마다 되찾으면 조회가 건수만큼 늘어난다. 쓰기는 한 번뿐이라 여기가 싸다.
         SiteReview siteReview = SiteReview.create(command.contractId(), projectId,
-                command.reviewerAccountId(), reviewerRole, command.siteScore(), command.siteContent());
+                command.reviewerAccountId(), reviewerRole, command.siteScore(), command.siteContent(),
+                resolveProjectTitle(projectId),
+                resolveDisplayName(command.reviewerAccountId(), reviewerRole));
 
         Review saved = new TransactionTemplate(transactionManager).execute(status -> {
             Review savedReview = reviewRepository.save(review);

@@ -324,9 +324,12 @@ class HomeIntegrationTest {
      */
     private void promote(Long siteReviewId) {
         SiteReview origin = siteReviewDomainRepository.findById(siteReviewId).orElseThrow();
+        // 프로젝트명·작성자명은 작성 시점에 복사된 값이라 그대로 옮긴다. 여기서 다시 만들면
+        // "홍보를 켜면 이름이 바뀐다"는 없는 동작을 테스트가 허용하게 된다.
         siteReviewDomainRepository.save(SiteReview.reconstitute(
                 origin.getId(), origin.getContractId(), origin.getProjectId(), origin.getWriterAccountId(),
-                origin.getWriterRole(), origin.getScore(), origin.getContent(), true, origin.getCreatedAt()));
+                origin.getWriterRole(), origin.getScore(), origin.getContent(), true,
+                origin.getProjectTitle(), origin.getWriterName(), origin.getCreatedAt()));
     }
 
     private Long clientAccountId() {
