@@ -64,12 +64,25 @@ public class SiteReviewJpaEntity {
     @Column(name = "promoted", nullable = false)
     private boolean promoted;
 
+    /**
+     * 작성 시점의 프로젝트명·작성자명 사본.
+     *
+     * <p>둘 다 {@code nullable} 이다. 작성 시점에 못 찾을 수 있고(계정 삭제 등), 컬럼을 추가하기 전에
+     * 쌓인 후기는 백필 전까지 비어 있다. 화면은 이미 값이 없는 경우를 처리하고 있다.
+     */
+    @Column(name = "project_title", length = 200)
+    private String projectTitle;
+
+    @Column(name = "writer_name", length = 100)
+    private String writerName;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     public SiteReviewJpaEntity(Long id, Long contractId, Long projectId, Long writerAccountId,
                                PartyRole writerRole, int score, String content,
-                               boolean promoted, LocalDateTime createdAt) {
+                               boolean promoted, String projectTitle, String writerName,
+                               LocalDateTime createdAt) {
         this.id = id;
         this.contractId = contractId;
         this.projectId = projectId;
@@ -78,6 +91,8 @@ public class SiteReviewJpaEntity {
         this.score = score;
         this.content = content;
         this.promoted = promoted;
+        this.projectTitle = projectTitle;
+        this.writerName = writerName;
         this.createdAt = createdAt;
     }
 }

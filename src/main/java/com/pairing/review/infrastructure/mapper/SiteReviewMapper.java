@@ -16,6 +16,6 @@ public interface SiteReviewMapper {
         }
         return SiteReview.reconstitute(entity.getId(), entity.getContractId(), entity.getProjectId(),
                 entity.getWriterAccountId(), entity.getWriterRole(), entity.getScore(), entity.getContent(),
-                entity.isPromoted(), entity.getCreatedAt());
+                entity.isPromoted(), entity.getProjectTitle(), entity.getWriterName(), entity.getCreatedAt());
     }
 }
