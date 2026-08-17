@@ -254,9 +254,14 @@ public class Settlement {
         return this.phase == SettlementPhase.DEPOSIT && this.payerRole == PartyRole.CLIENT;
     }
 
-    /** 클라이언트 성공보수 결제가 곧 프로젝트 종료다. 프리랜서 성공보수는 상태를 바꾸지 않는다. (P30) */
-    public boolean closesProject() {
-        return this.phase == SettlementPhase.SUCCESS_FEE && this.payerRole == PartyRole.CLIENT;
+    /**
+     * 성공보수 결제는 프로젝트 종료 후보다. (P30)
+     *
+     * <p>이 한 건만으로는 부족하다. 클라이언트와 프리랜서가 <b>모두</b> 내야 종료다.
+     * 최종 판정은 호출부가 한다. {@link #mayStartProgress()} 와 같은 구조다.
+     */
+    public boolean mayCloseProject() {
+        return this.phase == SettlementPhase.SUCCESS_FEE;
     }
 
     /**
