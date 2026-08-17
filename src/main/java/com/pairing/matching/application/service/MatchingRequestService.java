@@ -35,6 +35,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -83,12 +84,23 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
             throw new BusinessException(MatchingErrorCode.HEADCOUNT_EXCEEDED);
         }
 
-        return candidateIds.stream()
-                .map(candidateId -> sendOneRequest(positionId, candidateId, accountId))
+        // 검증·생성은 후보마다 하되(선택 가능 여부 등은 후보별로 다르다), 응답 조립은 한 번에 배치로
+        // 한다 — 후보 수만큼 build()를 부르면 목록 조회와 같은 N+1이 발송 경로에도 생긴다. 발송은
+        // 보통 소수(모집 인원 이하)라 심각하진 않았지만, 이미 만든 buildList()를 그대로 쓸 수 있어
+        // 굳이 남겨둘 이유가 없다.
+        List<MatchingRequest> requests = candidateIds.stream()
+                .map(candidateId -> createOneRequest(positionId, candidateId, accountId))
                 .toList();
+
+        List<MatchingRequestResponse> responses = matchingRequestResponseAssembler.buildList(requests, accountId);
+        for (MatchingRequestResponse response : responses) {
+            eventPublisher.publishEvent(
+                    MatchingNotificationRequested.requested(response.requestId(), response.projectTitle()));
+        }
+        return responses;
     }
 
-    private MatchingRequestResponse sendOneRequest(Long positionId, Long candidateId, Long accountId) {
+    private MatchingRequest createOneRequest(Long positionId, Long candidateId, Long accountId) {
         MatchingCandidate candidate = matchingCandidateRepository.findById(candidateId)
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.CANDIDATE_NOT_FOUND));
         if (!candidate.getPositionId().equals(positionId)) {
@@ -114,12 +126,7 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
 
         MatchingRequest request = MatchingRequest.create(projectId, positionId, candidateId,
                 candidate.getFreelancerId());
-        request = matchingRequestRepository.save(request);
-
-        MatchingRequestResponse response = matchingRequestResponseAssembler.build(request, accountId);
-        eventPublisher.publishEvent(
-                MatchingNotificationRequested.requested(request.getId(), response.projectTitle()));
-        return response;
+        return matchingRequestRepository.save(request);
     }
 
     @Override
@@ -345,8 +352,10 @@ public class MatchingRequestService implements MatchingRequestCommandUseCase, Ma
     }
 
     private PageResponse<MatchingRequestResponse> toPageResponse(Page<MatchingRequest> requestPage, Long accountId) {
-        Page<MatchingRequestResponse> mapped = requestPage.map(request ->
-                matchingRequestResponseAssembler.build(request, accountId));
+        List<MatchingRequestResponse> responses = matchingRequestResponseAssembler
+                .buildList(requestPage.getContent(), accountId);
+        Page<MatchingRequestResponse> mapped = new PageImpl<>(responses, requestPage.getPageable(),
+                requestPage.getTotalElements());
         return PageResponse.from(mapped);
     }
 }

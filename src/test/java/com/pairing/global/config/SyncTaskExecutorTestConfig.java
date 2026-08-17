@@ -1,5 +1,6 @@
 package com.pairing.global.config;
 
+import com.pairing.matching.infrastructure.config.MatchingAsyncExecutorConfig;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -23,6 +24,16 @@ public class SyncTaskExecutorTestConfig {
     @Bean
     @Primary
     public Executor syncTaskExecutor() {
+        return new SyncTaskExecutor();
+    }
+
+    /**
+     * 매칭 전용 실행기({@code MatchingAsyncExecutorConfig})도 이름으로 직접 지정해 부르므로
+     * ({@code @Async(EXECUTOR_NAME)}) 위 {@code @Primary}만으로는 안 바뀐다. 같은 이름으로
+     * 동기 실행기를 먼저 등록해 실제 스레드 풀이 안 뜨게 한다.
+     */
+    @Bean(MatchingAsyncExecutorConfig.EXECUTOR_NAME)
+    public Executor matchingExecutor() {
         return new SyncTaskExecutor();
     }
 }

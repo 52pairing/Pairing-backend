@@ -7,6 +7,7 @@ import com.pairing.matching.application.result.EmbeddingReindexResult;
 import com.pairing.matching.application.usecase.EmbeddingReindexUseCase;
 import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.domain.repository.MatchingRoundRepository;
+import com.pairing.matching.infrastructure.config.MatchingAsyncExecutorConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -40,7 +41,7 @@ public class EmbeddingReindexService implements EmbeddingReindexUseCase {
      * 호출하지 않고 컨트롤러 → 이 메서드 순서로만 들어온다.
      */
     @Override
-    @Async
+    @Async(MatchingAsyncExecutorConfig.EXECUTOR_NAME)
     public void startReindexAll() {
         log.info("[임베딩 재색인 시작]");
         EmbeddingReindexResult result = reindexAll();

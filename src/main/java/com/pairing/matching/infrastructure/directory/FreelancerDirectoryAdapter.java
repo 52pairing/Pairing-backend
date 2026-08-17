@@ -19,7 +19,9 @@ import com.pairing.matching.exception.MatchingErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -52,6 +54,17 @@ public class FreelancerDirectoryAdapter implements FreelancerDirectoryPort {
         FreelancerCandidateSummaryResult summary = freelancerCandidateSummaryUseCase.getSummary(freelancerId);
         return new FreelancerCardSummary(summary.name(), summary.profileImageUrl(), summary.grade(),
                 summary.ratingAverage(), summary.reviewCount());
+    }
+
+    @Override
+    public Map<Long, FreelancerCardSummary> findCardSummaries(List<Long> freelancerIds) {
+        Map<Long, FreelancerCandidateSummaryResult> summaries =
+                freelancerCandidateSummaryUseCase.getSummaries(freelancerIds);
+        Map<Long, FreelancerCardSummary> result = new LinkedHashMap<>();
+        summaries.forEach((freelancerId, summary) -> result.put(freelancerId,
+                new FreelancerCardSummary(summary.name(), summary.profileImageUrl(), summary.grade(),
+                        summary.ratingAverage(), summary.reviewCount())));
+        return result;
     }
 
     @Override

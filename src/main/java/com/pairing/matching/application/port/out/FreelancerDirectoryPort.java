@@ -6,6 +6,7 @@ import com.pairing.matching.application.result.FreelancerCardSummary;
 import com.pairing.matching.application.result.FreelancerResumeSummary;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -38,6 +39,12 @@ public interface FreelancerDirectoryPort {
 
     /** 후보 카드 노출용 요약(이름/사진/등급/평점). */
     FreelancerCardSummary findCardSummary(Long freelancerId);
+
+    /**
+     * {@link #findCardSummary}의 일괄 조회. 후보 목록이 카드마다 개별 호출하면 N+1이라 만들었다.
+     * 없는 id는 결과 맵에서 빠진다 — 부르는 쪽이 걸러 쓴다.
+     */
+    Map<Long, FreelancerCardSummary> findCardSummaries(List<Long> freelancerIds);
 
     /**
      * 협상 스냅샷 캡처·가드 재검증에 쓰는 현재 조건. 새 스키마를 만들지 않고

@@ -3,6 +3,7 @@ package com.pairing.matching.application.service;
 import com.pairing.matching.application.port.out.MatchingPort;
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
 import com.pairing.matching.application.result.ProjectPositionSummary;
+import com.pairing.matching.infrastructure.config.MatchingAsyncExecutorConfig;
 import com.pairing.project.application.event.ProjectUpdatedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +39,7 @@ class ProjectUpdatedEventListener {
     private final ProjectDirectoryPort projectDirectoryPort;
     private final MatchingPort matchingPort;
 
-    @Async
+    @Async(MatchingAsyncExecutorConfig.EXECUTOR_NAME)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onProjectUpdated(ProjectUpdatedEvent event) {
         List<Long> positionIds = projectDirectoryPort.findPositionIds(event.projectId());

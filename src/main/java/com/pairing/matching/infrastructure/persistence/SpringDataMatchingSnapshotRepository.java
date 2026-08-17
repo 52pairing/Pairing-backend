@@ -16,4 +16,7 @@ public interface SpringDataMatchingSnapshotRepository extends JpaRepository<Matc
     List<MatchingSnapshotJpaEntity> findAllBySnapshotType(SnapshotType snapshotType);
 
     List<MatchingSnapshotJpaEntity> findAllByPositionIdAndSnapshotType(Long positionId, SnapshotType snapshotType);
+
+    List<MatchingSnapshotJpaEntity> findAllByPositionIdInAndSnapshotType(List<Long> positionIds,
+                                                                          SnapshotType snapshotType);
 }
