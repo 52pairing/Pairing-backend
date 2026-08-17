@@ -27,15 +27,16 @@ public interface SpringDataFreelancerConditionRepository extends JpaRepository<F
      * 그쪽 엔티티를 조인하면 account 가 구조를 바꿀 때 이 쿼리가 같이 깨진다.
      */
     @Query("""
-            SELECT c.accountId FROM FreelancerConditionJpaEntity c
-             WHERE c.jobRole = :jobRole
-               AND (SELECT COUNT(DISTINCT s.skillCode)
-                      FROM FreelancerConditionJpaEntity c2 JOIN c2.skills s
-                     WHERE c2.id = c.id AND s.skillCode IN :skills) >= :minSkillMatchCount
-               AND EXISTS (SELECT 1 FROM ResumeJpaEntity r
-                            WHERE r.accountId = c.accountId
-                              AND r.status = com.pairing.freelancer.domain.model.ResumeStatus.COMPLETED)
-            """)
+        SELECT c.accountId FROM FreelancerConditionJpaEntity c
+          JOIN c.skills s
+         WHERE c.jobRole = :jobRole
+           AND s.skillCode IN :skills
+           AND EXISTS (SELECT 1 FROM ResumeJpaEntity r
+                        WHERE r.accountId = c.accountId
+                          AND r.status = com.pairing.freelancer.domain.model.ResumeStatus.COMPLETED)
+         GROUP BY c.id, c.accountId
+        HAVING COUNT(DISTINCT s.skillCode) >= :minSkillMatchCount
+        """)
     List<Long> findMatchableAccountIds(@Param("jobRole") JobRole jobRole,
                                        @Param("skills") Collection<SkillCode> skills,
                                        @Param("minSkillMatchCount") int minSkillMatchCount);
