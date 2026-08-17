@@ -74,6 +74,14 @@ public interface SettlementRepository {
     boolean existsUnpaidFreelancerDeposit(Long projectId);
 
     /**
+     * 아직 안 낸 성공보수가 남아 있는지. 역할을 가리지 않는다.
+     *
+     * <p>클라이언트와 프리랜서가 모두 내야 프로젝트를 종료로 넘긴다(P30).
+     * {@link #existsUnpaidFreelancerDeposit} 와 같은 기준이고 건수가 아니라 존재만 본다.
+     */
+    boolean existsUnpaidSuccessFee(Long projectId);
+
+    /**
      * 주어진 계약들 중 프리랜서 착수금을 이미 낸 계약의 ID.
      *
      * <p>계약 목록의 "결제 필요" 배지 판정에 쓴다. 계약마다 되물으면 페이지 크기만큼 쿼리가 늘어나

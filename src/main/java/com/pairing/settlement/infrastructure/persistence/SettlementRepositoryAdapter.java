@@ -116,6 +116,12 @@ public class SettlementRepositoryAdapter implements SettlementRepository {
                 projectId, PartyRole.FREELANCER, SettlementPhase.DEPOSIT, PAYABLE_STATUSES);
     }
 
+    @Override
+    public boolean existsUnpaidSuccessFee(Long projectId) {
+        return springDataRepository.existsByProjectIdAndPhaseAndStatusIn(
+                projectId, SettlementPhase.SUCCESS_FEE, PAYABLE_STATUSES);
+    }
+
     /** 빈 목록으로 부르면 {@code IN ()} 이 되어 DB 가 거부한다. 쿼리를 태우지 않고 바로 돌려준다. */
     @Override
     public Set<Long> findPaidFreelancerDepositContractIds(Collection<Long> contractIds) {

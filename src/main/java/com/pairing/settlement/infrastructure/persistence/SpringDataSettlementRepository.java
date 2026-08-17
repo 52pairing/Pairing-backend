@@ -118,6 +118,10 @@ public interface SpringDataSettlementRepository extends JpaRepository<Settlement
     boolean existsByProjectIdAndPayerRoleAndPhaseAndStatusIn(
             Long projectId, PartyRole payerRole, SettlementPhase phase, List<SettlementStatus> statuses);
 
+    /** 프로젝트를 종료로 넘길 수 있는지 판정용. 역할을 가리지 않고 미결제 성공보수만 본다. */
+    boolean existsByProjectIdAndPhaseAndStatusIn(
+            Long projectId, SettlementPhase phase, List<SettlementStatus> statuses);
+
     default Optional<SettlementJpaEntity> findFirstPayable(Long projectId, PartyRole payerRole,
                                                            List<SettlementStatus> statuses) {
         return findByProjectIdAndPayerRoleAndStatusInOrderByIdAsc(projectId, payerRole, statuses)

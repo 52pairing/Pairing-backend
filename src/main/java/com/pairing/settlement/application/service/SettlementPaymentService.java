@@ -44,16 +44,30 @@ public class SettlementPaymentService implements SettlementPaymentUseCase {
         settlement.pay(paymentMethodId);
         Settlement saved = settlementRepository.save(settlement);
 
-        // 클라 착수금은 모집 시작(P27), 클라 성공보수는 종료(P30),
-        // 프리 착수금은 전원이 다 냈을 때 진행중(P27) 이다. 프리 성공보수는 상태를 바꾸지 않는다.
+        // 클라 착수금은 모집 시작(P27), 프리 착수금은 전원이 다 냈을 때 진행중(P27),
+        // 성공보수는 클라·프리 양쪽이 다 냈을 때 종료(P30) 다.
         if (saved.startsRecruiting()) {
             projectRecruitStarterPort.startRecruiting(saved.getProjectId());
-        } else if (saved.closesProject()) {
-            projectCloserPort.close(saved.getProjectId());
+        } else if (saved.mayCloseProject()) {
+            closeIfSettled(saved.getProjectId());
         } else if (saved.mayStartProgress()) {
             startProgressIfSettled(saved.getProjectId());
         }
         return SettlementResult.from(saved);
+    }
+
+    /**
+     * 그 프로젝트의 성공보수가 클라이언트·프리랜서 모두 결제됐으면 종료로 넘긴다. (P30)
+     *
+     * <p>한쪽만 냈을 때 종료하면 나머지 한쪽의 결제 버튼이 화면에서 사라진다.
+     * 방금 결제한 건은 이미 PAID 라 미결제로 잡히지 않는다.
+     * {@link #startProgressIfSettled} 와 같은 구조다.
+     */
+    private void closeIfSettled(Long projectId) {
+        if (settlementRepository.existsUnpaidSuccessFee(projectId)) {
+            return;
+        }
+        projectCloserPort.close(projectId);
     }
 
     /**
