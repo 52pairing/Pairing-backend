@@ -536,6 +536,18 @@ window.K6_CATALOG = [
     "hasBody": false
   },
   {
+    "key": "proj_prereview",
+    "method": "POST",
+    "path": "/api/v1/projects/pre-review",
+    "target": "spring",
+    "auth": "CLIENT",
+    "group": "read",
+    "label": "프로젝트 사전 검수",
+    "warn": "POST 지만 쓰기가 없다(readOnly 트랜잭션). 포지션 수만큼 집계 쿼리가 나가는 자리다",
+    "needs": [],
+    "hasBody": true
+  },
+  {
     "key": "chatroom_detail",
     "method": "GET",
     "path": "/api/v1/chat-rooms/{chatRoomId}",

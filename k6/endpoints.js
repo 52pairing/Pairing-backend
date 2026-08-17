@@ -91,7 +91,19 @@ export const ENDPOINTS = [
   { key: 'cl_projects',       method: 'GET', path: '/api/v1/projects/mine',                    target: 'spring', auth: 'CLIENT', group: 'read', label: '내 프로젝트 목록' },
   { key: 'cl_proj_tabs',      method: 'GET', path: '/api/v1/projects/mine/tab-counts',         target: 'spring', auth: 'CLIENT', group: 'read', label: '프로젝트 탭 카운트' },
   { key: 'cl_match_reqs',     method: 'GET', path: '/api/v1/matchings/requests',               target: 'spring', auth: 'CLIENT', group: 'read', label: '보낸 매칭 요청' },
-
+  {
+    key: 'proj_prereview', method: 'POST', path: '/api/v1/projects/pre-review',
+    target: 'spring', auth: 'CLIENT', group: 'read',
+    label: '프로젝트 사전 검수',
+    warn: 'POST 지만 쓰기가 없다(readOnly 트랜잭션). 포지션 수만큼 집계 쿼리가 나가는 자리다',
+    body: () => ({
+      positions: [
+        { jobRole: 'BACKEND',  headcount: 2, skills: ['JAVA', 'SPRING_BOOT'] },
+        { jobRole: 'FRONTEND', headcount: 2, skills: ['REACT', 'TYPESCRIPT'] },
+        { jobRole: 'DEVOPS',   headcount: 1, skills: ['AWS', 'DOCKER'] },
+      ],
+    }),
+  },
   // ---- 실제 ID 가 필요한 조회 ----------------------------------------------
   // setup() 이 목록 API 로 ID 를 찾아 채운다. 데이터가 없으면 이 항목들은 자동으로 빠진다.
   { key: 'chatroom_detail',   method: 'GET', path: '/api/v1/chat-rooms/{chatRoomId}',          target: 'spring', auth: 'any', group: 'read', needs: ['chatRoomId'], label: '채팅방 상세' },
