@@ -60,6 +60,7 @@ import com.pairing.terms.infrastructure.persistence.TermsJpaEntity;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import jakarta.servlet.http.Cookie;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -200,25 +201,7 @@ class MatchingIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        jdbcTemplate.update("DELETE FROM negotiation_message WHERE negotiation_id IN "
-                + "(SELECT id FROM negotiation WHERE project_id = ?)", PROJECT_ID);
-        jdbcTemplate.update("DELETE FROM negotiation_condition WHERE negotiation_id IN "
-                + "(SELECT id FROM negotiation WHERE project_id = ?)", PROJECT_ID);
-        jdbcTemplate.update("DELETE FROM negotiation WHERE project_id = ?", PROJECT_ID);
-        matchingRequestJpaRepository.deleteAll();
-        matchingCandidateJpaRepository.deleteAll();
-        matchingRoundJpaRepository.deleteAll();
-        jdbcTemplate.update("DELETE FROM matching_snapshot WHERE project_id = ?", PROJECT_ID);
-        jdbcTemplate.update("DELETE FROM position_skill WHERE position_id = ?", POSITION_ID);
-        jdbcTemplate.update("DELETE FROM project_position WHERE id = ?", POSITION_ID);
-        jdbcTemplate.update("DELETE FROM project WHERE id = ?", PROJECT_ID);
-        termsAgreementRepository.deleteAll();
-        paymentMethodRepository.deleteAll();
-        clientProfileRepository.deleteAll();
-        freelancerProfileRepository.deleteAll();
-        socialAccountRepository.deleteAll();
-        accountRepository.deleteAll();
-        termsRepository.deleteAll();
+        cleanUpAll();
 
         clientTermsId = saveTerms(TermsCode.SERVICE, "서비스 이용약관 동의", true, "CLIENT");
         freelancerTermsId = saveTerms(TermsCode.SERVICE, "서비스 이용약관 동의", true, "FREELANCER");
@@ -241,6 +224,43 @@ class MatchingIntegrationTest {
                 .orElseThrow().getId();
         seedProjectWithPosition(clientProfileId);
         seedMatchingSnapshots();
+    }
+
+    /**
+     * 마지막 테스트 메서드가 끝난 뒤에도 이 정리를 한 번 더 해야 한다. {@code freelancer_profile}을
+     * 명시적 id(계정 id와 동일하게)로 심는데({@link #seedFreelancerProfile}), 이 클래스는
+     * {@code @Transactional}이 아니라서(MockMvc로 실제 커밋된 상태를 확인해야 해서) 여기서 만든
+     * 행은 롤백되지 않는다. {@code @BeforeEach} 정리만 있으면 이 클래스의 <b>다음</b> 테스트는
+     * 안전하지만, 이 클래스가 마지막으로 실행된 뒤 남은 행은 아무도 안 지운다 — 다른 도메인의
+     * 테스트가 그 사이 같은(H2 named in-memory, {@code jdbc:h2:mem:testdb}로 전체 테스트가 공유)
+     * DB에서 자동 채번으로 같은 id를 집으면 PRIMARY KEY 충돌이 난다. 실제로 이 정리가 없어서
+     * negotiation 도메인 테스트가 실행 순서에 따라 무작위로 깨졌다(2026-08-16).
+     */
+    @AfterEach
+    void tearDown() {
+        cleanUpAll();
+    }
+
+    private void cleanUpAll() {
+        jdbcTemplate.update("DELETE FROM negotiation_message WHERE negotiation_id IN "
+                + "(SELECT id FROM negotiation WHERE project_id = ?)", PROJECT_ID);
+        jdbcTemplate.update("DELETE FROM negotiation_condition WHERE negotiation_id IN "
+                + "(SELECT id FROM negotiation WHERE project_id = ?)", PROJECT_ID);
+        jdbcTemplate.update("DELETE FROM negotiation WHERE project_id = ?", PROJECT_ID);
+        matchingRequestJpaRepository.deleteAll();
+        matchingCandidateJpaRepository.deleteAll();
+        matchingRoundJpaRepository.deleteAll();
+        jdbcTemplate.update("DELETE FROM matching_snapshot WHERE project_id = ?", PROJECT_ID);
+        jdbcTemplate.update("DELETE FROM position_skill WHERE position_id = ?", POSITION_ID);
+        jdbcTemplate.update("DELETE FROM project_position WHERE id = ?", POSITION_ID);
+        jdbcTemplate.update("DELETE FROM project WHERE id = ?", PROJECT_ID);
+        termsAgreementRepository.deleteAll();
+        paymentMethodRepository.deleteAll();
+        clientProfileRepository.deleteAll();
+        freelancerProfileRepository.deleteAll();
+        socialAccountRepository.deleteAll();
+        accountRepository.deleteAll();
+        termsRepository.deleteAll();
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {

@@ -41,6 +41,7 @@ import jakarta.persistence.EntityManagerFactory;
 import jakarta.servlet.http.Cookie;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -151,18 +152,7 @@ class MatchingRequestListQueryCountTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        matchingRequestRepository.findExpiredPending(LocalDateTime.now().plusYears(10))
-                .forEach(r -> jdbcTemplate.update("DELETE FROM matching_request WHERE id = ?", r.getId()));
-        jdbcTemplate.update("DELETE FROM matching_snapshot WHERE project_id IN (?, ?)", PROJECT_A_ID, PROJECT_B_ID);
-        jdbcTemplate.update("DELETE FROM project_position WHERE id IN (?, ?)", POSITION_A_ID, POSITION_B_ID);
-        jdbcTemplate.update("DELETE FROM project WHERE id IN (?, ?)", PROJECT_A_ID, PROJECT_B_ID);
-        termsAgreementRepository.deleteAll();
-        paymentMethodRepository.deleteAll();
-        clientProfileRepository.deleteAll();
-        freelancerProfileRepository.deleteAll();
-        socialAccountRepository.deleteAll();
-        accountRepository.deleteAll();
-        termsRepository.deleteAll();
+        cleanUpAll();
 
         clientTermsId = saveTerms(TermsCode.SERVICE, "서비스 이용약관 동의", true, "CLIENT");
         freelancerTermsId = saveTerms(TermsCode.SERVICE, "서비스 이용약관 동의", true, "FREELANCER");
@@ -192,6 +182,33 @@ class MatchingRequestListQueryCountTest {
             matchingRequestRepository.save(MatchingRequest.create(PROJECT_B_ID, POSITION_B_ID,
                     7_102_000L + i, freelancerProfileId));
         }
+    }
+
+    /**
+     * 이 클래스는 실제 회원가입 API로 계정을 만들어 {@code @Transactional}이 아니다(스냅샷 배치 조회
+     * 검증에 실제 커밋된 데이터가 필요해서). {@code @BeforeEach}만 있으면 이 클래스의 다음 테스트는
+     * 안전하지만, 마지막 테스트가 끝난 뒤 남은 계정·프로필은 아무도 안 지운다 — 전체 테스트가 같은
+     * H2 named in-memory DB(jdbc:h2:mem:testdb)를 공유하므로, 다른 도메인 테스트가 그 뒤 자동 채번으로
+     * 같은 id를 집으면 PRIMARY KEY 충돌이 난다(2026-08-16, MatchingIntegrationTest에서 실제로 겪음).
+     */
+    @AfterEach
+    void tearDown() {
+        cleanUpAll();
+    }
+
+    private void cleanUpAll() {
+        matchingRequestRepository.findExpiredPending(LocalDateTime.now().plusYears(10))
+                .forEach(r -> jdbcTemplate.update("DELETE FROM matching_request WHERE id = ?", r.getId()));
+        jdbcTemplate.update("DELETE FROM matching_snapshot WHERE project_id IN (?, ?)", PROJECT_A_ID, PROJECT_B_ID);
+        jdbcTemplate.update("DELETE FROM project_position WHERE id IN (?, ?)", POSITION_A_ID, POSITION_B_ID);
+        jdbcTemplate.update("DELETE FROM project WHERE id IN (?, ?)", PROJECT_A_ID, PROJECT_B_ID);
+        termsAgreementRepository.deleteAll();
+        paymentMethodRepository.deleteAll();
+        clientProfileRepository.deleteAll();
+        freelancerProfileRepository.deleteAll();
+        socialAccountRepository.deleteAll();
+        accountRepository.deleteAll();
+        termsRepository.deleteAll();
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {

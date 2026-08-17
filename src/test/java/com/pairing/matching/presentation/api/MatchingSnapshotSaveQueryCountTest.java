@@ -50,6 +50,7 @@ import io.github.bucket4j.Bucket;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
 import org.hibernate.stat.Statistics;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -153,20 +154,7 @@ class MatchingSnapshotSaveQueryCountTest {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("DELETE FROM matching_request WHERE project_id = ?", PROJECT_ID);
-        matchingCandidateJpaRepository.deleteAll();
-        matchingRoundJpaRepository.deleteAll();
-        jdbcTemplate.update("DELETE FROM matching_snapshot WHERE project_id = ?", PROJECT_ID);
-        jdbcTemplate.update("DELETE FROM position_skill WHERE position_id = ?", POSITION_ID);
-        jdbcTemplate.update("DELETE FROM project_position WHERE id = ?", POSITION_ID);
-        jdbcTemplate.update("DELETE FROM project WHERE id = ?", PROJECT_ID);
-        termsAgreementRepository.deleteAll();
-        paymentMethodRepository.deleteAll();
-        clientProfileRepository.deleteAll();
-        freelancerProfileRepository.deleteAll();
-        socialAccountRepository.deleteAll();
-        accountRepository.deleteAll();
-        termsRepository.deleteAll();
+        cleanUpAll();
 
         clientTermsId = saveTerms(TermsCode.SERVICE, "서비스 이용약관 동의", true, "CLIENT");
         freelancerTermsId = saveTerms(TermsCode.SERVICE, "서비스 이용약관 동의", true, "FREELANCER");
@@ -188,6 +176,34 @@ class MatchingSnapshotSaveQueryCountTest {
         for (int i = 0; i < 5; i++) {
             seedSimpleFreelancer(8_201_000L + i);
         }
+    }
+
+    /**
+     * 이 클래스는 실제 회원가입 API로 계정을 만들어 {@code @Transactional}이 아니다. 마지막 테스트가
+     * 끝난 뒤 남은 계정·프로필을 안 지우면, 전체 테스트가 공유하는 H2 named in-memory DB에서 다른
+     * 도메인 테스트가 자동 채번으로 같은 id를 집어 PRIMARY KEY 충돌이 난다
+     * (2026-08-16, MatchingIntegrationTest에서 실제로 겪음).
+     */
+    @AfterEach
+    void tearDown() {
+        cleanUpAll();
+    }
+
+    private void cleanUpAll() {
+        jdbcTemplate.update("DELETE FROM matching_request WHERE project_id = ?", PROJECT_ID);
+        matchingCandidateJpaRepository.deleteAll();
+        matchingRoundJpaRepository.deleteAll();
+        jdbcTemplate.update("DELETE FROM matching_snapshot WHERE project_id = ?", PROJECT_ID);
+        jdbcTemplate.update("DELETE FROM position_skill WHERE position_id = ?", POSITION_ID);
+        jdbcTemplate.update("DELETE FROM project_position WHERE id = ?", POSITION_ID);
+        jdbcTemplate.update("DELETE FROM project WHERE id = ?", PROJECT_ID);
+        termsAgreementRepository.deleteAll();
+        paymentMethodRepository.deleteAll();
+        clientProfileRepository.deleteAll();
+        freelancerProfileRepository.deleteAll();
+        socialAccountRepository.deleteAll();
+        accountRepository.deleteAll();
+        termsRepository.deleteAll();
     }
 
     private Long saveTerms(TermsCode code, String title, boolean required, String targetRole) {
