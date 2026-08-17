@@ -1,6 +1,7 @@
 package com.pairing.matching.application.service;
 
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
+import com.pairing.matching.infrastructure.config.MatchingAsyncExecutorConfig;
 import com.pairing.project.application.event.RecruitingStartedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +43,7 @@ class RecruitingStartedEventListener {
     private final RecruitingStartedPositionHandler positionHandler;
     private final MatchingRoundFiller roundFiller;
 
-    @Async
+    @Async(MatchingAsyncExecutorConfig.EXECUTOR_NAME)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onRecruitingStarted(RecruitingStartedEvent event) {
         List<Long> positionIds = projectDirectoryPort.findPositionIds(event.projectId());

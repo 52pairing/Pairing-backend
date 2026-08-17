@@ -2194,3 +2194,388 @@ DB nullable). 필수인 것은 `mainTask` 이고 그건 이미 나가고 있었�
 - 카드를 라이브로 되돌리는 변이 → 1건 실패(`expected:<6500000> but was:<9000000>`)
 - 평판 테스트는 스냅샷에 실제 계정과 **다른 이름**을 심어서 판별한다. 같은 이름을 쓰면 얼린 것과
   라이브를 구분하지 못해 통과해도 의미가 없다.
+
+## 2026-08-16 — 매칭 요청 목록 N+1 절반 제거 (발표용 실측 포함)
+
+**대상**: `GET /api/v1/matchings/requests` (보낸 요청 목록). 전 세션에서 식별한 6개 최적화 항목 중 1번.
+k6로는 못 잰다 — 지연이 아니라 **왕복 횟수**라 Hibernate Statistics로 직접 센다.
+
+### 무엇이 문제였나
+
+`MatchingRequestResponseAssembler.build()` 가 행마다:
+1. `accountQueryUseCase.getById(viewerAccountId)` — 페이지 전체가 같은 뷰어인데 행마다 다시 부름
+2. PROJECT/POSITION 스냅샷 각 1쿼리 (행당 2쿼리)
+3. `projectDirectoryPort.findCompanyProfile(projectId)` — 내부에서 2쿼리, 캐시 없음
+4. `freelancerDirectoryPort.findCardSummary(freelancerId)`
+5. `negotiationPort.findSummaryByRequestId(requestId)`
+
+### 무엇을 고쳤나 (매칭 도메인 파일만 — 다른 도메인은 안 건드림)
+
+- `MatchingSnapshotRepository`에 `findAllByPositionIdInAndSnapshotType` 신규 — PROJECT/POSITION을
+  포지션 여러 개를 한 번에 읽어 타입당 쿼리 1번으로 줄인다(페이지 크기와 무관).
+- 뷰어 계정 조회를 페이지당 1번으로.
+- 회사 프로필을 projectId 기준 `Map`으로 캐시 — 같은 프로젝트로 필터링해 보면 사실상 1번.
+- 프리랜서 카드 요약·협상 요약은 **그대로 남겨뒀다.** 배치하려면 freelancer/negotiation
+  도메인(2번/5번 소유)의 유스케이스 인터페이스에 배치 조회를 새로 추가해야 해서 이번 범위 밖.
+
+### 실측 — 어떻게 쟀고 숫자가 어디 있는가
+
+새 테스트: `src/test/java/com/pairing/matching/presentation/api/MatchingRequestListQueryCountTest.java`
+(회귀 테스트로 레포에 계속 남아 있다 — 언제든 재실행해서 재현 가능).
+
+시나리오: 클라이언트 1명, 서로 다른 프로젝트 2개(포지션 각 1개)에 걸쳐 매칭 요청 8건, 필터 없이
+전체 조회. **일부러 프로젝트를 2개로 나눴다** — 회사 프로필 캐시 이득이 가장 작게 나오는 조건이라
+여기서 나온 감소폭이 "최소 보장치"다. 프로젝트 하나로 필터링하는 실사용 화면은 이보다 더 준다.
+
+재현 명령:
+```
+./gradlew test --tests "com.pairing.matching.presentation.api.MatchingRequestListQueryCountTest"
+```
+`Statistics.getPrepareStatementCount()`(Hibernate)를 `GET /requests` 호출 직전에 `clear()` 하고
+직후 값을 읽는다. H2(MODE=PostgreSQL)로 재지만 JPQL/파생 쿼리 실행 횟수는 실제 Postgres와 같다.
+
+| | 쿼리 수 |
+|---|---|
+| 개선 전 | **77** |
+| 개선 후 | **51** |
+| 감소 | **-26 (-34%)** |
+
+### 검증
+
+`./gradlew test --tests "com.pairing.matching.*"` — **119 tests, 0 failures.** 회귀 없음.
+
+### 남은 것
+
+프리랜서 카드/협상 요약 배치는 못 했다 — 이 파일에 남겨서, 2번/5번한테 배치 조회 메서드 하나씩
+추가해달라고 요청하는 게 다음 단계다. 코드 변경분은 아직 커밋하지 않았다(작업 트리에만 있음).
+
+### 응답 시간도 실측 (로컬 실제 Postgres, curl)
+
+쿼리 수 감소가 실제 응답 시간으로 이어지는지 로컬 1대짜리 Postgres로 확인했다. H2가 아니라 **진짜
+Postgres**로 재야 의미가 있다 — H2는 네트워크 왕복이 사실상 0이라 쿼리 개수 차이가 응답 시간에
+안 드러난다.
+
+방법: 같은 데이터(클라이언트 1 + 프리랜서 4 + 프로젝트 2 + 매칭 요청 8건, 위 테스트와 같은 모양)를
+DB에 심어두고, `git stash`로 코드만 개선 전/후로 갈아끼우며 `GET /requests?size=20`을 각각 10회
+호출해 `curl -w %{time_total}`로 쟀다(앞 3회는 워밍업으로 버림).
+
+| | 평균 | 중앙값 | 최솟값 |
+|---|---|---|---|
+| 개선 전 | 65.6ms | 64.1ms | 48.8ms |
+| 개선 후 | 51.9ms | 52.8ms | 36.4ms |
+| 감소 | **-13.7ms (-21%)** | -11.3ms (-18%) | -12.4ms |
+
+**주의**: 이건 로컬 PC 안에서 Postgres까지의 왕복이라 사실상 최선의 조건(네트워크 지연 0에 가까움)이다.
+실제 ECS↔RDS처럼 왕복마다 지연이 붙는 환경에서는 쿼리 26개 감소분이 이보다 더 크게 체감될 가능성이
+높지만, 그건 아직 안 쟀다 — 과장하지 않는다.
+
+## 2026-08-16 (2) — 매칭 전용 비동기 스레드 풀 분리 (6개 항목 중 2번)
+
+**문제**: `AsyncConfig.taskExecutor`(core 5 / max 10 / queue 500)를 앱 전체 `@Async`가 같이 쓴다.
+`ThreadPoolTaskExecutor`는 큐가 꽉 차야만 core 이상으로 늘어나는데 큐가 500이라 사실상 **동시 5개**를
+못 벗어난다. 매칭은 이 5개 슬롯을 자주, 오래 붙잡는다 — 추천·재추천은 AI 호출로 20~60초, 임베딩
+일괄 재색인(`EmbeddingReindexService`)은 분 단위로 스레드 하나를 계속 쥐고 있다. 매칭이 슬롯을 다
+채우면 **다른 도메인의 알림 발송 같은 가벼운 `@Async` 작업까지 에러도 타임아웃도 없이 밀린다.**
+계약 도메인은 이미 같은 문제를 겪고 전용 풀(`ContractDraftExecutorConfig`, core/max 2)로 분리해 뒀다.
+
+### 무엇을 고쳤나
+
+- `MatchingAsyncExecutorConfig` 신규 (`matching/infrastructure/config`) — `matchingExecutor`
+  빈, core 4 / max 6 / queue 50. 크기는 처리량이 아니라 **격리**가 목적 — 추천·재추천이 AI 호출 중
+  `REQUIRES_NEW` 트랜잭션으로 DB 커넥션을 하나 붙잡으므로(HikariCP 기본 10개), 매칭 혼자 커넥션
+  풀을 다 쓰지 않도록 여유를 남겼다.
+- 매칭의 `@Async` 5곳을 전부 `@Async(MatchingAsyncExecutorConfig.EXECUTOR_NAME)`으로 변경:
+  `EmbeddingReindexService`, `ProjectUpdatedEventListener`, `RecruitingStartedEventListener`,
+  `RerecommendRequestedEventListener`, `ResumeUpdatedEventListener`.
+- **테스트 함정 하나 잡음**: 이름을 지정한 `@Async("matchingExecutor")`는 `@Primary`로 안 바뀐다
+  (기존 `SyncTaskExecutorTestConfig`는 `@Primary`만 걸어 뒀었다 — 이름 없는 `@Async`에만 통했다).
+  그대로 뒀으면 테스트에서 진짜 스레드 풀이 떠서 기존 동기 검증이 깨졌을 것. `SyncTaskExecutorTestConfig`에
+  같은 이름(`matchingExecutor`)의 `SyncTaskExecutor` 빈을 추가하고, 운영 쪽 빈은
+  `@ConditionalOnMissingBean(name=...)`으로 테스트가 있으면 양보하게 했다.
+
+### 실측 — 격리가 실제로 되는지
+
+새 테스트: `src/test/java/com/pairing/matching/infrastructure/config/MatchingAsyncExecutorIsolationTest.java`.
+`SyncTaskExecutorTestConfig`를 일부러 안 써서 **진짜 스레드 풀**로 잰다. 공용 `taskExecutor`의 core
+5개를 다른 도메인 작업인 척 점유시켜 놓고, 그 상태에서 공용 풀에 넣은 작업과 `matchingExecutor`에
+넣은 작업이 각각 얼마 만에 시작되는지 비교한다.
+
+재현 명령:
+```
+./gradlew test --tests "com.pairing.matching.infrastructure.config.MatchingAsyncExecutorIsolationTest"
+```
+
+| | 시작까지 지연 |
+|---|---|
+| 공용 풀이 막혀 있을 때 `matchingExecutor`(분리 후) | **0ms** |
+| 같은 순간 공용 `taskExecutor`에 넣은 작업(분리 전과 동일 조건) | **301ms** (점유 해제 전까지 대기) |
+
+이 301ms는 테스트에서 일부러 짧게 잡은 점유 시간이다 — 실제 추천·재추천은 AI 호출로 20~60초씩
+붙잡으므로, 운영에서 공용 풀이 막히면 밀리는 다른 작업의 대기 시간은 이보다 훨씬 길다. 이 테스트가
+보여주는 건 "격리가 실제로 작동한다"는 사실이지, 운영 지연의 절대값이 아니다.
+
+### 검증
+
+`./gradlew test --tests "com.pairing.matching.*"` — **120 tests, 0 failures.** (기존 119 + 신규 1)
+
+## 2026-08-16 (3) — 스냅샷 저장 루프 존재 확인 배치 (6개 항목 중 4번)
+
+**문제**: `MatchingRoundCreationService.saveFreelancerSnapshots`가 노출된 후보마다
+`findByFreelancerIdAndPositionIdAndSnapshotType`로 "이미 스냅샷 있나"를 개별 쿼리로 확인했다.
+노출 인원이 N이면 이 존재 확인만 N쿼리 — 후보 목록의 `loadFrozenConditions`가 이미 겪고 고친 것과
+똑같은 모양의 문제다.
+
+### 무엇을 고쳤나
+
+포지션 단위로 이미 있는 FREELANCER 스냅샷 전부를 `findAllByPositionIdAndSnapshotType`(기존
+메서드, 후보 목록도 같이 씀)로 한 번에 읽어 `Set<freelancerId>`로 만들고, 루프에서는 그 Set에
+`contains`만 한다. 새 메서드 추가 없이 기존 배치 조회를 재사용했다.
+
+**같이 확인한 것 — 저장(INSERT)은 이 방식으로 못 줄인다.** `MatchingSnapshot`의 PK가
+`GenerationType.IDENTITY`라 Hibernate가 INSERT를 배치로 못 묶는다(생성된 키를 매번 즉시 받아야
+해서). `saveAll`로 모아 한 번에 불러도 SQL 왕복은 그대로다 — 시퀀스로 바꾸는 건 스키마 변경이라
+이번 범위 밖으로 남겨둔다.
+
+### 실측
+
+새 테스트: `src/test/java/com/pairing/matching/presentation/api/MatchingSnapshotSaveQueryCountTest.java`.
+노출 6명(그중 3명은 이미 스냅샷 있음)인 회차를 `StaleRoundRecoveryService`로 채우면서 쟀다.
+
+```
+./gradlew test --tests "com.pairing.matching.presentation.api.MatchingSnapshotSaveQueryCountTest"
+```
+
+| | 쿼리 수 |
+|---|---|
+| 개선 전 | **91** |
+| 개선 후 | **86** |
+| 감소 | **-5** |
+
+노출 인원 6명 그대로 딱 맞아떨어진다(존재 확인 6쿼리 → 1쿼리, 그래서 정확히 -5). 노출 인원이
+많은 회차일수록 감소폭이 그대로 커진다 — N명이면 항상 N-1이 준다.
+
+### 검증
+
+`./gradlew test --tests "com.pairing.matching.*"` — **121 tests, 0 failures.** (기존 120 + 신규 1)
+
+## 2026-08-16 (4) — 5번(인덱스) 재검토: 새로 만들 것 없음
+
+**먼저 오류 정정.** 발표 슬라이드 검증 중 "matching_request/candidate/snapshot 전부 PK 말고
+인덱스가 없다"고 판단해 자료 숫자를 51/97 → 48/14로 고쳤었는데, **이건 8/13자 낡은 스키마 덤프
+(`pairing_prod_schema_from_dump.sql`, 레포 밖)를 근거로 삼은 오류였다.** 실제 소스
+(`db/init/02-create-schema.sql`, 8/15, 최초 커밋 `39daabe`부터 존재)와 살아있는 로컬 DB를 직접
+세어보니 매칭 세 테이블 전부 `idx_request_project_status`/`idx_request_freelancer_status`/
+`idx_request_expire`/`idx_request_candidate`(matching_request), `idx_candidate_dedupe`/
+`idx_candidate_freelancer`/`idx_candidate_rank`(matching_candidate),
+`idx_snapshot_project`/`idx_snapshot_position`/`idx_snapshot_freelancer`(matching_snapshot)가
+**최초 커밋부터 있었다.** 발표 자료 숫자를 50/97로 다시 고쳤다(도메인 19는 원래도 맞았음).
+
+**5번 항목 자체도 다시 확인해야 했다.** `.ai/HANDOFF.md`의 원래 정의는 "인덱스가 없다"가 아니라
+**"`(position_id, is_exposed)` 복합 인덱스 — EXPLAIN만"**(더 좁고 구체적인 항목)이었다. 이번에
+그 EXPLAIN을 실제로 돌렸다.
+
+### 실측 — EXPLAIN ANALYZE (실제 규모 흉내: 포지션 300개, 포지션당 후보 10명/노출 3명)
+
+`MatchingCandidateRepositoryAdapter.findExposedByPositionId`의 실제 쿼리
+(`WHERE position_id = ? AND is_exposed = true ORDER BY round_no desc, rank_no asc`, matching_round와 JOIN)로 쟀다.
+
+| | 플래너 비용 | 버퍼(shared hit+read) | 실행 시간 |
+|---|---|---|---|
+| 지금 인덱스만(`idx_candidate_dedupe`로 position_id 스캔 후 is_exposed 필터) | 41.09 | 26 | 0.209ms |
+| `(position_id, is_exposed)` 추가 후 | 26.94 | 19 | 0.204ms |
+
+버퍼는 줄어드는데(정확한 힙 블록 10→3 — 안 뽑을 7건의 페이지를 아예 안 읽는다) **실행 시간은
+사실상 같다(0.2ms대, 오차 범위).** 포지션당 후보가 10건 안팎이라 조건 필터 자체가 이미 너무 싸서
+인덱스로 건너뛰어도 체감이 안 된다 — 챗봇 테이블에 인덱스를 안 만든 것과 같은 이유다.
+
+**결론: 새 인덱스를 안 만든다.** 버퍼 절감은 실재하지만(대량 동시 요청에서 캐시 압박을 아주 조금
+줄일 수는 있다) 지금 규모에서 측정 가능한 이득이 없고, 쓰기 오버헤드(모든 후보 INSERT마다 인덱스
+갱신)만 더 생긴다. 이 항목은 "확인해봤고 필요 없다"로 닫는다.
+
+### 후속 조치
+
+- 레포 밖 `pairing_prod_schema_from_dump.sql`은 낡았다. 다시 참고할 일이 있으면 먼저
+  `pg_dump`로 새로 뜨거나, 이번처럼 `db/init/02-create-schema.sql`(현재 소스)을 직접 볼 것.
+
+## 2026-08-16 (5) — 6번(캐싱) 재검토: 역시 새로 만들 것 없음
+
+k6 가이드가 "캐시 개선 효과를 보여주기 좋다"고 짚은 마스터 데이터 API들
+(`meta_fields`/`meta_banks`/`meta_employees`/`meta_jobcats`/`meta_jobroles`/`meta_workcond`)을
+직접 열어봤다.
+
+- `com.pairing.meta.presentation.api.CodeController`(직군·직무·스킬·근무조건 — 매칭/메타 소유):
+  `Arrays.stream(JobCategory.values())...` — **DB 조회가 아니라 Java enum을 그대로 순회한다.**
+- `com.pairing.account.presentation.api.MetaController`(업종·은행·직원수·카드사 — account 소유):
+  같은 패턴, 역시 enum 순회.
+
+**둘 다 DB에 안 간다.** `@Cacheable`을 붙여도 지금이 이미 DB 왕복 0회라 개선이 없고, 무효화 시점·
+메모리 같은 관리 부담만 늘어난다. k6 가이드의 "캐시 개선 효과" 코멘트 자체가, 이 엔드포인트들이
+DB를 탄다고 잘못 가정하고 쓰인 것으로 보인다.
+
+매칭 도메인의 다른 조회는 전부 사용자·요청마다 달라지는 데이터(후보 목록, 요청 목록 등)라 넓게
+캐싱할 대상이 아니다. **6번도 5번과 같은 결론 — 확인해봤고 필요 없다.**
+
+## 정리 — 6개 항목 최종 상태 (2026-08-16)
+
+| # | 항목 | 상태 |
+|---|---|---|
+| 1 | 매칭 요청 목록 N+1 | 매칭 도메인 안에서 가능한 부분 완료(77→51쿼리). 프리랜서 카드·협상 요약은 2번/5번 도메인 필요 |
+| 2 | 비동기 스레드풀 분리 | 완료 (`MatchingAsyncExecutorConfig`) |
+| 3 | 후보 카드 N+1 | 2번 도메인 배치 메서드 필요 — 요청 보내고 대기 중 |
+| 4 | 스냅샷 저장 루프 존재 확인 | 완료 (91→86쿼리, N명이면 N-1 감소) |
+| 5 | `(position_id, is_exposed)` 인덱스 | 확인 결과 불필요 (EXPLAIN 비용은 줄지만 실행시간 무변화) |
+| 6 | 마스터 데이터 캐싱 | 확인 결과 불필요 (DB 조회 자체가 없음) |
+
+## 2026-08-16 (6) — 1번(매칭 요청 목록 N+1) k6 부하 실측
+
+쿼리 수(77→51)·단발 응답시간(65.6→51.9ms)에 이어, **동시 부하에서도 실제로 나아지는지** k6로 쟀다.
+`cl_match_reqs`는 표준 세트(S1/S2/S3)에 없는 매칭 전용 엔드포인트라 이 결과는 다른 팀원의 전/후
+비교와 직접 비교할 수 없다 — 이 항목만 놓고 본 수치다.
+
+**환경**: 로컬 실제 Postgres, 스프링을 `-Xmx768m -XX:ActiveProcessorCount=1` + CPU 0 고정(운영
+1 vCPU 흉내, `부하테스트-가이드.md` 2-1). 클라이언트 7 · 프리랜서 8 = 15계정, 클라이언트 1명당
+매칭 요청 8건(프로젝트 2개 × 4건) 심어서 목록이 실제로 여러 건 나오게 함.
+
+**명령**(전/후 `TESTID`만 다름):
+```
+k6 run k6/main.js -e BASE_URL=http://localhost:8080 -e ACCOUNTS='<15계정>' -e APIS='cl_match_reqs' \
+  -e PROFILE=load -e VUS=150 -e DURATION=3m -e RAMP=30s -e THINK_MS=1000 -e TESTID=matching-reqs-load-<before|after>
+```
+
+| | 처리량 | p95 | 평균 | 최대 |
+|---|---|---|---|---|
+| 개선 전 | 17.42 req/s | 7.64s | 6.51s | 14.10s |
+| 개선 후 | 23.84 req/s | 5.45s | 4.51s | 10.44s |
+| 변화 | **+36.9%** | **-28.7%** | **-30.7%** | -26.0% |
+
+둘 다 실패율 0%. VU 150은 이 단일 엔드포인트엔 과도한 부하라(표준 세트가 아니라 합격 기준 자체가
+없음) 절대값(5~7초대 p95)은 의미 없고, **같은 과부하 조건에서 전/후 격차**만 본다. 리포트:
+`k6/reports/matching-reqs-load-before.html` / `-after.html`.
+
+측정 후 테스트 계정 15개·시드 데이터는 전부 지웠다(로컬 DB에 안 남음).
+
+## 2026-08-16 (7) — 3번(후보 카드 N+1) 완료, 2번 배치 메서드 받음
+
+2번이 `FreelancerCandidateSummaryUseCase.getSummaries(List<Long>)`를 정확히 요청한 시그니처로
+추가해서 pull 받았다(`b146540`). 내부 구현은 평점(`ReviewUseCase.getRatings`)만 진짜 배치고
+프로필·계정·프로필사진 조회는 여전히 개별 호출이라 완전한 배치는 아니지만, 계약이 맞으니 그대로
+연결했다 — 나머지는 2번 도메인 안의 일이라 여기서 더 손대지 않는다.
+
+### 무엇을 고쳤나
+
+- `FreelancerDirectoryPort`/`FreelancerDirectoryAdapter`에 `findCardSummaries(List<Long>)` 추가
+  — `getSummaries`를 그대로 위임.
+- `CandidateResponseAssembler.build()`가 노출 후보의 freelancerId를 모아 한 번에
+  `findCardSummaries`를 부르고, 개별 후보 조립(`toCandidateResponse`)은 그 결과 맵에서 꺼내 쓴다.
+  배치 결과에 없는 id(방어적 경우)만 `computeIfAbsent`로 개별 호출 폴백.
+
+### 실측
+
+새 테스트: `MatchingCandidateListQueryCountTest.java`. 노출 8명(서로 다른 프리랜서)인 후보 목록
+조회(`GET /positions/{id}/candidates`)로 쟀다.
+
+| | 쿼리 수 |
+|---|---|
+| 개선 전 | 64 |
+| 개선 후 | 57 |
+| 감소 | **-7** |
+
+평점만 배치라 N-1(=7)만 줄었다 — 계산과 정확히 일치. 프로필·계정·사진까지 배치되면 더 줄어들
+여지가 있지만 2번 도메인 몫이라 여기서는 닫는다.
+
+### 검증
+
+`./gradlew test --tests "com.pairing.matching.*" --tests "com.pairing.freelancer.*"` —
+**148 tests, 0 failures.**
+
+### 6개 항목 최종 상태 갱신
+
+| # | 항목 | 상태 |
+|---|---|---|
+| 1 | 매칭 요청 목록 N+1 | 완료 (77→51쿼리, k6 p95 -28.7%) |
+| 2 | 비동기 스레드풀 분리 | 완료 |
+| 3 | 후보 카드 N+1 | 완료 (64→57쿼리, 2번 배치 메서드 받아 연결) |
+| 4 | 스냅샷 저장 루프 존재 확인 | 완료 (91→86쿼리) |
+| 5 | `(position_id, is_exposed)` 인덱스 | 확인 결과 불필요 |
+| 6 | 마스터 데이터 캐싱 | 확인 결과 불필요 |
+
+## 2026-08-16 (8) — 6개 항목 끝난 뒤 추가 감사
+
+6개를 다 처리한 뒤 "더 할 게 있나"를 다시 훑었다. 루프(`for`/`forEach`/`.map(...->...)`)가 있는
+서비스 파일을 전수 그렙해서 하나씩 봤다.
+
+### 찾아서 고침 — 매칭 요청 발송(`sendRequests`)도 같은 N+1이었다
+
+`sendOneRequest`가 후보마다 `matchingRequestResponseAssembler.build()`(단건판, 배치 아님)를
+불렀다 — 목록 조회에서 고친 것과 정확히 같은 모양의 문제가 **발송 경로**에도 있었다. 모집 인원
+이하로 건수가 작아 심각하진 않았지만, 이미 만든 `buildList()`를 그대로 쓸 수 있어 고칠 이유가
+충분했다.
+
+**한 것**: 검증·생성(`createOneRequest`, 이름 변경)은 후보마다 그대로 두고(선택 가능 여부 등은
+후보별 판단이 필요), 응답 조립만 루프 밖으로 빼서 `buildList()` 한 번으로 처리. 알림 이벤트는
+조립된 응답에서 꺼내 발행.
+
+검증: `./gradlew test --tests "com.pairing.matching.*"` — **123 tests, 0 failures.**
+
+### 확인했지만 고칠 게 없었던 것 — `ContractStageEventListener`의 일괄 상태 전환
+
+`onProjectCanceled`/`advanceAll`이 `matchingRequestRepository.save()`를 대상 건수만큼 루프에서
+부른다. 도메인 객체 → 새 JPA 엔티티 → `merge()` 경로라 건마다 SELECT가 하나씩 더 붙을 거라
+의심했다(직전 `findByProjectIdAndStatus`로 이미 관리 중인 엔티티가 있어도 `merge()`가 못 찾고
+새로 SELECT할 수 있어서).
+
+**실측** (`ContractStageEventListenerQueryCountTest`, 요청 6건 일괄 만료):
+**6건 처리에 prepared statement 1개.** 같은 트랜잭션 안이라 `merge()`가 이미 관리 중인 엔티티를
+찾아 SELECT 없이 바로 UPDATE로 넘어갔고, `order_updates: true`(전역 설정) 덕에 UPDATE 6건이
+JDBC 배치로 묶여 "prepared statement 1개"로 잡혔다. **의심이 틀렸다 — 이미 효율적이다, 손 안 댐.**
+
+### 아직 남아 있는 것 (전부 다른 도메인 배치 메서드가 필요해서 여기서 못 끝냄)
+
+| 어디 | 뭐가 남았나 |
+|---|---|
+| 1번(요청 목록) | 프리랜서 카드 요약, 협상 진행 요약 — 여전히 행마다 개별 호출 |
+| 3번(후보 카드) | `getSummaries` 내부의 프로필·계정·프로필사진 조회 — 평점만 배치됨 |
+| 4번(스냅샷 루프) | `findCondition`/`findResume`/`findCardSummary` — 존재 확인만 배치, 내용 채우기는 여전히 개별 |
+
+2번/5번한테 배치 메서드 추가를 요청하는 게 다음 단계다 (메시지는 개인 메모 참고).
+
+## 2026-08-16 (9) — k6 stress로 "몇 명까지 버티는가" 실측 (정직한 결과)
+
+**환경**: 새 브랜치 `feature/matching-n-plus-one-optimization`로 옮긴 뒤 측정(그동안 develop에서
+작업하고 있었다 — 커밋 전에 바로잡음). IntelliJ가 8080을 쓰고 있어 **8081 포트**로 띄웠다(같은
+1vCPU 고정 + `MANAGEMENT_PORT=8081`도 맞춰야 액추에이터가 8080을 따로 열려다 실패하지 않는다).
+클라이언트 7 · 프리랜서 8, 클라이언트당 매칭 요청 8건 — 응답시간 실측 때와 같은 데이터 모양.
+
+```
+k6 run k6/main.js -e BASE_URL=http://localhost:8081 -e ACCOUNTS='<15계정>' -e APIS='cl_match_reqs' \
+  -e PROFILE=stress -e VUS=150 -e DURATION=2m -e RAMP=30s -e THINK_MS=1000 -e TESTID=matching-reqs-stress-<before|after>
+```
+
+### 결과 — 계단별 p95
+
+| 동시접속 | 개선 전 p95 | 개선 후 p95 | 감소율 |
+|---|---|---|---|
+| 38명 | 1.12s | 395.9ms | -64.6% |
+| 75명 (기계적 "한계") | 2.87s | 1.32s | -54.0% |
+| 113명 | 3.76s | 2.33s | -38.0% |
+| 150명 | 5.62s | 3.76s | -33.1% |
+| 225명 | 8.34s | 5.39s | -35.4% |
+
+전체: 처리량 24.56→35.40 req/s(**+44.2%**), 총 요청 19,243→27,684(+43.9%), 실패율은 **양쪽 다 전
+구간 0%.**
+
+### 정직하게 짚을 것 — "무릎이 안 옮겨갔다"
+
+가이드의 기계적 판정(앞 구간 대비 2배 이상 튀는 지점)이 개선 전/후 **똑같이 75명에서** 걸렸다
+(전: 2.6배, 후: 3.3배 — 둘 다 2배를 넘어 같은 계단에서 "한계"로 찍힘). 그래서
+**"개선 전엔 동시 X명, 개선 후엔 Y명까지"라는 문장은 이 데이터로 못 만든다.** 실패율도 225명까지
+양쪽 다 0%라 어느 쪽도 진짜로 "무너지지"는 않았다 — 느려질 뿐이다.
+
+**대신 맞는 문장은**: "감당 인원(무릎 위치)은 그대로지만, 같은 동시접속 조건에서 응답 시간이 전
+구간 33~65% 줄었고 처리량은 44% 늘었다." 과장하지 않고 이 표현을 쓴다.
+
+### 검증
+
+측정 후 15계정·시드 데이터 전부 삭제(로컬 DB에 안 남음). 재검증:
+`./gradlew test --tests "com.pairing.matching.*" --tests "com.pairing.freelancer.*"` —
+**149 tests, 0 failures.**

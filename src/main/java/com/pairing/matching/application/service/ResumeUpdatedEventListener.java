@@ -1,6 +1,7 @@
 package com.pairing.matching.application.service;
 
 import com.pairing.freelancer.application.event.ResumeUpdatedEvent;
+import com.pairing.matching.infrastructure.config.MatchingAsyncExecutorConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -32,7 +33,7 @@ class ResumeUpdatedEventListener {
 
     private final FreelancerEmbeddingRefresher freelancerEmbeddingRefresher;
 
-    @Async
+    @Async(MatchingAsyncExecutorConfig.EXECUTOR_NAME)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onResumeUpdated(ResumeUpdatedEvent event) {
         try {

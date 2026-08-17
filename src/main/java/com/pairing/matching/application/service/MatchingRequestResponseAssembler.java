@@ -27,7 +27,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * {@link MatchingRequestResponse} 조립. 보는 쪽(클라이언트/프리랜서)에 따라 counterpartName이 달라진다.
@@ -79,6 +82,32 @@ class MatchingRequestResponseAssembler {
     }
 
     /**
+     * 페이지 조회 전용 일괄 조립. 행마다 PROJECT/POSITION 스냅샷을 따로 읽던 것을 페이지당
+     * 타입별 1번으로 줄인다. 뷰어 계정도 페이지당 1번만 읽는다(행마다 같은 값을 다시 불렀었다).
+     *
+     * <p>회사 프로필은 projectId 단위로 캐시한다 — 프로젝트로 필터링해 보낸 요청 목록을 볼 때는
+     * 페이지 전체가 같은 프로젝트라 사실상 1번만 부른다. 프리랜서 카드·협상 요약은 행마다 값이
+     * 대개 다르므로(각 요청이 다른 후보·다른 협상) 아직 그대로 둔다 — 배치하려면 freelancer/
+     * negotiation 도메인 쪽에 목록 조회 포트를 새로 추가해야 해서 이번 범위 밖이다.
+     */
+    List<MatchingRequestResponse> buildList(List<MatchingRequest> requests, Long viewerAccountId) {
+        if (requests.isEmpty()) {
+            return List.of();
+        }
+        Account viewer = accountQueryUseCase.getById(viewerAccountId);
+        List<Long> positionIds = requests.stream().map(MatchingRequest::getPositionId).distinct().toList();
+        Map<Long, ProjectSnapshotPayload> projectSnapshots = readSnapshots(positionIds, SnapshotType.PROJECT,
+                ProjectSnapshotPayload.class);
+        Map<Long, PositionSnapshotPayload> positionSnapshots = readSnapshots(positionIds, SnapshotType.POSITION,
+                PositionSnapshotPayload.class);
+        Map<Long, String> companyProfileCache = new HashMap<>();
+
+        return requests.stream()
+                .map(request -> build(request, viewer, projectSnapshots, positionSnapshots, companyProfileCache))
+                .toList();
+    }
+
+    /**
      * 상세 조회({@code GET /requests/{requestId}})에만 쓴다. 담당 업무와 프로젝트 본문 7개를 채운다.
      *
      * <p>프리랜서는 수락하면 곧바로 협상이 시작되므로, 그 전에 프로젝트를 다 보고 판단할 수 있어야
@@ -94,8 +123,26 @@ class MatchingRequestResponseAssembler {
                 ProjectSnapshotPayload.class);
         PositionSnapshotPayload position = readSnapshot(request.getPositionId(), SnapshotType.POSITION,
                 PositionSnapshotPayload.class);
-        ProjectContentView content = resolveContent(request.getProjectId(), project, detail);
         String companyProfile = projectDirectoryPort.findCompanyProfile(request.getProjectId());
+        return assemble(request, viewer, project, position, companyProfile, detail);
+    }
+
+    /** {@link #buildList}가 미리 읽어둔 스냅샷/캐시로 한 행을 조립한다. 목록 전용이라 detail은 항상 false다. */
+    private MatchingRequestResponse build(MatchingRequest request, Account viewer,
+                                          Map<Long, ProjectSnapshotPayload> projectSnapshots,
+                                          Map<Long, PositionSnapshotPayload> positionSnapshots,
+                                          Map<Long, String> companyProfileCache) {
+        ProjectSnapshotPayload project = requireSnapshot(projectSnapshots, request.getPositionId());
+        PositionSnapshotPayload position = requireSnapshot(positionSnapshots, request.getPositionId());
+        String companyProfile = companyProfileCache.computeIfAbsent(request.getProjectId(),
+                projectDirectoryPort::findCompanyProfile);
+        return assemble(request, viewer, project, position, companyProfile, false);
+    }
+
+    private MatchingRequestResponse assemble(MatchingRequest request, Account viewer, ProjectSnapshotPayload project,
+                                             PositionSnapshotPayload position, String companyProfile,
+                                             boolean detail) {
+        ProjectContentView content = resolveContent(request.getProjectId(), project, detail);
         FreelancerCardSummary freelancer = freelancerDirectoryPort.findCardSummary(request.getFreelancerId());
         String counterpartName = viewer.getRole() == Role.CLIENT ? freelancer.name() : project.companyName();
 
@@ -177,6 +224,25 @@ class MatchingRequestResponseAssembler {
     private <T> T readSnapshot(Long positionId, SnapshotType type, Class<T> payloadType) {
         MatchingSnapshot snapshot = matchingSnapshotRepository.findByPositionIdAndSnapshotType(positionId, type)
                 .orElseThrow(() -> new BusinessException(MatchingErrorCode.SNAPSHOT_NOT_FOUND));
+        return parseSnapshot(snapshot, payloadType);
+    }
+
+    /** 여러 포지션의 한 타입 스냅샷을 한 번에 읽어 positionId로 찾아볼 수 있게 맵으로 돌려준다. */
+    private <T> Map<Long, T> readSnapshots(List<Long> positionIds, SnapshotType type, Class<T> payloadType) {
+        return matchingSnapshotRepository.findAllByPositionIdInAndSnapshotType(positionIds, type).stream()
+                .collect(Collectors.toMap(MatchingSnapshot::getPositionId,
+                        snapshot -> parseSnapshot(snapshot, payloadType)));
+    }
+
+    private <T> T requireSnapshot(Map<Long, T> snapshots, Long positionId) {
+        T snapshot = snapshots.get(positionId);
+        if (snapshot == null) {
+            throw new BusinessException(MatchingErrorCode.SNAPSHOT_NOT_FOUND);
+        }
+        return snapshot;
+    }
+
+    private <T> T parseSnapshot(MatchingSnapshot snapshot, Class<T> payloadType) {
         try {
             return objectMapper.readValue(snapshot.getSnapshotJson(), payloadType);
         } catch (JsonProcessingException e) {
