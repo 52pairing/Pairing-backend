@@ -1,6 +1,7 @@
 package com.pairing.matching.application.service;
 
 import com.pairing.matching.application.port.out.ProjectDirectoryPort;
+import com.pairing.matching.domain.model.MatchingRound;
 import com.pairing.matching.infrastructure.config.MatchingAsyncExecutorConfig;
 import com.pairing.project.application.event.RecruitingStartedEvent;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ class RecruitingStartedEventListener {
     private final ProjectDirectoryPort projectDirectoryPort;
     private final RecruitingStartedPositionHandler positionHandler;
     private final MatchingRoundFiller roundFiller;
+    private final MatchingRoundCompletionNotifier completionNotifier;
 
     @Async(MatchingAsyncExecutorConfig.EXECUTOR_NAME)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -68,11 +70,15 @@ class RecruitingStartedEventListener {
 
     private void fillOrMarkFailed(Long projectId, Long positionId, Long roundId) {
         try {
-            roundFiller.fill(roundId);
+            MatchingRound filled = roundFiller.fill(roundId);
+            // 완료 알림이 없으면 프론트는 "준비중" 화면에서 새로고침 전까지 완료를 알 방법이 없다
+            // (MatchingRoundCompletionNotifier 참고, 2026-08-18 실사용 중 발견).
+            completionNotifier.notifyCompleted(filled);
         } catch (Exception e) {
             log.error("MATCHING_DEBUG java.round.initial.failed projectId={} positionId={} roundId={}",
                     projectId, positionId, roundId, e);
             roundFiller.markFailed(roundId);
+            completionNotifier.notifyFailed(projectId, positionId);
         }
     }
 }
