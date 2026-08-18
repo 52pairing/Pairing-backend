@@ -2579,3 +2579,78 @@ k6 run k6/main.js -e BASE_URL=http://localhost:8081 -e ACCOUNTS='<15계정>' -e 
 측정 후 15계정·시드 데이터 전부 삭제(로컬 DB에 안 남음). 재검증:
 `./gradlew test --tests "com.pairing.matching.*" --tests "com.pairing.freelancer.*"` —
 **149 tests, 0 failures.**
+
+## 2026-08-17 — PR #265 CI 실패: 공유 H2 계정 정리 누락으로 다른 도메인 테스트가 무작위로 깨짐
+
+PR을 올렸더니 CI(`./gradlew build`, 전체 스위트)가 실패했다. 로컬에서는 매칭·프리랜서 패키지만
+돌려서 못 잡았다 — **CI는 전체 스위트를 돈다는 걸 놓쳤다.**
+
+### 원인
+
+`MatchingIntegrationTest`는 MockMvc로 실제 커밋된 상태를 확인해야 해서 `@Transactional`이
+아니다. `@BeforeEach`에서 이전 테스트가 남긴 걸 정리하지만, **이 클래스의 마지막 테스트가 끝난
+뒤에는 아무도 정리하지 않는다.** `freelancer_profile`을 명시적 id(계정 id와 동일)로 심는데
+그 행이 그대로 남는다.
+
+전체 테스트가 같은 H2 named in-memory DB(`jdbc:h2:mem:testdb;...;DB_CLOSE_DELAY=-1`)를
+공유한다 — Spring 컨텍스트가 테스트 클래스마다 달라도(목 빈 구성이 다르면 새 컨텍스트) URL이
+같은 이름을 가리키면 같은 물리 DB다. 그래서 남은 행의 id를 나중에 **다른 도메인** 테스트가
+자동 채번으로 집으면 PRIMARY KEY 충돌이 난다.
+
+전체 스위트를 두 번 로컬로 돌려봤더니 **매번 다른 테스트가 깨졌다**
+(`NegotiationAdminQueryServiceTest` → `NegotiationChatRoomLinkTest`, 둘 다 같은
+`id=2, SENIOR, 1995-03-01` 충돌) — Gradle의 테스트 실행 순서가 결정적이지 않아서다. 이번
+세션에서 테스트 클래스 4개를 추가한 게 그 순서를 흔들어 잠재돼 있던 문제를 드러낸 것으로 보인다
+(이 문제 자체는 내 새 코드가 아니라 기존 `MatchingIntegrationTest`의 정리 누락이 원인).
+
+### 고침
+
+`MatchingIntegrationTest`에 `@AfterEach`를 추가해 `@BeforeEach`와 같은 정리를 한 번 더 하도록
+했다. 이번에 추가한 신규 쿼리 카운트 테스트 3개(`MatchingRequestListQueryCountTest`,
+`MatchingCandidateListQueryCountTest`, `MatchingSnapshotSaveQueryCountTest`)도 같은 위험
+(실제 가입 API로 계정 생성, non-transactional)이 있어 같은 패턴으로 함께 고쳤다.
+
+### 검증
+
+`./gradlew --no-daemon build`(전체 스위트, `cleanTest`로 캐시 무시)를 **3연속** 돌려 확인 —
+매번 680 tests 전부 통과. 커밋 `5f90010`, 브랜치에 푸시 완료.
+
+## 2026-08-18 — 최초 추천·멈춘 회차 복구 완료 시 알림 누락 수정
+
+실사용 중 발견: 클라이언트가 착수금을 결제하면 최초 추천이 비동기로 도는데(2026-08-13
+"추천 준비중" 트랜잭션 분리 참고), 완료돼도 화면이 "준비중"에서 안 바뀌고 **새로고침을 해야만
+후보가 보였다.**
+
+### 원인
+
+프론트(`RecommendedCandidates.tsx`)는 폴링을 하지 않는다. `MATCHING_RECOMMENDED` 알림을
+STOMP로 받아야만 후보 목록을 다시 부른다. 그런데 이 알림은 **재추천**
+(`RerecommendRequestedEventListener`, 2026-08-10부터 성공/실패 둘 다 발송)에서만 나가고
+있었다. `RecruitingStartedEventListener`(최초 추천, 2026-08-09 생성)와
+`StaleRoundRecoveryService`(멈춘 회차 복구, 2026-08-13 생성)는 **처음부터 알림 발송 코드
+자체가 없었다** — git 히스토리 전체를 뒤져도 두 파일에 알림 관련 코드가 존재한 적이 없다.
+2026-08-13 수정은 서버 쪽 상태 복구(RUNNING→preparing/FAILED, 멈춘 회차 재시도)만 다뤘고,
+"복구됐다는 걸 클라이언트에게 알리는 것"은 범위에 없었다 — 같은 증상의 다른 절반이 남아있던
+것이다. (알림 담당자가 최초 추천 쪽 누락을 별도로 리포트해 원인이 같음을 교차 확인함.)
+
+### 고침
+
+`MatchingRoundCompletionNotifier`(신규) — `RerecommendRequestedEventListener`가 쓰던
+성공/실패 알림 발송 로직(`REQUIRES_NEW`, 예외 삼키고 로그만 남김)을 공용 컴포넌트로 뽑아
+`RecruitingStartedEventListener.fillOrMarkFailed`와 `StaleRoundRecoveryService
+.recoverStaleRounds` 양쪽에서 재사용. 클라이언트 계정 ID는 기존
+`ProjectDirectoryPort.findClientAccountId(projectId)`로 구한다.
+
+재추천 리스너는 그대로 남겨뒀다 — 실패 메시지에 "재추천 횟수는 차감되지 않습니다" 같은
+재추천 전용 문구가 있어서 억지로 합치면 오히려 복잡해진다.
+
+### 검증
+
+`RecruitingStartedEventListenerTest`에 성공/실패 알림 테스트 2건 추가 — Mockito로 목킹하는
+대신 실제 `SpringDataNotificationRepository`로 알림 행이 진짜 저장됐는지 확인한다
+(`NotificationCreateUseCase`를 목으로 바꾸면 같은 클래스가 구현하는 `NotificationUseCase`까지
+같이 대체돼 `NotificationController` 빈 생성이 깨진다 — 실제 DB 조회로 우회).
+`StaleRoundRecoveryServiceTest`(신규, 순수 Mockito 단위테스트) 3건 — 복구 성공/재실패/대상
+없음 각각의 알림 발송 여부.
+
+`./gradlew test --tests "com.pairing.matching.*" --tests "com.pairing.freelancer.*"` 통과.

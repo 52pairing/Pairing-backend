@@ -34,6 +34,7 @@ public class StaleRoundRecoveryService {
 
     private final MatchingRoundRepository matchingRoundRepository;
     private final MatchingRoundFiller matchingRoundFiller;
+    private final MatchingRoundCompletionNotifier completionNotifier;
 
     /**
      * 이 시간을 넘겨 RUNNING이면 멈춘 것으로 본다.
@@ -57,10 +58,13 @@ public class StaleRoundRecoveryService {
         int failed = 0;
         for (MatchingRound round : stale) {
             try {
-                matchingRoundFiller.fill(round.getId());
+                MatchingRound filled = matchingRoundFiller.fill(round.getId());
                 recovered++;
                 log.info("MATCHING_DEBUG java.round.recovery.filled roundId={} positionId={}",
                         round.getId(), round.getPositionId());
+                // 복구됐다는 걸 알려야 프론트가 "준비중" 화면을 새로고침 없이 갱신한다
+                // (MatchingRoundCompletionNotifier 참고, 2026-08-18 실사용 중 발견).
+                completionNotifier.notifyCompleted(filled);
             } catch (Exception e) {
                 // 두 번째도 실패하면 FAILED로 닫는다. RUNNING으로 두면 다음 주기에 또 집어서
                 // AI 서버가 죽어 있는 동안 계속 호출한다.
@@ -68,6 +72,7 @@ public class StaleRoundRecoveryService {
                 log.error("MATCHING_DEBUG java.round.recovery.failed roundId={} positionId={}",
                         round.getId(), round.getPositionId(), e);
                 matchingRoundFiller.markFailed(round.getId());
+                completionNotifier.notifyFailed(round.getProjectId(), round.getPositionId());
             }
         }
         log.info("MATCHING_DEBUG java.round.recovery.summary staleCount={} recovered={} failed={}",

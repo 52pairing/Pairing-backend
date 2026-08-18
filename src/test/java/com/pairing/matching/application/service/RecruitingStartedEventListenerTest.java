@@ -30,6 +30,9 @@ import com.pairing.matching.domain.repository.MatchingSnapshotRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingCandidateRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRequestRepository;
 import com.pairing.matching.infrastructure.persistence.SpringDataMatchingRoundRepository;
+import com.pairing.notification.domain.model.NotificationType;
+import com.pairing.notification.infrastructure.persistence.NotificationJpaEntity;
+import com.pairing.notification.infrastructure.persistence.SpringDataNotificationRepository;
 import com.pairing.meta.domain.model.JobCategory;
 import com.pairing.meta.domain.model.JobRole;
 import com.pairing.meta.domain.model.PayUnit;
@@ -154,6 +157,8 @@ class RecruitingStartedEventListenerTest {
     private PasswordResetTokenPort passwordResetTokenPort;
     @MockitoBean
     private MatchingPort matchingPort;
+    @Autowired
+    private SpringDataNotificationRepository notificationRepository;
 
     private Long clientTermsId;
     private Long privacyTermsId;
@@ -163,6 +168,10 @@ class RecruitingStartedEventListenerTest {
 
     @BeforeEach
     void setUp() throws Exception {
+        // 완료/실패 알림 테스트가 실제로 notification 행을 남기므로, 이전 실행분을 account보다
+        // 먼저 지워야 한다(FK) - 안 그러면 다음 줄들의 accountRepository.deleteAll()이 깨진다.
+        jdbcTemplate.update("DELETE FROM notification WHERE owner_account_id IN "
+                + "(SELECT id FROM account WHERE email = ?)", CLIENT_EMAIL);
         jdbcTemplate.update("DELETE FROM negotiation_message WHERE negotiation_id IN "
                 + "(SELECT id FROM negotiation WHERE project_id = ?)", PROJECT_ID);
         jdbcTemplate.update("DELETE FROM negotiation_condition WHERE negotiation_id IN "
@@ -383,5 +392,41 @@ class RecruitingStartedEventListenerTest {
 
         long roundCount = matchingRoundJpaRepository.count();
         assertThat(roundCount).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("최초 추천이 성공하면 완료 알림을 보낸다 — 안 보내면 프론트가 새로고침 전까지 모른다")
+    void successfulInitialRecommendationSendsCompletionNotification() {
+        // 2026-08-18 실사용 중 발견: 프론트는 MATCHING_RECOMMENDED 알림을 받아야만 추천 후보
+        // 화면을 다시 불러온다(폴링 없음). 이 알림이 없으면 최초 추천은 새로고침 전까지 화면이
+        // "준비중"에서 안 바뀐다 — 재추천 경로는 처음부터 알림을 보냈지만 최초 추천은 빠져 있었다.
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
+                .willReturn(new MatchingRecommendation(POSITION_ID, "gemini-2.0-flash",
+                        List.of(new RankedFreelancer(999_001L, 90.0, "요구 스킬 일치|경력 조건 충족", 0.82))));
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));
+
+        NotificationJpaEntity notification = notificationRepository
+                .findByOwnerAccountId(clientAccountId, org.springframework.data.domain.Pageable.unpaged())
+                .getContent().get(0);
+        assertThat(notification.getType()).isEqualTo(NotificationType.MATCHING_RECOMMENDED);
+        assertThat(notification.getLinkUrl()).isEqualTo("/matchings/positions/" + POSITION_ID + "/candidates");
+    }
+
+    @Test
+    @DisplayName("최초 추천이 실패해도 실패 알림을 보낸다 — 안 보내면 클라이언트가 오지 않을 완료를 계속 기다린다")
+    void failedInitialRecommendationSendsFailureNotification() {
+        given(matchingPort.recommend(eq(POSITION_ID), eq(2), eq(3), eq(List.of()), anyLong()))
+                .willThrow(new IllegalStateException("AI 서버 장애"));
+
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                eventPublisher.publishEvent(new RecruitingStartedEvent(PROJECT_ID)));
+
+        NotificationJpaEntity notification = notificationRepository
+                .findByOwnerAccountId(clientAccountId, org.springframework.data.domain.Pageable.unpaged())
+                .getContent().get(0);
+        assertThat(notification.getType()).isEqualTo(NotificationType.MATCHING_RECOMMENDED);
+        assertThat(notification.getTitle()).isEqualTo("추천 후보를 만들지 못했습니다.");
     }
 }
