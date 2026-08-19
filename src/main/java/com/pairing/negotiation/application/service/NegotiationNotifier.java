@@ -42,8 +42,15 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @RequiredArgsConstructor
 public class NegotiationNotifier {
 
-    /** 알림을 눌렀을 때 이동할 프론트 경로. 협상방 한 곳이라 3종이 모두 같다. */
-    private static final String LINK_PREFIX = "/negotiations/";
+    /**
+     * 알림을 눌렀을 때 이동할 협상방 경로. <b>역할별로 다르다</b> —
+     * {@code /client/projects/{projectId}/negotiation/{negotiationId}} 와 프리랜서 짝이 따로 있고,
+     * 프로젝트 ID 까지 필요하다.
+     *
+     * <p>예전에는 양쪽 모두 {@code /negotiations/{id}} 로 보냈는데 프론트에 그런 경로가 없어
+     * 알림을 눌러도 404 였다. 링크는 받는 사람 기준으로 만들어야 한다.
+     */
+    private static final String LINK_FORMAT = "/%s/projects/%d/negotiation/%d";
 
     /** 이름을 못 읽었을 때 쓰는 표시. 알림 문구가 "null 님과의" 로 나가는 것보다 낫다. */
     private static final String UNKNOWN_FREELANCER = "프리랜서";
@@ -74,9 +81,15 @@ public class NegotiationNotifier {
 
         // 양측에 각각 한 번. 상대가 누구인지로 문구가 갈린다 — 클라는 프리랜서 이름을,
         // 프리랜서는 프로젝트명을 보는 편이 알림 목록에서 구분이 된다.
-        push(clientAccountId(project), event, content(event, freelancerName + " 님과의"));
+        push(clientAccountId(project), event, content(event, freelancerName + " 님과의"),
+                link("client", event));
         push(partyProfilePort.findAccountIdByFreelancerProfileId(event.freelancerProfileId()).orElse(null),
-                event, content(event, projectTitle + " 프로젝트의"));
+                event, content(event, projectTitle + " 프로젝트의"), link("freelancer", event));
+    }
+
+    /** 받는 사람 역할에 맞는 협상방 경로. 프론트 라우트가 역할별로 나뉘어 있다. */
+    private String link(String rolePath, NegotiationNotificationRequested event) {
+        return LINK_FORMAT.formatted(rolePath, event.projectId(), event.negotiationId());
     }
 
     private Long clientAccountId(ProjectReaderPort.ProjectView project) {
@@ -90,7 +103,7 @@ public class NegotiationNotifier {
      * 한 사람에게 보낸다. <b>한쪽 실패가 다른 쪽 발송을 막지 않도록</b> 각각 감싼다 —
      * 한 명이 계정 없이 남은 시험 데이터라도 상대는 알림을 받아야 한다.
      */
-    private void push(Long accountId, NegotiationNotificationRequested event, String content) {
+    private void push(Long accountId, NegotiationNotificationRequested event, String content, String linkUrl) {
         if (accountId == null) {
             log.warn("[협상 알림 수신자 계정을 못 찾아 건너뜀] negotiationId={}, type={}",
                     event.negotiationId(), event.type());
@@ -98,8 +111,7 @@ public class NegotiationNotifier {
         }
         try {
             notificationCreateUseCase.create(new CreateNotificationCommand(
-                    accountId, event.type(), title(event.type()), content,
-                    LINK_PREFIX + event.negotiationId()));
+                    accountId, event.type(), title(event.type()), content, linkUrl));
         } catch (Exception e) {
             log.warn("[협상 알림 발송 실패 - 무시하고 진행] negotiationId={}, type={}, accountId={}",
                     event.negotiationId(), event.type(), accountId, e);
