@@ -77,9 +77,10 @@ class NegotiationNotifierTest {
         assertThat(toClient.content()).contains("김승재 님과의");
         assertThat(toFreelancer.ownerAccountId()).isEqualTo(FREELANCER_ACCOUNT_ID);
         assertThat(toFreelancer.content()).contains("커머스 리뉴얼 프로젝트의");
-        // 알림을 누르면 협상방으로 간다. 3종이 모두 같은 경로다.
-        assertThat(sent).allSatisfy(command ->
-                assertThat(command.linkUrl()).isEqualTo("/negotiations/28"));
+        // 링크는 받는 사람 역할에 맞춰 갈린다. 프론트 협상방 라우트가 역할별로 나뉘어 있고
+        // 프로젝트 ID 까지 필요해서다(양쪽에 /negotiations/{id} 를 보내 404 가 나던 것을 고쳤다).
+        assertThat(toClient.linkUrl()).isEqualTo("/client/projects/7/negotiation/28");
+        assertThat(toFreelancer.linkUrl()).isEqualTo("/freelancer/projects/7/negotiation/28");
     }
 
     @Test
